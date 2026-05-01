@@ -26,3 +26,9 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Playwright MCP cache
+.playwright-mcp/
+
+# Research / session screenshots
+yuv-ai-*.png
