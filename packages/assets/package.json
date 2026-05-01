@@ -1,0 +1,6 @@
+{
+  "name": "@easybim/assets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Brand assets — single source of truth for all EasyBIM logos and icons"
+}

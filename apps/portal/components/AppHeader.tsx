@@ -7,18 +7,15 @@ import { UserButton } from '@clerk/nextjs'
 export default function AppHeader() {
   return (
     <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-[#e8eaff] px-6 py-3 flex items-center justify-between">
-      <Link href="/dashboard" className="flex items-center gap-3">
+      <Link href="/dashboard">
         <Image
-          src="/easybim_logo-b.png"
+          src="/easybim_logo-w.png"
           alt="EasyBIM"
-          width={130}
-          height={42}
+          width={160}
+          height={52}
           className="object-contain"
           priority
         />
-        <span className="text-sm font-semibold text-[#6b7280] border-l border-[#e8eaff] pl-3">
-          Internal Tools
-        </span>
       </Link>
       <UserButton />
     </header>

@@ -1,14 +1,26 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { Newspaper, Database, Cpu, ArrowRight, Clock } from 'lucide-react'
+import { Newspaper, Database, Cpu, ArrowRight, Clock, Sparkles } from 'lucide-react'
 import AppHeader from '@/components/AppHeader'
+import CursorEffect from '@/components/CursorEffect'
+
+const PARTICLES = [
+  { x: '8%',  y: '18%', size: 3, delay: '0s',    dur: '7s'   },
+  { x: '88%', y: '12%', size: 2, delay: '1.2s',  dur: '8.5s' },
+  { x: '72%', y: '68%', size: 4, delay: '2.1s',  dur: '6.5s' },
+  { x: '18%', y: '78%', size: 2, delay: '0.7s',  dur: '9s'   },
+  { x: '48%', y: '8%',  size: 3, delay: '3.3s',  dur: '7.5s' },
+  { x: '92%', y: '52%', size: 2, delay: '1.8s',  dur: '8s'   },
+  { x: '28%', y: '42%', size: 2, delay: '4.1s',  dur: '6s'   },
+  { x: '62%', y: '88%', size: 3, delay: '2.8s',  dur: '7s'   },
+]
 
 const TOOLS = [
   {
     id: 'newsletter',
     title: 'Newsletter Generator',
     description:
-      'Generate AI-powered BIM industry newsletters from RSS feeds using Google Gemini.',
+      'Generate AI-powered BIM industry newsletters from 21 RSS sources using Google Gemini. Ready to send in under a minute.',
     icon: Newspaper,
     href: process.env.NEXT_PUBLIC_NEWSLETTER_URL || '#',
     status: 'live' as const,
@@ -18,7 +30,7 @@ const TOOLS = [
     id: 'drive-monday',
     title: 'Drive → Monday.com',
     description:
-      'Sync Google Drive files and folders to Monday.com boards. Connect Google Sheets and Docs to project workflows.',
+      'Sync Google Drive files and folders to Monday.com boards automatically. Connect project documents to your workflow.',
     icon: Database,
     href: '#',
     status: 'coming-soon' as const,
@@ -32,7 +44,7 @@ const TOOLS = [
     icon: Cpu,
     href: '#',
     status: 'coming-soon' as const,
-    color: '#6b7280',
+    color: '#818cf8',
   },
 ]
 
@@ -41,45 +53,71 @@ export default async function DashboardPage() {
   if (!userId) redirect('/sign-in')
 
   return (
-    <div className="min-h-full flex flex-col bg-[#f8f9ff]">
+    <div
+      className="min-h-screen overflow-x-hidden"
+      style={{ background: 'linear-gradient(135deg, #eef6fb 0%, #f8f9ff 45%, #f0f4ff 100%)' }}
+    >
+      <CursorEffect />
+
+      {/* Background depth */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div style={{ position: 'absolute', top: '-5%', right: '-8%', width: 700, height: 700, background: 'radial-gradient(circle, rgba(68,184,211,0.18) 0%, transparent 65%)' }} />
+        <div style={{ position: 'absolute', bottom: '-8%', left: '-8%', width: 620, height: 620, background: 'radial-gradient(circle, rgba(30,36,140,0.10) 0%, transparent 65%)' }} />
+        <div style={{ position: 'absolute', top: '45%', left: '45%', width: 480, height: 480, background: 'radial-gradient(circle, rgba(68,184,211,0.07) 0%, transparent 65%)', transform: 'translate(-50%,-50%)' }} />
+        {PARTICLES.map((p, i) => (
+          <div key={i} style={{
+            position: 'absolute', left: p.x, top: p.y,
+            width: p.size, height: p.size, borderRadius: '50%',
+            background: '#44b8d3',
+            animation: `landing-float ${p.dur} ${p.delay} ease-in-out infinite`,
+          }} />
+        ))}
+      </div>
+
       <AppHeader />
 
-      <main className="flex-1 px-6 py-12 max-w-6xl mx-auto w-full">
+      <main className="relative z-10 px-6 py-12 max-w-5xl mx-auto w-full">
+        {/* Page header */}
         <div className="mb-10">
-          <h1 className="text-3xl font-bold text-[#1e248c] mb-2">Internal Tools</h1>
-          <p className="text-[#6b7280]">All EasyBIM workflow tools in one place.</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#44b8d3]/10 border border-[#44b8d3]/30 text-[#1e248c] text-xs font-semibold mb-4">
+            <Sparkles size={11} className="text-[#44b8d3]" />
+            Your Workspace
+          </div>
+          <h1 className="text-3xl font-black text-[#1e248c] mb-2">Internal Tools</h1>
+          <p className="text-[#6b7280] text-sm">All EasyBIM workflow tools — one click away.</p>
         </div>
 
+        {/* Tool cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {TOOLS.map((tool) => {
             const Icon = tool.icon
             return (
               <div
                 key={tool.id}
-                className="bg-white rounded-2xl shadow-sm border border-[#e8eaff] p-6 flex flex-col gap-4 hover:shadow-md transition-shadow"
+                className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
               >
                 <div
                   className="w-12 h-12 rounded-xl flex items-center justify-center"
-                  style={{ backgroundColor: tool.color + '18' }}
+                  style={{ background: `${tool.color}18` }}
                 >
                   <Icon size={24} style={{ color: tool.color }} />
                 </div>
 
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h2 className="font-bold text-[#171717]">{tool.title}</h2>
+                    <h2 className="font-bold text-[#111827] text-sm">{tool.title}</h2>
                     {tool.status === 'live' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-semibold">
                         Live
                       </span>
                     )}
                     {tool.status === 'coming-soon' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#f0f2ff] text-[#6b7280] font-medium">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#f0f2ff] text-[#6b7280] font-semibold">
                         Soon
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-[#6b7280] leading-relaxed">{tool.description}</p>
+                  <p className="text-xs text-[#6b7280] leading-relaxed">{tool.description}</p>
                 </div>
 
                 {tool.status === 'live' ? (
@@ -92,8 +130,8 @@ export default async function DashboardPage() {
                     Open tool <ArrowRight size={14} />
                   </a>
                 ) : (
-                  <span className="flex items-center gap-1.5 text-sm text-[#9ca3af]">
-                    <Clock size={14} /> Coming soon
+                  <span className="flex items-center gap-1.5 text-xs text-[#9ca3af]">
+                    <Clock size={13} /> Coming soon
                   </span>
                 )}
               </div>

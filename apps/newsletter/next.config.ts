@@ -1,9 +1,10 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['mongoose'],
   turbopack: {
-    root: __dirname,
+    root: path.resolve(__dirname, '../..'),
   },
 };
 

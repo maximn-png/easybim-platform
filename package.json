@@ -6,8 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo dev",
-    "build": "turbo build",
+    "copy-assets": "node scripts/copy-assets.js",
+    "dev": "npm run copy-assets && turbo dev",
+    "build": "npm run copy-assets && turbo build",
     "lint": "turbo lint",
     "type-check": "turbo type-check"
   },

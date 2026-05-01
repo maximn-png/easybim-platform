@@ -17,3 +17,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Landing page — custom cursor scope */
+.landing-cursor-off,
+.landing-cursor-off * {
+  cursor: none !important;
+}
+
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.45; }
+  50%       { transform: translateY(-14px) scale(1.25); opacity: 0.75; }
+}
+
+@keyframes landing-fade-up {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes landing-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
