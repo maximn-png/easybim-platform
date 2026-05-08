@@ -3,6 +3,25 @@ import { redirect } from 'next/navigation'
 import { Newspaper, Database, Cpu, ArrowRight, Clock, Sparkles } from 'lucide-react'
 import AppHeader from '@/components/AppHeader'
 import CursorEffect from '@/components/CursorEffect'
+import PhotoGallery from '@/components/PhotoGallery'
+
+async function getQuote() {
+  try {
+    const res = await fetch(
+      'https://api.quotable.io/random?tags=technology|business|success|inspirational&maxLength=160',
+      { cache: 'no-store' }
+    )
+    const data = await res.json()
+    if (data.content && data.author) return { content: data.content as string, author: data.author as string }
+  } catch {}
+  // Fallback quotes if API is unavailable
+  const fallbacks = [
+    { content: 'Innovation distinguishes between a leader and a follower.', author: 'Steve Jobs' },
+    { content: 'The best way to predict the future is to create it.', author: 'Peter Drucker' },
+    { content: 'Coming together is a beginning. Keeping together is progress. Working together is success.', author: 'Henry Ford' },
+  ]
+  return fallbacks[Math.floor(Math.random() * fallbacks.length)]
+}
 
 const PARTICLES = [
   { x: '8%',  y: '18%', size: 3, delay: '0s',    dur: '7s'   },
@@ -27,10 +46,10 @@ const TOOLS = [
     color: '#1e248c',
   },
   {
-    id: 'drive-monday',
-    title: 'Drive → Monday.com',
+    id: 'easybim-projects',
+    title: 'EasyBIM Projects',
     description:
-      'Sync Google Drive files and folders to Monday.com boards automatically. Connect project documents to your workflow.',
+      'Track, manage, and collaborate on BIM projects in one place. Built around the EasyBIM team\'s workflow.',
     icon: Database,
     href: '#',
     status: 'coming-soon' as const,
@@ -51,6 +70,8 @@ const TOOLS = [
 export default async function DashboardPage() {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
+
+  const quote = await getQuote()
 
   return (
     <div
@@ -76,68 +97,99 @@ export default async function DashboardPage() {
 
       <AppHeader />
 
-      <main className="relative z-10 px-6 py-12 max-w-5xl mx-auto w-full">
-        {/* Page header */}
-        <div className="mb-10">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#44b8d3]/10 border border-[#44b8d3]/30 text-[#1e248c] text-xs font-semibold mb-4">
-            <Sparkles size={11} className="text-[#44b8d3]" />
+      <main className="relative z-10">
+        {/* ── Centered hero header ── */}
+        <div className="flex flex-col items-center text-center px-6 pt-14 pb-10">
+          <div
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mb-6"
+            style={{ background: 'rgba(68,184,211,0.10)', borderColor: 'rgba(68,184,211,0.30)', color: '#1e248c' }}
+          >
+            <Sparkles size={11} style={{ color: '#44b8d3' }} />
             Your Workspace
           </div>
-          <h1 className="text-3xl font-black text-[#1e248c] mb-2">Internal Tools</h1>
-          <p className="text-[#6b7280] text-sm">All EasyBIM workflow tools — one click away.</p>
+
+          <h1
+            className="font-black leading-tight mb-2"
+            style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', color: '#1e248c' }}
+          >
+            Your EasyBIM Platform
+          </h1>
+
+          <p className="text-sm mb-4" style={{ color: '#6b7280' }}>
+            All EasyBIM workflow tools — one click away.
+          </p>
+
+          {quote && (
+            <div className="max-w-lg mx-auto text-center mt-4">
+              <p className="italic text-sm leading-relaxed" style={{ color: '#4b5563' }}>
+                <span className="text-xl font-black not-italic mr-0.5" style={{ color: '#44b8d3' }}>&ldquo;</span>
+                {quote.content}
+                <span className="text-xl font-black not-italic ml-0.5" style={{ color: '#44b8d3' }}>&rdquo;</span>
+              </p>
+              <p className="text-xs font-semibold mt-2 tracking-wide" style={{ color: 'rgba(30,36,140,0.7)' }}>
+                — {quote.author}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Tool cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {TOOLS.map((tool) => {
-            const Icon = tool.icon
-            return (
-              <div
-                key={tool.id}
-                className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-              >
+        {/* ── Tool cards ── */}
+        <div className="px-6 pb-16 max-w-4xl mx-auto w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {TOOLS.map((tool) => {
+              const Icon = tool.icon
+              return (
                 <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center"
-                  style={{ background: `${tool.color}18` }}
+                  key={tool.id}
+                  className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
                 >
-                  <Icon size={24} style={{ color: tool.color }} />
-                </div>
-
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h2 className="font-bold text-[#111827] text-sm">{tool.title}</h2>
-                    {tool.status === 'live' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-semibold">
-                        Live
-                      </span>
-                    )}
-                    {tool.status === 'coming-soon' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-[#f0f2ff] text-[#6b7280] font-semibold">
-                        Soon
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-[#6b7280] leading-relaxed">{tool.description}</p>
-                </div>
-
-                {tool.status === 'live' ? (
-                  <a
-                    href={tool.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-sm font-semibold text-[#1e248c] hover:text-[#44b8d3] transition-colors"
+                  <div
+                    className="w-12 h-12 rounded-xl flex items-center justify-center"
+                    style={{ background: `${tool.color}18` }}
                   >
-                    Open tool <ArrowRight size={14} />
-                  </a>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-xs text-[#9ca3af]">
-                    <Clock size={13} /> Coming soon
-                  </span>
-                )}
-              </div>
-            )
-          })}
+                    <Icon size={24} style={{ color: tool.color }} />
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h2 className="font-bold text-sm" style={{ color: '#111827' }}>{tool.title}</h2>
+                      {tool.status === 'live' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-semibold">
+                          Live
+                        </span>
+                      )}
+                      {tool.status === 'coming-soon' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#f0f2ff', color: '#6b7280' }}>
+                          Soon
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs leading-relaxed" style={{ color: '#6b7280' }}>{tool.description}</p>
+                  </div>
+
+                  {tool.status === 'live' ? (
+                    <a
+                      href={tool.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-sm font-semibold transition-colors"
+                      style={{ color: '#1e248c' }}
+                    >
+                      Open tool <ArrowRight size={14} />
+                    </a>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs" style={{ color: '#9ca3af' }}>
+                      <Clock size={13} /> Coming soon
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
+
+        {/* ── Full-width photo gallery ── */}
+        <PhotoGallery />
       </main>
     </div>
   )

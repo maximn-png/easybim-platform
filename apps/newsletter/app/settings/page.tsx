@@ -7,7 +7,7 @@ import SettingsClient from '@/components/settings/SettingsClient'
 
 export default async function SettingsPage() {
   const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
+  if (!userId) redirect(`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3000'}/sign-in`)
 
   await connectDB()
   const profile = await StyleProfile.findOne({ userId })
