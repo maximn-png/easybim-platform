@@ -14,7 +14,7 @@ interface PageProps {
 
 export default async function NewsletterPage({ params }: PageProps) {
   const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
+  if (!userId) redirect(`${process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3000'}/sign-in`)
 
   const { id } = await params
   await connectDB()

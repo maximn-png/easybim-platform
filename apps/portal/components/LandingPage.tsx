@@ -17,9 +17,9 @@ const TOOLS = [
   },
   {
     icon: Database,
-    title: 'Drive → Monday.com',
+    title: 'EasyBIM Projects',
     description:
-      'Sync Google Drive files and folders to Monday.com project boards automatically — no manual uploads.',
+      'Track, manage, and collaborate on BIM projects in one place. Built around the EasyBIM team\'s workflow.',
     color: '#44b8d3',
     status: 'Coming Soon' as const,
   },

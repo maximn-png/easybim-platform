@@ -4,6 +4,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { Sparkles, Zap, Globe, FileText } from 'lucide-react'
 
+const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3000'
+
 export default async function Home() {
   const { userId } = await auth()
   if (userId) redirect('/dashboard')
@@ -22,10 +24,10 @@ export default async function Home() {
           priority
         />
         <div className="flex items-center gap-3">
-          <Link href="/sign-in" className="px-5 py-2 rounded-xl text-[#1e248c] font-semibold text-sm hover:bg-[#1e248c]/10 transition-colors">
+          <Link href={`${portalUrl}/sign-in`} className="px-5 py-2 rounded-xl text-[#1e248c] font-semibold text-sm hover:bg-[#1e248c]/10 transition-colors">
             Sign In
           </Link>
-          <Link href="/sign-up" className="px-5 py-2 rounded-xl bg-[#1e248c] text-white font-semibold text-sm hover:bg-[#1e248c]/90 transition-colors shadow-md shadow-[#1e248c]/20">
+          <Link href={`${portalUrl}/sign-up`} className="px-5 py-2 rounded-xl bg-[#1e248c] text-white font-semibold text-sm hover:bg-[#1e248c]/90 transition-colors shadow-md shadow-[#1e248c]/20">
             Get Started Free
           </Link>
         </div>
@@ -54,11 +56,11 @@ export default async function Home() {
         </p>
 
         <div className="flex items-center gap-4 flex-wrap justify-center">
-          <Link href="/sign-up" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-[#1e248c] text-white font-bold text-base hover:bg-[#1e248c]/90 transition-all shadow-xl shadow-[#1e248c]/25 hover:shadow-[#1e248c]/40 hover:-translate-y-0.5">
+          <Link href={`${portalUrl}/sign-up`} className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-[#1e248c] text-white font-bold text-base hover:bg-[#1e248c]/90 transition-all shadow-xl shadow-[#1e248c]/25 hover:shadow-[#1e248c]/40 hover:-translate-y-0.5">
             <Sparkles size={18} />
             Get Started Free
           </Link>
-          <Link href="/sign-in" className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl border-2 border-[#1e248c]/20 text-[#1e248c] font-bold text-base hover:border-[#44b8d3] hover:text-[#44b8d3] transition-all">
+          <Link href={`${portalUrl}/sign-in`} className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl border-2 border-[#1e248c]/20 text-[#1e248c] font-bold text-base hover:border-[#44b8d3] hover:text-[#44b8d3] transition-all">
             Sign In
           </Link>
         </div>
