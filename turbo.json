@@ -1,5 +1,25 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "CLERK_SECRET_KEY",
+    "NEXT_PUBLIC_CLERK_SIGN_IN_URL",
+    "NEXT_PUBLIC_CLERK_SIGN_UP_URL",
+    "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL",
+    "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL",
+    "NEXT_PUBLIC_NEWSLETTER_URL",
+    "NEXT_PUBLIC_PORTAL_URL",
+    "MONGODB_URI",
+    "ENCRYPTION_SECRET",
+    "GEMINI_API_KEY",
+    "COHERE_API_KEY",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "GOOGLE_REFRESH_TOKEN",
+    "GOOGLE_PHOTOS_SHARE_TOKEN",
+    "QA_TEST_EMAIL",
+    "QA_TEST_PASSWORD"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
