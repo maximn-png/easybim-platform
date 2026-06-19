@@ -277,7 +277,13 @@ export default function ExportReportModal({
           screenshotPngBase64 = stripDataUrl(dataUrl)
         } catch { /* screenshot optional */ }
       }
-      // 5. POST
+      // 5. Self-contained preview HTML (images inlined) — saved for report history.
+      const previewHtml = buildEmailHtml({
+        bodyText, links, highlightPhrases: resolved.highlightPhrases,
+        hasChart: true, hasScreenshot: !!template.bodyImage,
+        inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
+      })
+      // 6. POST
       const res = await fetch(`/api/projects/${project._id}/gmail-draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,6 +291,8 @@ export default function ExportReportModal({
           to: recipients.map(r => r.email),
           subject, bodyHtml, pdfBase64, pdfName,
           chartPngBase64, screenshotPngBase64,
+          title: resolved.title, previewHtml,
+          issueCount: effectiveIssues.length, filtersSummary, groupBy,
         }),
       })
       const data = await res.json() as { draftId?: string; needsGoogleAuth?: boolean; error?: string }

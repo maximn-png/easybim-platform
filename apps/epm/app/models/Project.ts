@@ -21,7 +21,8 @@ export interface ExternalIds {
   hoursSheetUrl?: string
   accProjectId?:  string          // Autodesk ACC project GUID
   accProjectUrl?: string          // Full ACC project URL
-  accLinkSource?: 'auto' | 'manual' // 'auto' = matched by projectNumber; 'manual' = user-selected (sticky)
+  accLinkSource?: 'auto' | 'manual' | 'ma003' // 'auto' = matched by projectNumber; 'manual' = user-selected (sticky); 'ma003' = parsed from the Monday MA-003 ACC link (typically a client hub)
+  accExternalHub?: boolean        // true = linked ACC project lives OUTSIDE the EasyBIM account (client hub)
   accHubId?:      string
 }
 
@@ -85,7 +86,8 @@ const ExternalIdsSchema = new Schema<ExternalIds>(
     hoursSheetUrl:  String,
     accProjectId:   String,
     accProjectUrl:  String,
-    accLinkSource:  { type: String, enum: ['auto', 'manual'] },
+    accLinkSource:  { type: String, enum: ['auto', 'manual', 'ma003'] },
+    accExternalHub: Boolean,
     accHubId:       String,
   },
   { _id: false }

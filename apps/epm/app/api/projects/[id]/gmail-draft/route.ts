@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { auth, clerkClient } from '@clerk/nextjs/server'
 import { getUserGoogleToken, gmailCreateDraft } from '@/lib/services/gmailService'
 
 interface DraftBody {
@@ -10,6 +10,54 @@ interface DraftBody {
   pdfName: string
   chartPngBase64?: string
   screenshotPngBase64?: string
+  // For saved report history (see ReportViewModal):
+  title?: string
+  previewHtml?: string      // self-contained email HTML (images as data: URLs)
+  issueCount?: number
+  filtersSummary?: string
+  groupBy?: string
+}
+
+const gmailDraftUrl = (draftId: string) =>
+  `https://mail.google.com/mail/u/0/#drafts?compose=${draftId}`
+
+// Best-effort: snapshot the created draft as a Report in the project's history.
+// Never throws — a persistence failure must not fail the draft response.
+async function saveReport(projectId: string, userId: string, draftId: string, d: DraftBody) {
+  try {
+    if (!process.env.MONGODB_URI || !d.previewHtml || !d.title) return null
+    const { connectDB } = await import('@easybim/db')
+    const Report = (await import('@/app/models/Report')).default
+    await connectDB()
+
+    let createdByName: string | undefined
+    try {
+      const user = await (await clerkClient()).users.getUser(userId)
+      createdByName = [user.firstName, user.lastName].filter(Boolean).join(' ')
+        || user.primaryEmailAddress?.emailAddress || undefined
+    } catch { /* name is optional */ }
+
+    const doc = await Report.create({
+      projectId,
+      title: d.title,
+      subject: d.subject,
+      recipients: d.to,
+      previewHtml: d.previewHtml,
+      pdf: Buffer.from(d.pdfBase64, 'base64'),
+      pdfName: d.pdfName,
+      draftId,
+      gmailUrl: gmailDraftUrl(draftId),
+      issueCount: d.issueCount,
+      filtersSummary: d.filtersSummary,
+      groupBy: d.groupBy,
+      createdByUserId: userId,
+      createdByName,
+    })
+    return String(doc._id)
+  } catch (err) {
+    console.error('[gmail-draft] saveReport failed', err)
+    return null
+  }
 }
 
 // Wrap base64 at 76 chars per RFC 2045.
@@ -89,10 +137,12 @@ function toBase64Url(mime: string): string {
 
 export async function POST(
   req: NextRequest,
-  _ctx: { params: Promise<{ id: string }> }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id: projectId } = await ctx.params
 
   const token = await getUserGoogleToken(userId)
   if (!token) return NextResponse.json({ needsGoogleAuth: true })
@@ -108,7 +158,8 @@ export async function POST(
   try {
     const raw = toBase64Url(buildMime(body))
     const { id } = await gmailCreateDraft(token, raw)
-    return NextResponse.json({ draftId: id })
+    const reportId = await saveReport(projectId, userId, id, body)
+    return NextResponse.json({ draftId: id, reportId })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // 401/403 → token invalid or missing scope → ask the user to (re)connect Google

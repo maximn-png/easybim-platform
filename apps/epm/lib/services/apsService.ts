@@ -249,12 +249,16 @@ export function matchAccProjectByNumber(
   const target = projectNumber.trim().toUpperCase()
   if (!target) return null
 
-  const byJob = projects.find(p => (p.jobNumber ?? '').trim().toUpperCase() === target)
+  // Ignore archived projects — they're usually stale "(OLD)" duplicates that
+  // would shadow the real active project (or its external/MA-003 counterpart).
+  const candidates = projects.filter(p => p.status !== 'archived')
+
+  const byJob = candidates.find(p => (p.jobNumber ?? '').trim().toUpperCase() === target)
   if (byJob) return byJob
 
   // Fallback: number appears as a standalone token in the name (e.g. "22129 - ...")
   const tokenRe = new RegExp(`(^|[^0-9A-Za-z])${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^0-9A-Za-z]|$)`)
-  const byName = projects.find(p => tokenRe.test(p.name.toUpperCase()))
+  const byName = candidates.find(p => tokenRe.test(p.name.toUpperCase()))
   return byName ?? null
 }
 

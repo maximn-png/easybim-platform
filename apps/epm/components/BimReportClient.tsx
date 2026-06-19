@@ -123,10 +123,12 @@ function GroupBar({
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function BimReportClient({ project }: { project: ProjectRow }) {
+  const isExternal = !!project.accExternalHub
   const [issues, setIssues] = useState<AccIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [noAcc, setNoAcc] = useState(false)
+  const [needsImport, setNeedsImport] = useState(false)
   const [needsApsAuth, setNeedsApsAuth] = useState(false)
 
   // Global filters (affect charts + table) — multi-select
@@ -157,11 +159,13 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
         const data = await r.json() as {
           issues?: AccIssue[]
           noAccProject?: boolean
+          needsImport?: boolean
           needsApsAuth?: boolean
           error?: string
           mock?: boolean
         }
         if (data.needsApsAuth) { setNeedsApsAuth(true); return }
+        if (data.needsImport) { setNeedsImport(true); return }
         if (data.noAccProject) { setNoAcc(true); return }
         if (data.error) { setError(data.error); return }
         setIssues(data.issues ?? [])
@@ -305,13 +309,15 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
             <p className="text-sm text-gray-500 mt-1">Project Status Update · Generated {today}</p>
           </div>
           <div className="flex items-center gap-3 self-start flex-wrap">
-            <a
-              href={`/api/auth/autodesk/disconnect?returnTo=/dashboard/${project._id}/reports`}
-              className="text-xs text-gray-400 hover:text-[#1e248c] underline underline-offset-2 transition-colors"
-              title="Clear token and re-authenticate with Autodesk"
-            >
-              Reconnect Autodesk
-            </a>
+            {!isExternal && (
+              <a
+                href={`/api/auth/autodesk/disconnect?returnTo=/dashboard/${project._id}/reports`}
+                className="text-xs text-gray-400 hover:text-[#1e248c] underline underline-offset-2 transition-colors"
+                title="Clear token and re-authenticate with Autodesk"
+              >
+                Reconnect Autodesk
+              </a>
+            )}
             <button
               onClick={() => setExportOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-medium hover:bg-[#44b8d3] transition-colors shadow-sm"
@@ -378,7 +384,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
         {loading && (
           <div className="flex items-center justify-center py-16 gap-3 text-gray-400">
             <Loader2 size={20} className="animate-spin" />
-            <span className="text-sm">Loading ACC issues…</span>
+            <span className="text-sm">Loading issues…</span>
           </div>
         )}
 
@@ -424,7 +430,24 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
           </div>
         )}
 
-        {!loading && !needsApsAuth && !error && !noAcc && (
+        {!loading && needsImport && (
+          <div className="glass-card rounded-2xl p-10 flex flex-col items-center gap-3 text-gray-400">
+            <AlertCircle size={32} />
+            <p className="font-semibold text-gray-600">No issues uploaded yet</p>
+            <p className="text-sm text-center max-w-sm">
+              This project is in a client hub outside EasyBIM. Export the issues from ACC and upload the
+              file from the project&apos;s <span className="font-medium text-gray-600">Forms &amp; Actions</span> card to build this report.
+            </p>
+            <Link
+              href={`/dashboard/${project._id}`}
+              className="mt-1 inline-flex items-center gap-2 px-5 py-2.5 bg-[#1e248c] text-white rounded-xl text-sm font-semibold hover:bg-[#44b8d3] transition-colors"
+            >
+              Go to project to upload
+            </Link>
+          </div>
+        )}
+
+        {!loading && !needsApsAuth && !needsImport && !error && !noAcc && (
           <>
             {/* KPI cards — top 6 groups */}
             {topGroups.length > 0 && (

@@ -16,8 +16,13 @@ export function buildEmailHtml(opts: {
   highlightPhrases?: string[]
   hasChart: boolean
   hasScreenshot: boolean
+  // When set, embed images as self-contained data: URLs (for the saved history
+  // preview) instead of cid: references (which only resolve inside the email).
+  inline?: { chartBase64?: string; screenshotBase64?: string }
 }): string {
-  const { bodyText, links, highlightPhrases, hasChart, hasScreenshot } = opts
+  const { bodyText, links, highlightPhrases, hasChart, hasScreenshot, inline } = opts
+  const chartSrc = inline?.chartBase64 ? `data:image/png;base64,${inline.chartBase64}` : 'cid:chart@easybim'
+  const screenshotSrc = inline?.screenshotBase64 ? `data:image/png;base64,${inline.screenshotBase64}` : 'cid:screenshot@easybim'
 
   const paragraphs = segmentBodyText(bodyText, links, highlightPhrases)
     .map(segs => {
@@ -34,11 +39,11 @@ export function buildEmailHtml(opts: {
     .join('')
 
   const chart = hasChart
-    ? `<div style="margin:18px 0"><img src="cid:chart@easybim" alt="Issues analytics" style="display:block;max-width:100%;border:1px solid #e5e7eb;border-radius:8px" /></div>`
+    ? `<div style="margin:18px 0"><img src="${chartSrc}" alt="Issues analytics" style="display:block;max-width:100%;border:1px solid #e5e7eb;border-radius:8px" /></div>`
     : ''
 
   const screenshot = hasScreenshot
-    ? `<div style="margin:18px 0"><img src="cid:screenshot@easybim" alt="" style="display:block;max-width:100%;border:1px solid #e5e7eb;border-radius:8px" /></div>`
+    ? `<div style="margin:18px 0"><img src="${screenshotSrc}" alt="" style="display:block;max-width:100%;border:1px solid #e5e7eb;border-radius:8px" /></div>`
     : ''
 
   return `<div dir="rtl" style="font-family:Arial,Assistant,sans-serif;text-align:right;color:#374151;max-width:680px">

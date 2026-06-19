@@ -1,12 +1,40 @@
 import { notFound } from 'next/navigation'
-import type { ProjectRow } from '@/lib/types'
+import type { ProjectRow, ReportListItem } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import ProjectDetailClient from '@/components/ProjectDetailClient'
 
-async function fetchProject(id: string): Promise<{ project: ProjectRow; allProjects: ProjectRow[] } | null> {
+// Saved report drafts for this project (metadata only), newest first.
+async function fetchReports(id: string): Promise<ReportListItem[]> {
+  if (!process.env.MONGODB_URI) return []
+  try {
+    const { connectDB } = await import('@easybim/db')
+    const Report = (await import('@/app/models/Report')).default
+    await connectDB()
+    const docs = await Report.find({ projectId: id })
+      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt')
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean() as unknown as Array<Record<string, unknown>>
+    return docs.map(d => ({
+      _id: String(d._id),
+      title: d.title as string,
+      subject: d.subject as string,
+      recipients: (d.recipients as string[]) ?? [],
+      draftId: d.draftId as string | undefined,
+      gmailUrl: d.gmailUrl as string | undefined,
+      issueCount: d.issueCount as number | undefined,
+      createdByName: d.createdByName as string | undefined,
+      createdAt: d.createdAt ? new Date(d.createdAt as string).toISOString() : null,
+    }))
+  } catch {
+    return []
+  }
+}
+
+async function fetchProject(id: string): Promise<{ project: ProjectRow } | null> {
   if (!process.env.MONGODB_URI) {
     const project = mockProjects.find(p => p._id === id) ?? mockProjects[0]
-    return project ? { project, allProjects: mockProjects } : null
+    return project ? { project } : null
   }
 
   try {
@@ -31,6 +59,7 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow; allProje
         },
         accProjectId: ext.accProjectId as string | undefined,
         accLinkSource: ext.accLinkSource as ProjectRow['accLinkSource'],
+        accExternalHub: ext.accExternalHub as boolean | undefined,
         status: (snap.status as ProjectRow['status']) ?? null,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
         hoursProgress: (snap.hoursProgress as number | null) ?? null,
@@ -51,17 +80,10 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow; allProje
       }
     }
 
-    const [doc, allDocs] = await Promise.all([
-      Project.findById(id).lean(),
-      Project.find({ isActive: true }).sort({ displayOrder: 1, projectName: 1 }).lean(),
-    ])
-
+    const doc = await Project.findById(id).lean()
     if (!doc) return null
 
-    return {
-      project: toRow(doc as unknown as Record<string, unknown>),
-      allProjects: (allDocs as unknown as Record<string, unknown>[]).map(toRow),
-    }
+    return { project: toRow(doc as unknown as Record<string, unknown>) }
   } catch {
     return null
   }
@@ -73,11 +95,11 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const data = await fetchProject(id)
+  const [data, reports] = await Promise.all([fetchProject(id), fetchReports(id)])
 
   if (!data) notFound()
 
   return (
-    <ProjectDetailClient project={data.project} allProjects={data.allProjects} />
+    <ProjectDetailClient project={data.project} reports={reports} />
   )
 }

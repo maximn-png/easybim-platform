@@ -4,6 +4,7 @@ import {
   fetchAllAccProjects,
   matchAccProjectByNumber,
   accProjectUrl,
+  parseAccProjectId,
   getApsToken,
   type AccProjectSummary,
 } from '@/lib/services/apsService'
@@ -57,7 +58,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch MA-004 active projects + existing MongoDB ma003ItemIds in parallel
     const [ma004Projects, existingDocs] = await Promise.all([
       fetchActiveMA004Projects(),
-      Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ projectNumber: string; externalIds?: { ma003ItemId?: string; accLinkSource?: 'auto' | 'manual' } }>>
+      Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
     ])
 
     // Map projectNumber → stored ma003ItemId as fallback when board_relation is empty
@@ -65,9 +66,9 @@ export async function POST(req: NextRequest) {
       existingDocs.map(d => [d.projectNumber, d.externalIds?.ma003ItemId]).filter(([, v]) => v) as [string, string][]
     )
 
-    // projectNumber → existing accLinkSource — so we never overwrite a manual link
-    const accLinkSourceMap = new Map(
-      existingDocs.map(d => [d.projectNumber, d.externalIds?.accLinkSource]).filter(([, v]) => v) as [string, 'auto' | 'manual'][]
+    // projectNumber → existing externalIds (for accLinkSource stickiness + existing accProjectId)
+    const existingExtMap = new Map(
+      existingDocs.map(d => [d.projectNumber, d.externalIds ?? {}])
     )
 
     // 1b. Fetch all ACC projects once (best-effort — ACC link is optional).
@@ -79,6 +80,12 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       errors.push(`ACC projects: ${err instanceof Error ? err.message : String(err)}`)
     }
+    // Only trust ACC-based decisions when the account list actually loaded — a
+    // failed fetch (e.g. wrong/unprovisioned account) yields an empty list, and
+    // we must NOT then mis-mark every project as external or wipe links.
+    const accListOk = accProjects.length > 0
+    const easybimIdSet = new Set(accProjects.map(p => p.id))
+    const isExternalHub = (id?: string) => !!id && !easybimIdSet.has(id)
 
     // 2. Collect all MA-003 item IDs — live from board_relation + stored fallbacks
     const allMa003Ids = [...new Set([
@@ -110,16 +117,39 @@ export async function POST(req: NextRequest) {
         const ma003Id   = p.ma003ItemIds[0] ?? storedMa003Map.get(p.projectNumber) ?? null
         const ma003     = ma003Id ? ma003Map.get(ma003Id) : undefined
 
-        // ACC link: auto-detect by projectNumber → jobNumber, unless the project
-        // already has a manual (user-selected) link, which is sticky.
+        // ACC link resolution. Only act when the ACC account list loaded — see
+        // accListOk note above. Priority:
+        //   1. manual (sticky) — never overwritten; only refresh the external flag
+        //   2. auto-match by projectNumber → ACC jobNumber (EasyBIM hub)
+        //   3. fall back to the Monday MA-003 ACC link (often a client/external hub)
+        //   4. otherwise preserve any existing link, refreshing its external flag
         const accFields: Record<string, unknown> = {}
-        if (accLinkSourceMap.get(p.projectNumber) !== 'manual') {
-          const match = matchAccProjectByNumber(accProjects, p.projectNumber)
-          if (match) {
-            accFields['externalIds.accProjectId']  = match.id
-            accFields['externalIds.accProjectUrl'] = accProjectUrl(match.id)
-            accFields['externalIds.accLinkSource'] = 'auto'
-            accFields['snapshot.accLastSyncedAt']  = new Date()
+        const existingExt = existingExtMap.get(p.projectNumber) ?? {}
+        if (accListOk) {
+          if (existingExt.accLinkSource === 'manual') {
+            if (existingExt.accProjectId) {
+              accFields['externalIds.accExternalHub'] = isExternalHub(existingExt.accProjectId)
+            }
+          } else {
+            const match = matchAccProjectByNumber(accProjects, p.projectNumber)
+            const ma003Gid = ma003?.accUrl ? parseAccProjectId(ma003.accUrl) : null
+            if (match) {
+              accFields['externalIds.accProjectId']   = match.id
+              accFields['externalIds.accProjectUrl']  = accProjectUrl(match.id)
+              accFields['externalIds.accLinkSource']  = 'auto'
+              accFields['externalIds.accExternalHub'] = false
+              accFields['snapshot.accLastSyncedAt']   = new Date()
+            } else if (ma003Gid) {
+              // Keep the original MA-003 URL so the link opens the real (possibly
+              // EMEA/client) project, not a synthesized acc.autodesk.com/projects URL.
+              accFields['externalIds.accProjectId']   = ma003Gid
+              accFields['externalIds.accProjectUrl']  = ma003!.accUrl
+              accFields['externalIds.accLinkSource']  = 'ma003'
+              accFields['externalIds.accExternalHub'] = isExternalHub(ma003Gid)
+              accFields['snapshot.accLastSyncedAt']   = new Date()
+            } else if (existingExt.accProjectId) {
+              accFields['externalIds.accExternalHub'] = isExternalHub(existingExt.accProjectId)
+            }
           }
         }
 

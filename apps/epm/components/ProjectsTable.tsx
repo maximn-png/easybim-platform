@@ -186,7 +186,8 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                   </a>
                 </td>
 
-                {/* Forma / BIM360 / ACC — icon only */}
+                {/* Forma / BIM360 / ACC — icon only. Amber + corner dot when the
+                    linked project is outside the EasyBIM Hub (e.g. a client hub). */}
                 <td className="px-2 py-1.5 text-center">
                   {project.links.acc ? (
                     <a
@@ -194,10 +195,17 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      title="Open in Autodesk ACC"
-                      className="inline-flex items-center justify-center w-7 h-7 rounded text-[#1e248c] bg-indigo-50 hover:bg-indigo-100 transition-colors"
+                      title={project.accExternalHub ? 'External hub — connected via MA-003' : 'Open in Autodesk ACC'}
+                      className={`relative inline-flex items-center justify-center w-7 h-7 rounded transition-colors ${
+                        project.accExternalHub
+                          ? 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                          : 'text-[#1e248c] bg-indigo-50 hover:bg-indigo-100'
+                      }`}
                     >
                       <Cloud size={13} />
+                      {project.accExternalHub && (
+                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500 ring-1 ring-white" />
+                      )}
                     </a>
                   ) : (
                     <span className="text-gray-300 text-xs">—</span>

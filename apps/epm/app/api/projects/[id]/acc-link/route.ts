@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { accProjectUrl } from '@/lib/services/apsService'
+import { accProjectUrl, fetchAllAccProjects, getApsToken } from '@/lib/services/apsService'
 
 // Manually links an EPM project to an ACC project chosen from the dropdown.
 // Marked accLinkSource:'manual' so the auto-detect sync never overwrites it.
@@ -28,6 +28,19 @@ export async function POST(
     await connectDB()
 
     const accUrl = accProjectUrl(accProjectId)
+
+    // Flag whether the chosen project lives outside the EasyBIM account (client
+    // hub). Best-effort — if the account list can't be fetched, leave it unset.
+    let accExternalHub: boolean | undefined
+    try {
+      const accountProjects = await fetchAllAccProjects(await getApsToken())
+      if (accountProjects.length) {
+        accExternalHub = !accountProjects.some(p => p.id === accProjectId)
+      }
+    } catch {
+      // ignore — flag stays undefined
+    }
+
     const doc = await Project.findByIdAndUpdate(
       id,
       {
@@ -35,6 +48,7 @@ export async function POST(
           'externalIds.accProjectId':  accProjectId,
           'externalIds.accProjectUrl': accUrl,
           'externalIds.accLinkSource': 'manual',
+          ...(accExternalHub !== undefined ? { 'externalIds.accExternalHub': accExternalHub } : {}),
           'snapshot.accLastSyncedAt':  new Date(),
         },
       },

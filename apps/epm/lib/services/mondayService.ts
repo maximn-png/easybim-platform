@@ -161,14 +161,16 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
   }
 
   const result = new Map<string, MA003Project>()
-  const BATCH = 50
+  // Monday's items(ids:) silently truncates the returned list for larger id sets
+  // (the 4 person/link columns blow the per-query complexity budget), so keep the
+  // batch small and retry any ids that didn't come back — otherwise ~30% of
+  // projects lose their team + ACC link on a full sync.
+  const BATCH = 25
 
-  for (let i = 0; i < itemIds.length; i += BATCH) {
-    const batch = itemIds.slice(i, i + BATCH)
-    const data = await mondayQuery(query, { ids: batch }) as {
+  const fetchBatch = async (ids: string[]) => {
+    const data = await mondayQuery(query, { ids }) as {
       items: Array<{ id: string; column_values: Array<{ id: string; value: string; text: string }> }>
     }
-
     for (const item of data.items ?? []) {
       const colMap = Object.fromEntries(item.column_values.map(c => [c.id, c]))
 
@@ -186,6 +188,17 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
         accUrl,
       })
     }
+  }
+
+  for (let i = 0; i < itemIds.length; i += BATCH) {
+    await fetchBatch(itemIds.slice(i, i + BATCH))
+  }
+
+  // Retry any ids Monday dropped, individually. Genuinely deleted/inaccessible
+  // items simply return nothing and are skipped.
+  const missing = itemIds.filter(id => !result.has(id))
+  for (const id of missing) {
+    try { await fetchBatch([id]) } catch { /* skip unresolvable id */ }
   }
 
   return result

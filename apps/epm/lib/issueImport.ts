@@ -1,0 +1,126 @@
+// Parses an ACC "Issue summary" export (XLSX or CSV) into the same AccIssue[]
+// shape the reports page consumes from the live ACC API — so external-hub
+// projects (client accounts we can't reach via the API) get an identical report.
+import * as XLSX from 'xlsx'
+import type { AccIssue } from '@/lib/services/apsService'
+
+// ACC status label → the canonical key the report's color/label scheme uses
+// (see lib/reportGrouping.ts). Unknown statuses pass through unchanged so they
+// still display with their original text (just a neutral gray).
+const STATUS_KEY: Record<string, string> = {
+  'open':        'open',
+  'draft':       'draft',
+  'pending':     'pending',
+  'in progress': 'in_progress',
+  'in-progress': 'in_progress',
+  'completed':   'completed',
+  'resolved':    'resolved',
+  'closed':      'closed',
+}
+
+function normStatus(raw: string): string {
+  const k = raw.trim().toLowerCase()
+  return STATUS_KEY[k] ?? raw.trim()
+}
+
+// Header aliases (lower-cased) for each target field. First match in the file's
+// header row wins, so column order / extra columns don't matter.
+const ALIASES = {
+  id:          ['id', 'issue id', '#'],
+  title:       ['title'],
+  status:      ['status'],
+  type:        ['type', 'issue type', 'sub-type', 'subtype'],
+  category:    ['category'],
+  discipline:  ['discipline'],
+  description: ['description'],
+  assignedTo:  ['assigned to', 'assignee'],
+  createdAt:   ['created on', 'created at', 'created date', 'created'],
+  updatedAt:   ['updated on', 'updated at'],
+  closedAt:    ['closed at', 'closed on'],
+} as const
+
+const str = (v: unknown): string =>
+  v == null ? '' : String(v).replace(/\s*\n\s*/g, ' ').trim()
+
+function toIso(v: unknown): string {
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString()
+  if (typeof v === 'string' && v.trim()) {
+    const d = new Date(v.trim())
+    if (!isNaN(d.getTime())) return d.toISOString()
+  }
+  return ''
+}
+
+export interface ParseResult {
+  issues: AccIssue[]
+  total: number       // data rows seen
+  sheetName: string
+}
+
+export function parseIssuesWorkbook(buf: ArrayBuffer | Buffer): ParseResult {
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: true })
+  const sheetName =
+    wb.SheetNames.find(n => n.toLowerCase() === 'issues') ?? wb.SheetNames[0]
+  const ws = sheetName ? wb.Sheets[sheetName] : undefined
+  if (!ws) return { issues: [], total: 0, sheetName: '' }
+
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, {
+    header: 1, blankrows: false, defval: '',
+  }) as unknown[][]
+  if (rows.length < 2) return { issues: [], total: 0, sheetName }
+
+  const headers = (rows[0] ?? []).map(h => String(h ?? '').trim().toLowerCase())
+  const idxOf = (aliases: readonly string[]) => {
+    for (const a of aliases) {
+      const i = headers.indexOf(a)
+      if (i >= 0) return i
+    }
+    return -1
+  }
+  const ix = {
+    id:          idxOf(ALIASES.id),
+    title:       idxOf(ALIASES.title),
+    status:      idxOf(ALIASES.status),
+    type:        idxOf(ALIASES.type),
+    category:    idxOf(ALIASES.category),
+    discipline:  idxOf(ALIASES.discipline),
+    description: idxOf(ALIASES.description),
+    assignedTo:  idxOf(ALIASES.assignedTo),
+    createdAt:   idxOf(ALIASES.createdAt),
+    updatedAt:   idxOf(ALIASES.updatedAt),
+    closedAt:    idxOf(ALIASES.closedAt),
+  }
+
+  const issues: AccIssue[] = []
+  let total = 0
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r] ?? []
+    const get = (i: number) => (i >= 0 ? row[i] : undefined)
+
+    const title  = str(get(ix.title))
+    const status = str(get(ix.status))
+    // Skip rows with no meaningful content (trailing blanks etc.)
+    if (!title && !status) continue
+    total++
+
+    issues.push({
+      id:          str(get(ix.id)) || `row-${r}`,
+      title:       title || '(untitled)',
+      status:      normStatus(status || 'open'),
+      issueType:   str(get(ix.type)) || str(get(ix.category)) || 'Other',
+      discipline:  str(get(ix.discipline)),
+      description: str(get(ix.description)),
+      assignedTo:  str(get(ix.assignedTo)) || null,
+      createdAt:   toIso(get(ix.createdAt)) || new Date(0).toISOString(),
+      updatedAt:   toIso(get(ix.updatedAt)) || null,
+      closedAt:    toIso(get(ix.closedAt)) || null,
+    })
+  }
+
+  return { issues, total, sheetName }
+}
+
+// Open = anything not closed/completed — used for the dashboard's open-issue count.
+export function openIssueCount(issues: AccIssue[]): number {
+  return issues.filter(i => i.status !== 'closed' && i.status !== 'completed').length
+}

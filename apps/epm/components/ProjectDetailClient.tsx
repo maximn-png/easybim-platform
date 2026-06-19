@@ -2,53 +2,21 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import {
   ChevronRight,
-  Clock,
   FileText,
-  Eye,
-  StickyNote,
+  Mail,
   Users,
   BarChart2,
   CheckCircle2,
   Circle,
 } from 'lucide-react'
-import type { ProjectRow } from '@/lib/types'
+import type { ProjectRow, ReportListItem } from '@/lib/types'
 import StatusBadge from './StatusBadge'
 import TeamMemberCell from './TeamMemberCell'
 import FormaConnectPanel from './FormaConnectPanel'
-
-// ── Mock data ──────────────────────────────────────────────────────────────
-
-const MOCK_ACTIVITIES = [
-  {
-    id: '1',
-    icon: 'clash',
-    title: 'Clash Detection Report V2',
-    detail: 'MEP vs Structural clashes resolved in Level 4.',
-    time: '2 hours ago',
-  },
-  {
-    id: '2',
-    icon: 'bim',
-    title: 'BDQ Update – Structural',
-    detail: 'Quantities updated based on latest Revit model sync.',
-    time: 'Yesterday',
-  },
-]
-
-const MOCK_NOTES = [
-  {
-    id: '1',
-    source: 'bimsac.co Update',
-    text: 'Client requested review of lobby material schedule.',
-  },
-  {
-    id: '2',
-    source: 'Weekly Team Summary',
-    text: 'MEP coordination progressing well. Level 5 ceiling voids focus.',
-  },
-]
+import ReportViewModal from './ReportViewModal'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -86,80 +54,101 @@ function MilestoneRing({ value }: { value: number }) {
   )
 }
 
-function DisciplineBar({ label, value, color }: { label: string; value: number; color: string }) {
+function DisciplineBar({ label, value, color }: { label: string; value: number | null; color: string }) {
+  // value may exceed 100 (over bank) — show the true % but clamp the bar fill.
+  const fill = Math.min(100, Math.max(0, value ?? 0))
   return (
     <div className="flex flex-col gap-1">
       <div className="flex justify-between text-xs">
         <span className="text-gray-600">{label}</span>
-        <span className="font-semibold text-[#1e248c]">{value}%</span>
+        <span className="font-semibold text-[#1e248c]">{value === null ? '—' : `${value}%`}</span>
       </div>
       <div className="h-2 rounded-full bg-[#e7eefe] overflow-hidden">
-        <div className="h-full rounded-full transition-all" style={{ width: `${value}%`, background: color }} />
+        <div className="h-full rounded-full transition-all" style={{ width: `${fill}%`, background: color }} />
       </div>
     </div>
   )
 }
 
-// ── Left project nav sidebar ───────────────────────────────────────────────
-
-function ProjectNav({ projects, activeId }: { projects: ProjectRow[]; activeId: string }) {
-  return (
-    <aside className="w-52 shrink-0 flex flex-col gap-1 self-start sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
-      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-2 mb-2">Projects</p>
-      {projects.map(p => (
-        <Link
-          key={p._id}
-          href={`/dashboard/${p._id}`}
-          className={`text-right px-3 py-2 rounded-xl text-sm font-medium truncate transition-colors ${
-            p._id === activeId
-              ? 'bg-[#1e248c] text-white'
-              : 'text-gray-700 hover:bg-white/60'
-          }`}
-          dir="rtl"
-        >
-          {p.projectName}
-        </Link>
-      ))}
-    </aside>
-  )
-}
-
 // ── Main component ────────────────────────────────────────────────────────
+
+// Short relative time for the activity list (he-IL).
+function timeAgo(iso: string | null): string {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.round(diff / 60000)
+  if (m < 1) return 'הרגע'
+  if (m < 60) return `לפני ${m} דק׳`
+  const h = Math.round(m / 60)
+  if (h < 24) return `לפני ${h} שע׳`
+  const d = Math.round(h / 24)
+  if (d < 30) return `לפני ${d} ימים`
+  return new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 export default function ProjectDetailClient({
   project,
-  allProjects,
+  reports: initialReports,
 }: {
   project: ProjectRow
-  allProjects: ProjectRow[]
+  reports: ReportListItem[]
 }) {
   const router = useRouter()
+
+  // Report history (seeded from server; mutated locally on delete).
+  const [reports, setReports] = useState<ReportListItem[]>(initialReports)
+  const [openReportId, setOpenReportId] = useState<string | null>(null)
 
   // Mock discipline splits
   const bimMilestone = 20
   const mepMilestone = 60
   const overallMilestone = Math.round((bimMilestone + mepMilestone) / 2)
 
-  const bimHoursPct = 75
-  const mepHoursPct = 40
-  const spentHours = project.actualHours ?? 0
-  const budgetHours = project.budgetHours ?? 0
-  const remainingHours = Math.max(0, budgetHours - spentHours)
-  const variance = budgetHours > 0
-    ? Math.round(((spentHours - budgetHours * 0.5) / (budgetHours * 0.5)) * 100)
-    : 0
+  // Live hours from the same source as the Hours Analytics page (Monday), so the
+  // card reflects edits immediately rather than the cached snapshot.actualHours
+  // (which only refreshes when the updateHours job re-runs).
+  const [hours, setHours] = useState<{
+    modelMgmtSpent: number; modelMgmtBank: number | null
+    superSpent: number; superBank: number | null
+  } | null>(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`/api/projects/${project._id}/hours-breakdown`)
+      .then(r => r.json())
+      .then((json: {
+        breakdown?: { totalsBySubject?: Record<string, number> }
+        banks?: { modelMgmt: number | null; superposition: number | null }
+      }) => {
+        if (!alive) return
+        const totals = json.breakdown?.totalsBySubject ?? {}
+        setHours({
+          modelMgmtSpent: totals['Model MGMT'] ?? 0,
+          modelMgmtBank: json.banks?.modelMgmt ?? null,
+          superSpent: totals['Superposition'] ?? 0,
+          superBank: json.banks?.superposition ?? null,
+        })
+      })
+      .catch(() => { /* leave null → shows — */ })
+    return () => { alive = false }
+  }, [project._id])
+
+  const pct = (spent: number, bank: number | null) => (bank && bank > 0 ? Math.round((spent / bank) * 100) : null)
+  const modelMgmtPct = hours ? pct(hours.modelMgmtSpent, hours.modelMgmtBank) : null
+  const superPct     = hours ? pct(hours.superSpent, hours.superBank) : null
+  // Headline / totals from the two disciplines' live spent vs their banks.
+  const liveSpent = hours ? hours.modelMgmtSpent + hours.superSpent : 0
+  const liveBank  = hours ? (hours.modelMgmtBank ?? 0) + (hours.superBank ?? 0) : 0
+  const headlinePct = hours && liveBank > 0 ? Math.round((liveSpent / liveBank) * 100) : null
+  const hoursLeft = liveBank - liveSpent // signed: negative = over banked
 
   return (
     <div
       className="min-h-[calc(100vh-4rem)]"
       style={{ background: 'linear-gradient(135deg, #f0f3ff 0%, #e7eefe 100%)' }}
     >
-      <div className="max-w-[1400px] mx-auto px-4 py-8 flex gap-6">
-        {/* Left nav */}
-        <ProjectNav projects={allProjects} activeId={project._id} />
-
+      <div className="max-w-[1400px] mx-auto px-4 py-8">
         {/* Main content */}
-        <div className="flex-1 min-w-0 flex flex-col gap-5">
+        <div className="min-w-0 flex flex-col gap-5">
           <Breadcrumb projectName={project.projectName} />
 
           {/* Header */}
@@ -210,24 +199,28 @@ export default function ProjectDetailClient({
                   <BarChart2 size={15} className="text-[#44b8d3]" /> Hours Analytics
                 </h2>
                 <span className="text-2xl font-bold text-[#1e248c]">
-                  {budgetHours > 0 ? `${Math.round((spentHours / budgetHours) * 100)}%` : '—'}
+                  {headlinePct === null ? '—' : `${headlinePct}%`}
                 </span>
               </div>
               <div className="flex flex-col gap-3">
-                <DisciplineBar label="BIM Management" value={bimHoursPct} color="#1e248c" />
-                <DisciplineBar label="MEP Coordination" value={mepHoursPct} color="#44b8d3" />
+                <DisciplineBar label="BIM Management" value={modelMgmtPct} color="#1e248c" />
+                <DisciplineBar label="MEP Coordination" value={superPct} color="#44b8d3" />
               </div>
               <div className="flex justify-between text-xs pt-2 border-t border-gray-100">
                 <div>
                   <p className="text-gray-400">Spent vs Banked</p>
                   <p className="font-semibold text-[#1e248c]">
-                    {spentHours.toLocaleString()} / {budgetHours.toLocaleString()}
+                    {hours ? `${Math.round(liveSpent).toLocaleString()} / ${Math.round(liveBank).toLocaleString()} hrs` : '—'}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-gray-400">Variance</p>
-                  <p className={`font-semibold ${variance >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {variance >= 0 ? '+' : ''}{variance}%
+                  <p className="text-gray-400">{hoursLeft >= 0 ? 'Hours Left' : 'Over Budget'}</p>
+                  <p className={`font-semibold ${hoursLeft >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {!hours
+                      ? '—'
+                      : hoursLeft >= 0
+                        ? `${Math.round(hoursLeft).toLocaleString()} hrs`
+                        : `${Math.round(Math.abs(hoursLeft)).toLocaleString()} hrs over`}
                   </p>
                 </div>
               </div>
@@ -240,55 +233,50 @@ export default function ProjectDetailClient({
                 <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
                   <FileText size={15} className="text-[#44b8d3]" /> Activity & Reports
                 </h2>
-                <button className="text-xs text-gray-400 hover:text-gray-600 border border-gray-200 rounded-full px-2 py-0.5">
-                  Filter
-                </button>
+                <span className="text-[10px] text-gray-400 font-mono">{reports.length} דוחות</span>
               </div>
               <div className="flex flex-col gap-3">
-                {MOCK_ACTIVITIES.map(a => (
-                  <div key={a.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
-                    <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center shrink-0">
-                      <FileText size={14} className="text-[#1e248c]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{a.title}</p>
-                      <p className="text-[11px] text-gray-500 truncate">{a.detail}</p>
-                    </div>
+                {reports.length === 0 && (
+                  <p className="text-xs text-gray-400 py-2">עדיין לא נוצרו דוחות. צרו טיוטת מייל בעמוד הדוחות והם יופיעו כאן.</p>
+                )}
+                {reports.map(r => (
+                  <div key={r._id} className="group flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
+                    <button
+                      onClick={() => setOpenReportId(r._id)}
+                      className="flex items-start gap-3 flex-1 min-w-0 text-right"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#e7eefe] flex items-center justify-center shrink-0">
+                        <Mail size={14} className="text-[#1e248c]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate group-hover:text-[#1e248c]">{r.title}</p>
+                        <p className="text-[11px] text-gray-500 truncate">
+                          {r.recipients.length} נמענים{typeof r.issueCount === 'number' ? ` · ${r.issueCount} נושאים` : ''}{r.createdByName ? ` · ${r.createdByName}` : ''}
+                        </p>
+                      </div>
+                    </button>
                     <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="text-[10px] text-gray-400">{a.time}</span>
-                      {project.links.acc && (
-                        <a
-                          href={project.links.acc}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[10px] text-[#44b8d3] flex items-center gap-0.5 hover:underline"
-                        >
-                          <Eye size={10} /> View
-                        </a>
-                      )}
+                      <span className="text-[10px] text-gray-400">{timeAgo(r.createdAt)}</span>
+                      <button
+                        onClick={() => setOpenReportId(r._id)}
+                        className="text-[10px] text-[#44b8d3] hover:underline"
+                      >
+                        צפייה
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Notes & Updates */}
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-3">
-              <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
-                <StickyNote size={15} className="text-[#44b8d3]" /> Notes & Updates
-              </h2>
-              <div className="flex flex-col gap-3">
-                {MOCK_NOTES.map(n => (
-                  <div key={n.id} className="flex gap-2 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
-                    <div className="w-1.5 h-1.5 rounded-full bg-[#44b8d3] mt-1.5 shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-semibold text-[#44b8d3] uppercase tracking-wide">{n.source}</p>
-                      <p className="text-xs text-gray-600 mt-0.5">{n.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Forms & Actions — alongside Activity & Reports */}
+            <FormaConnectPanel
+              projectId={project._id}
+              projectNumber={project.projectNumber}
+              accProjectId={project.accProjectId}
+              accUrl={project.links.acc}
+              accExternalHub={project.accExternalHub}
+            />
           </div>
 
           {/* Project Contacts */}
@@ -328,16 +316,17 @@ export default function ProjectDetailClient({
               </div>
             </div>
           )}
-
-          {/* Forms & Actions */}
-          <FormaConnectPanel
-            projectId={project._id}
-            projectNumber={project.projectNumber}
-            accProjectId={project.accProjectId}
-            accUrl={project.links.acc}
-          />
         </div>
       </div>
+
+      {openReportId && (
+        <ReportViewModal
+          projectId={project._id}
+          reportId={openReportId}
+          onClose={() => setOpenReportId(null)}
+          onDeleted={id => setReports(prev => prev.filter(r => r._id !== id))}
+        />
+      )}
     </div>
   )
 }

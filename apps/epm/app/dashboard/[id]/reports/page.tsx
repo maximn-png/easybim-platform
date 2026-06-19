@@ -32,6 +32,7 @@ async function fetchProject(id: string): Promise<ProjectRow | null> {
         acc: ext.accProjectUrl as string | undefined,
       },
       accProjectId: ext.accProjectId as string | undefined,
+      accExternalHub: ext.accExternalHub as boolean | undefined,
       status: (snap.status as ProjectRow['status']) ?? null,
       milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
       hoursProgress: (snap.hoursProgress as number | null) ?? null,

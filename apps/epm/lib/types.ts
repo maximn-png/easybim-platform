@@ -11,7 +11,7 @@ export interface ProjectLinks {
   acc?: string
 }
 
-export type AccLinkSource = 'auto' | 'manual'
+export type AccLinkSource = 'auto' | 'manual' | 'ma003'
 
 export interface ProjectSyncMeta {
   lastSyncedAt: string | null
@@ -29,6 +29,7 @@ export interface ProjectRow {
   links: ProjectLinks
   accProjectId?: string
   accLinkSource?: AccLinkSource
+  accExternalHub?: boolean
   status: 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck' | null
   milestoneProgress: number | null
   hoursProgress: number | null
@@ -40,6 +41,19 @@ export interface ProjectRow {
   mepCoordinator?: TeamMemberPayload
   bimModeller?: TeamMemberPayload
   sync: ProjectSyncMeta
+}
+
+// A saved report draft, as shown in the project's Activity & Reports card.
+export interface ReportListItem {
+  _id: string
+  title: string
+  subject: string
+  recipients: string[]
+  draftId?: string
+  gmailUrl?: string
+  issueCount?: number
+  createdByName?: string
+  createdAt: string | null
 }
 
 export interface ProjectsApiResponse {
