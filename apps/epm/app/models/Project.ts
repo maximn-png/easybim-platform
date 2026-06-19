@@ -1,0 +1,150 @@
+import mongoose, { Document, Schema } from 'mongoose'
+
+// ── Sub-types ──────────────────────────────────────────────────────────────
+
+export interface TeamMember {
+  name: string
+  email?: string
+  avatarUrl?: string
+  mondayId?: string
+  profileUrl?: string
+}
+
+export interface ExternalIds {
+  mondayBoardId:  string          // MA-004 board ID (7321609006)
+  mondayBoardUrl: string          // MA-004 board URL
+  mondayItemId?:  string          // MA-004 item ID for this project
+  ma003ItemId?:   string          // MA-003 item ID (links TS-001 timesheet rows)
+  driveFolderId?: string          // Google Drive folder ID (Phase 3)
+  driveFolderUrl?: string         // Google Drive folder URL (Phase 3)
+  hoursSheetId?:  string
+  hoursSheetUrl?: string
+  accProjectId?:  string          // Autodesk ACC project GUID
+  accProjectUrl?: string          // Full ACC project URL
+  accLinkSource?: 'auto' | 'manual' // 'auto' = matched by projectNumber; 'manual' = user-selected (sticky)
+  accHubId?:      string
+}
+
+export type ProjectStatus = 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck'
+export type SyncStatus = 'ok' | 'partial' | 'error' | 'never'
+
+export interface ProjectSnapshot {
+  status:            ProjectStatus | null
+  milestoneProgress: number | null
+  hoursProgress:     number | null
+  budgetHours:       number | null  // MA-004.formula8 (fee ÷ 300)
+  actualHours:       number | null  // SUM(TS-001.numeric) for this project
+  bimManager?:       TeamMember
+  mepCoordinator?:   TeamMember
+  bimModeller?:      TeamMember
+  openIssuesCount:   number | null
+  accModelStatus?:   string | null
+  lastSyncedAt:      Date | null
+  syncStatus:        SyncStatus
+  syncError?:        string
+  mondayLastSyncedAt: Date | null
+  sheetsLastSyncedAt: Date | null
+  accLastSyncedAt:    Date | null
+}
+
+// ── Document interface ─────────────────────────────────────────────────────
+
+export interface IProject extends Document {
+  projectName:   string
+  projectNumber: string
+  externalIds:   ExternalIds
+  snapshot:      ProjectSnapshot
+  isActive:      boolean
+  displayOrder?: number
+  createdAt:     Date
+  updatedAt:     Date
+}
+
+// ── Sub-schemas ────────────────────────────────────────────────────────────
+
+const TeamMemberSchema = new Schema<TeamMember>(
+  {
+    name:       { type: String, required: true },
+    email:      String,
+    avatarUrl:  String,
+    mondayId:   String,
+    profileUrl: String,
+  },
+  { _id: false }
+)
+
+const ExternalIdsSchema = new Schema<ExternalIds>(
+  {
+    mondayBoardId:  { type: String, required: true },
+    mondayBoardUrl: { type: String, required: true },
+    mondayItemId:   String,
+    ma003ItemId:    String,
+    driveFolderId:  String,
+    driveFolderUrl: String,
+    hoursSheetId:   String,
+    hoursSheetUrl:  String,
+    accProjectId:   String,
+    accProjectUrl:  String,
+    accLinkSource:  { type: String, enum: ['auto', 'manual'] },
+    accHubId:       String,
+  },
+  { _id: false }
+)
+
+const SnapshotSchema = new Schema<ProjectSnapshot>(
+  {
+    status: {
+      type:    String,
+      enum:    ['Working on it', 'On Hold', 'Not Started', 'Done', 'Stuck'],
+      default: null,
+    },
+    milestoneProgress: { type: Number, min: 0, max: 100, default: null },
+    hoursProgress:     { type: Number, min: 0, max: 100, default: null },
+    budgetHours:       { type: Number, min: 0, default: null },
+    actualHours:       { type: Number, min: 0, default: null },
+    bimManager:        TeamMemberSchema,
+    mepCoordinator:    TeamMemberSchema,
+    bimModeller:       TeamMemberSchema,
+    openIssuesCount:   { type: Number, min: 0, default: null },
+    accModelStatus:    { type: String, default: null },
+    lastSyncedAt:      { type: Date, default: null },
+    syncStatus: {
+      type:    String,
+      enum:    ['ok', 'partial', 'error', 'never'],
+      default: 'never',
+    },
+    syncError:          String,
+    mondayLastSyncedAt: { type: Date, default: null },
+    sheetsLastSyncedAt: { type: Date, default: null },
+    accLastSyncedAt:    { type: Date, default: null },
+  },
+  { _id: false }
+)
+
+// ── Main schema ────────────────────────────────────────────────────────────
+
+const ProjectSchema = new Schema<IProject>(
+  {
+    projectName:   { type: String, required: true },
+    projectNumber: { type: String, required: true },
+    externalIds:   { type: ExternalIdsSchema, required: true },
+    snapshot:      { type: SnapshotSchema, default: () => ({}) },
+    isActive:      { type: Boolean, default: true },
+    displayOrder:  Number,
+  },
+  { timestamps: true }
+)
+
+ProjectSchema.index({ projectNumber: 1 }, { unique: true })
+ProjectSchema.index({ isActive: 1, displayOrder: 1 })
+ProjectSchema.index({ 'snapshot.lastSyncedAt': 1 })
+ProjectSchema.index({ 'externalIds.mondayItemId': 1 })
+ProjectSchema.index({ 'externalIds.ma003ItemId': 1 })
+
+// ── Model export ───────────────────────────────────────────────────────────
+
+const Project =
+  (mongoose.models.Project as mongoose.Model<IProject>) ??
+  mongoose.model<IProject>('Project', ProjectSchema)
+
+export default Project
