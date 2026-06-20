@@ -175,8 +175,12 @@ export async function POST(req: NextRequest) {
               'externalIds.mondayBoardUrl': MA004_BOARD_URL,
               'externalIds.mondayItemId':   p.itemId,
               'externalIds.ma003ItemId':    ma003Id ?? undefined,
+              'externalIds.mainBoardUrl':   ma003?.mainBoardUrl ?? undefined,
               ...accFields,
               'snapshot.status':             p.status,
+              // Total budget = שכט סופי ÷ 300 (formula8). Only overwrite when the
+              // formula resolved, so a transient empty read can't wipe a good value.
+              ...(p.budgetHours != null ? { 'snapshot.budgetHours': p.budgetHours } : {}),
               'snapshot.bimManager':         toMember(ma003?.bimManager),
               'snapshot.mepCoordinator':     toMember(ma003?.mepCoordinator),
               'snapshot.bimModeller':        toMember(ma003?.bimModeller),

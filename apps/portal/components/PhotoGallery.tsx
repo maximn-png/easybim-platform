@@ -18,8 +18,8 @@ export default function PhotoGallery() {
   const doubled = [...photos, ...photos]
 
   return (
-    <section className="w-full mt-16" style={{ background: '#0a0e2e' }}>
-      <div className="py-10">
+    <section className="w-full mt-8" style={{ background: '#0a0e2e' }}>
+      <div className="py-6">
         {/* Section heading */}
         <div className="text-center mb-8 px-6">
           <p

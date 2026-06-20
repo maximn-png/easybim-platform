@@ -35,7 +35,7 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>) {
     headers: {
       'Content-Type':  'application/json',
       'Authorization': token,
-      'API-Version':   '2024-01',
+      'API-Version':   '2024-10',
     },
     body: JSON.stringify({ query, variables }),
   })
@@ -63,6 +63,7 @@ export interface MA003Project {
   mepCoordinator?: { name: string; mondayId: string }
   bimModeller?:   { name: string; mondayId: string }
   accUrl?:        string
+  mainBoardUrl?:  string
 }
 
 export interface TS001HoursSummary {
@@ -85,6 +86,7 @@ export async function fetchActiveMA004Projects(): Promise<MA004Project[]> {
               value
               text
               ... on BoardRelationValue { linked_item_ids }
+              ... on FormulaValue { display_value }
             }
           }
         }
@@ -97,7 +99,7 @@ export async function fetchActiveMA004Projects(): Promise<MA004Project[]> {
 
   do {
     const data = await mondayQuery(query, { boardId: MA004_BOARD_ID, limit: 100, cursor }) as {
-      boards: Array<{ items_page: { cursor: string | null; items: Array<{ id: string; name: string; column_values: Array<{ id: string; value: string; text: string; linked_item_ids?: string[] }> }> } }>
+      boards: Array<{ items_page: { cursor: string | null; items: Array<{ id: string; name: string; column_values: Array<{ id: string; value: string; text: string; linked_item_ids?: string[]; display_value?: string }> }> } }>
     }
 
     const items = data.boards[0]?.items_page?.items ?? []
@@ -112,9 +114,10 @@ export async function fetchActiveMA004Projects(): Promise<MA004Project[]> {
       if (statusIndex !== null && DONE_STATUS_IDS.has(statusIndex)) continue
       const status = statusIndex !== null ? (STATUS_MAP[statusIndex] ?? null) : null
 
-      // Parse budget hours from formula column text
+      // Parse budget hours (שכט סופי ÷ 300) from the formula column's computed
+      // display_value — its `text` field comes back empty from the API.
       let budgetHours: number | null = null
-      try { budgetHours = parseFloat(colMap['formula8']?.text ?? '') || null } catch {}
+      try { budgetHours = parseFloat(colMap['formula8']?.display_value ?? '') || null } catch {}
 
       // Parse MA-003 links via linked_item_ids (value field returns null for board_relation)
       const ma003ItemIds = (colMap['board_relation_mkyt6111']?.linked_item_ids ?? [])
@@ -142,7 +145,7 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
     query ($ids: [ID!]!) {
       items(ids: $ids) {
         id
-        column_values(ids: ["multiple_person_mkpsmr4k", "multiple_person_mkpskxyf", "multiple_person_mm2tw6be", "link_mkpste"]) {
+        column_values(ids: ["multiple_person_mkpsmr4k", "multiple_person_mkpskxyf", "multiple_person_mm2tw6be", "link_mkpste", "link_mkqmrce0"]) {
           id
           value
           text
@@ -180,12 +183,19 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
         accUrl = linkVal?.url ?? undefined
       } catch {}
 
+      let mainBoardUrl: string | undefined
+      try {
+        const linkVal = JSON.parse(colMap['link_mkqmrce0']?.value ?? 'null')
+        mainBoardUrl = linkVal?.url ?? undefined
+      } catch {}
+
       result.set(item.id, {
         itemId:          item.id,
         bimManager:      parsePerson(colMap['multiple_person_mkpsmr4k']?.value ?? ''),
         mepCoordinator:  parsePerson(colMap['multiple_person_mkpskxyf']?.value ?? ''),
         bimModeller:     parsePerson(colMap['multiple_person_mm2tw6be']?.value ?? ''),
         accUrl,
+        mainBoardUrl,
       })
     }
   }
@@ -317,6 +327,8 @@ export interface HoursBreakdown {
     month:      string                   // 'YYYY-MM', ascending
     bySubject:  Record<string, number>
     byEmployee: Record<string, number>
+    // subject → employee → hours, for filtering the employee chart by discipline
+    bySubjectEmployee: Record<string, Record<string, number>>
   }[]
   subjects:         string[]             // distinct Subject labels, by total hours desc
   employees:        string[]             // distinct Employee names, by total hours desc
@@ -411,6 +423,8 @@ export async function fetchProjectHoursBreakdown(ma003ItemId: string): Promise<H
 
   const subjectByMonth  = new Map<string, Record<string, number>>()  // month → subject → hours
   const employeeByMonth = new Map<string, Record<string, number>>()  // month → employee → hours
+  // month → subject → employee → hours (powers the per-discipline employee filter)
+  const subjectEmployeeByMonth = new Map<string, Record<string, Record<string, number>>>()
   const totalsBySubject:  Record<string, number> = {}
   const totalsByEmployee: Record<string, number> = {}
   const employeeIdByName = new Map<string, string>()                 // employee name → Monday person id
@@ -426,6 +440,12 @@ export async function fetchProjectHoursBreakdown(ma003ItemId: string): Promise<H
       eBucket[employee] = (eBucket[employee] ?? 0) + hours
       employeeByMonth.set(month, eBucket)
       totalsByEmployee[employee] = (totalsByEmployee[employee] ?? 0) + hours
+
+      const seBucket = subjectEmployeeByMonth.get(month) ?? {}
+      const subMap = seBucket[subject] ?? {}
+      subMap[employee] = (subMap[employee] ?? 0) + hours
+      seBucket[subject] = subMap
+      subjectEmployeeByMonth.set(month, seBucket)
 
       if (employeeId && !employeeIdByName.has(employee)) employeeIdByName.set(employee, employeeId)
     }
@@ -449,12 +469,15 @@ export async function fetchProjectHoursBreakdown(ma003ItemId: string): Promise<H
   const round = (n: number) => Math.round(n * 100) / 100
   const roundMap = (m: Record<string, number>) =>
     Object.fromEntries(Object.entries(m).map(([k, v]) => [k, round(v)]))
+  const roundNested = (m: Record<string, Record<string, number>>) =>
+    Object.fromEntries(Object.entries(m).map(([k, v]) => [k, roundMap(v)]))
 
   const allMonths = Array.from(new Set([...subjectByMonth.keys(), ...employeeByMonth.keys()])).sort()
   const months = allMonths.map(month => ({
     month,
-    bySubject:  roundMap(subjectByMonth.get(month) ?? {}),
-    byEmployee: roundMap(employeeByMonth.get(month) ?? {}),
+    bySubject:         roundMap(subjectByMonth.get(month) ?? {}),
+    byEmployee:        roundMap(employeeByMonth.get(month) ?? {}),
+    bySubjectEmployee: roundNested(subjectEmployeeByMonth.get(month) ?? {}),
   }))
 
   const subjects  = Object.keys(totalsBySubject).sort((a, b) => totalsBySubject[b] - totalsBySubject[a])
@@ -465,60 +488,57 @@ export async function fetchProjectHoursBreakdown(ma003ItemId: string): Promise<H
   return { months, subjects, employees, totalsBySubject, totalsByEmployee, employeeAvatars }
 }
 
-// ── Per-discipline "bank" (budgeted hours) from MA-004 ─────────────────────
-// Bank hours = price ÷ 300 (the same divisor MA-004's formula8 uses).
-//   Model MGMT   = "סה\"כ מחיר ניהול מודל" (formula_mkng494f) ÷ 300
-//   Superposition = ("סה\"כ מחיר תאום מערכות" + "מחיר מידול פתחים" + "מחיר הקמת מודל") ÷ 300
+// ── Project banks (budgeted hours) from MA-004 ─────────────────────────────
+// All values are price ÷ 300 (the divisor MA-004's formula8 uses). The price
+// totals are formula columns; their computed values are read from `display_value`
+// (the API returns `text` empty for formula columns):
+//   total         = "כמות שעות (לפי 300)"  (formula8)            — שכט סופי ÷ 300
+//   modelMgmt     = "סה\"כ מחיר ניהול מודל" (formula_mkng494f) ÷ 300   (BIM Management)
+//   superposition = ("סה\"כ מחיר תאום מערכות" formula_mkngmc97
+//                    + "מחיר מידול פתחים"     numeric_mkxsce4b) ÷ 300  (MEP Coordination)
 
 export interface DisciplineBanks {
-  modelMgmt:     number | null
-  superposition: number | null
+  modelMgmt:     number | null  // BIM Management bank
+  superposition: number | null  // MEP Coordination bank
+  total:         number | null  // total budget (שכט סופי ÷ 300)
 }
 
 export async function fetchProjectBanks(ma004ItemId: string): Promise<DisciplineBanks> {
-  // The two price totals are formula columns, whose computed values aren't reliably
-  // returned via the API's `text` field — so we read the underlying numeric columns
-  // and reproduce the formulas ourselves:
-  //   סה"כ מחיר ניהול מודל  = retainer × planning-months + fixed
-  //   סה"כ מחיר תאום מערכות = sum of the four systems-coordination price columns
   const query = `
     query ($ids: [ID!]!) {
       items(ids: $ids) {
-        column_values(ids: [
-          "numeric_mkng49t3", "numeric_mkng9ckm", "numeric_mm42ex4m",
-          "numeric_mkngb4vv", "numeric_mkngxdwx", "numeric_mkngegn", "numeric_mkngzggv",
-          "numeric_mkxsce4b", "numeric_mkxsjd0j"
-        ]) {
+        column_values(ids: ["formula8", "formula_mkng494f", "formula_mkngmc97", "numeric_mkxsce4b"]) {
           id
           text
+          ... on FormulaValue { display_value }
         }
       }
     }
   `
 
   const data = await mondayQuery(query, { ids: [ma004ItemId] }) as {
-    items: Array<{ column_values: Array<{ id: string; text: string | null }> }>
+    items: Array<{ column_values: Array<{ id: string; text: string | null; display_value?: string }> }>
   }
 
   const item = data.items?.[0]
-  if (!item) return { modelMgmt: null, superposition: null }
+  if (!item) return { modelMgmt: null, superposition: null, total: null }
 
   const colMap = Object.fromEntries(item.column_values.map(c => [c.id, c]))
+  // Formula columns expose their value via display_value; numeric columns via text.
   const num = (id: string) => {
-    const n = parseFloat((colMap[id]?.text ?? '').replace(/[^0-9.\-]/g, ''))
+    const raw = colMap[id]?.display_value ?? colMap[id]?.text ?? ''
+    const n = parseFloat(raw.replace(/[^0-9.\-]/g, ''))
     return Number.isFinite(n) ? n : 0
   }
   const round = (n: number) => Math.round(n * 100) / 100
 
-  // Model management = retainer × planning-months + fixed
-  const modelMgmtPrice = num('numeric_mkng49t3') * num('numeric_mm42ex4m') + num('numeric_mkng9ckm')
-  // Systems coordination total (four area-based prices)
-  const systemsCoordPrice = num('numeric_mkngb4vv') + num('numeric_mkngxdwx') + num('numeric_mkngegn') + num('numeric_mkngzggv')
-  const openingsModelPrice = num('numeric_mkxsce4b')
-  const modelSetupPrice    = num('numeric_mkxsjd0j')
+  const total         = num('formula8')                                  // שכט סופי ÷ 300
+  const modelMgmtPrice     = num('formula_mkng494f')                     // סה"כ מחיר ניהול מודל
+  const superpositionPrice = num('formula_mkngmc97') + num('numeric_mkxsce4b') // תאום מערכות + מידול פתחים
 
   return {
     modelMgmt:     round(modelMgmtPrice / 300),
-    superposition: round((systemsCoordPrice + openingsModelPrice + modelSetupPrice) / 300),
+    superposition: round(superpositionPrice / 300),
+    total:         round(total),
   }
 }

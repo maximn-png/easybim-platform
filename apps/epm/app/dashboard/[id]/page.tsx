@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import type { ProjectRow, ReportListItem } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
+import { deriveHoursProgress } from '@/lib/hours'
 import ProjectDetailClient from '@/components/ProjectDetailClient'
 
 // Saved report drafts for this project (metadata only), newest first.
@@ -46,6 +47,8 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow } | null>
     const toRow = (doc: Record<string, unknown>): ProjectRow => {
       const snap = (doc.snapshot ?? {}) as Record<string, unknown>
       const ext  = (doc.externalIds ?? {}) as Record<string, unknown>
+      const actualHours = (snap.actualHours as number | null) ?? null
+      const budgetHours = (snap.budgetHours as number | null) ?? null
       return {
         _id: String(doc._id),
         projectName: String(doc.projectName),
@@ -62,14 +65,15 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow } | null>
         accExternalHub: ext.accExternalHub as boolean | undefined,
         status: (snap.status as ProjectRow['status']) ?? null,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
-        hoursProgress: (snap.hoursProgress as number | null) ?? null,
-        actualHours: (snap.actualHours as number | null) ?? null,
-        budgetHours: (snap.budgetHours as number | null) ?? null,
+        hoursProgress: deriveHoursProgress(actualHours, budgetHours),
+        actualHours,
+        budgetHours,
         openIssuesCount: (snap.openIssuesCount as number | null) ?? null,
         accModelStatus: (snap.accModelStatus as string | null) ?? null,
         bimManager: snap.bimManager as ProjectRow['bimManager'],
         mepCoordinator: snap.mepCoordinator as ProjectRow['mepCoordinator'],
         bimModeller: snap.bimModeller as ProjectRow['bimModeller'],
+        hoursConfig: (doc.hoursConfig as ProjectRow['hoursConfig']) ?? undefined,
         sync: {
           lastSyncedAt: snap.lastSyncedAt ? new Date(snap.lastSyncedAt as string).toISOString() : null,
           syncStatus: (snap.syncStatus as ProjectRow['sync']['syncStatus']) ?? 'never',

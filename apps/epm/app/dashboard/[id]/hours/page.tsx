@@ -41,6 +41,7 @@ async function fetchProject(id: string): Promise<ProjectRow | null> {
       bimManager: snap.bimManager as ProjectRow['bimManager'],
       mepCoordinator: snap.mepCoordinator as ProjectRow['mepCoordinator'],
       bimModeller: snap.bimModeller as ProjectRow['bimModeller'],
+      hoursConfig: (doc.hoursConfig as ProjectRow['hoursConfig']) ?? undefined,
       sync: {
         lastSyncedAt: snap.lastSyncedAt ? new Date(snap.lastSyncedAt as string).toISOString() : null,
         syncStatus: (snap.syncStatus as ProjectRow['sync']['syncStatus']) ?? 'never',

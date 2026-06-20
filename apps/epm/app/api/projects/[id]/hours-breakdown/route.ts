@@ -8,12 +8,12 @@ import {
 // so the analytics page still renders something.
 const MOCK_BREAKDOWN: HoursBreakdown = {
   months: [
-    { month: '2023-07', bySubject: { Superposition: 6 },                  byEmployee: { 'Yamit bettman': 6 } },
-    { month: '2023-08', bySubject: { Superposition: 4, 'Model MGMT': 1 }, byEmployee: { 'Yamit bettman': 3, 'Ethan Berry': 2 } },
-    { month: '2023-09', bySubject: { 'Model MGMT': 3 },                   byEmployee: { 'Ethan Berry': 3 } },
-    { month: '2023-10', bySubject: { 'Model MGMT': 1, Modelling: 2 },     byEmployee: { 'Lilina Priyadarshini': 2, 'Ethan Berry': 1 } },
-    { month: '2023-11', bySubject: { Superposition: 3.5, 'Model MGMT': 2 }, byEmployee: { 'Yamit bettman': 3.5, 'Ethan Berry': 2 } },
-    { month: '2023-12', bySubject: { 'Model MGMT': 2, Modelling: 4 },     byEmployee: { 'Lilina Priyadarshini': 4, 'Ethan Berry': 2 } },
+    { month: '2023-07', bySubject: { Superposition: 6 },                  byEmployee: { 'Yamit bettman': 6 },                          bySubjectEmployee: { Superposition: { 'Yamit bettman': 6 } } },
+    { month: '2023-08', bySubject: { Superposition: 4, 'Model MGMT': 1 }, byEmployee: { 'Yamit bettman': 3, 'Ethan Berry': 2 },         bySubjectEmployee: { Superposition: { 'Yamit bettman': 3, 'Ethan Berry': 1 }, 'Model MGMT': { 'Ethan Berry': 1 } } },
+    { month: '2023-09', bySubject: { 'Model MGMT': 3 },                   byEmployee: { 'Ethan Berry': 3 },                            bySubjectEmployee: { 'Model MGMT': { 'Ethan Berry': 3 } } },
+    { month: '2023-10', bySubject: { 'Model MGMT': 1, Modelling: 2 },     byEmployee: { 'Lilina Priyadarshini': 2, 'Ethan Berry': 1 },  bySubjectEmployee: { 'Model MGMT': { 'Ethan Berry': 1 }, Modelling: { 'Lilina Priyadarshini': 2 } } },
+    { month: '2023-11', bySubject: { Superposition: 3.5, 'Model MGMT': 2 }, byEmployee: { 'Yamit bettman': 3.5, 'Ethan Berry': 2 },     bySubjectEmployee: { Superposition: { 'Yamit bettman': 3.5 }, 'Model MGMT': { 'Ethan Berry': 2 } } },
+    { month: '2023-12', bySubject: { 'Model MGMT': 2, Modelling: 4 },     byEmployee: { 'Lilina Priyadarshini': 4, 'Ethan Berry': 2 },  bySubjectEmployee: { 'Model MGMT': { 'Ethan Berry': 2 }, Modelling: { 'Lilina Priyadarshini': 4 } } },
   ],
   subjects: ['Superposition', 'Model MGMT', 'Modelling'],
   employees: ['Ethan Berry', 'Yamit bettman', 'Lilina Priyadarshini'],
@@ -22,12 +22,12 @@ const MOCK_BREAKDOWN: HoursBreakdown = {
   employeeAvatars: {},
 }
 
-const MOCK_BANKS: DisciplineBanks = { modelMgmt: 300, superposition: 333.33 }
+const MOCK_BANKS: DisciplineBanks = { modelMgmt: 300, superposition: 333.33, total: 700 }
 
 const EMPTY_BREAKDOWN: HoursBreakdown = {
   months: [], subjects: [], employees: [], totalsBySubject: {}, totalsByEmployee: {}, employeeAvatars: {},
 }
-const EMPTY_BANKS: DisciplineBanks = { modelMgmt: null, superposition: null }
+const EMPTY_BANKS: DisciplineBanks = { modelMgmt: null, superposition: null, total: null }
 
 export async function GET(
   _req: NextRequest,

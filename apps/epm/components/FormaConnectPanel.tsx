@@ -17,6 +17,20 @@ function matchByNumber(projects: AccProjectSummary[], projectNumber: string): Ac
   return projects.find(p => tokenRe.test(p.name.toUpperCase())) ?? null
 }
 
+// Deep-link to the ACC project's Issues module (where the XLSX export lives),
+// rather than the stored Files/Docs URL. Region-aware: reuses the host of the
+// stored project URL (acc.autodesk.com vs acc.autodesk.eu) when available.
+function accIssuesUrl(accProjectId?: string, accUrl?: string): string | null {
+  if (!accProjectId) return accUrl ?? null
+  let host = 'acc.autodesk.com'
+  try {
+    if (accUrl) host = new URL(accUrl).host
+  } catch {
+    // malformed stored URL — fall back to the global host
+  }
+  return `https://${host}/build/issues/projects/${accProjectId}`
+}
+
 interface ImportMeta {
   imported: boolean
   count?: number
@@ -198,28 +212,41 @@ export default function FormaConnectPanel({
         )}
 
         <div className="flex flex-col gap-2.5 mt-auto">
-          {/* How-to: hover to preview the ACC export instructions image */}
-          <div className="relative group/howto self-start">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-[11px] text-[#44b8d3] hover:text-[#1e248c] transition-colors"
-            >
-              <HelpCircle size={13} /> How to export the issues from ACC
-            </button>
-            <div className="absolute z-50 bottom-full left-0 mb-2 hidden group-hover/howto:block">
+          {/* How-to (hover preview) + a direct link to the ACC project to export from */}
+          <div className="flex items-center gap-x-4 gap-y-1 flex-wrap">
+            <div className="relative group/howto">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-[11px] text-[#44b8d3] hover:text-[#1e248c] transition-colors"
+              >
+                <HelpCircle size={13} /> How to export the issues from ACC
+              </button>
+              <div className="absolute z-50 bottom-full left-0 mb-2 hidden group-hover/howto:block">
+                <a
+                  href="/How%20to%20download%20excel%20report%20from%20Forma.png"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/How%20to%20download%20excel%20report%20from%20Forma.png"
+                    alt="How to download the Excel issues report from ACC / Forma"
+                    className="w-[480px] max-w-[80vw] rounded-lg shadow-2xl border border-gray-200 bg-white"
+                  />
+                </a>
+              </div>
+            </div>
+
+            {accIssuesUrl(accProjectId, accUrl) && (
               <a
-                href="/How%20to%20download%20excel%20report%20from%20Forma.png"
+                href={accIssuesUrl(accProjectId, accUrl)!}
                 target="_blank"
                 rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1e248c] hover:text-[#44b8d3] transition-colors"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/How%20to%20download%20excel%20report%20from%20Forma.png"
-                  alt="How to download the Excel issues report from ACC / Forma"
-                  className="w-[480px] max-w-[80vw] rounded-lg shadow-2xl border border-gray-200 bg-white"
-                />
+                <ExternalLink size={13} /> Open ACC Issues to export
               </a>
-            </div>
+            )}
           </div>
 
           <input

@@ -13,6 +13,7 @@ export interface TeamMember {
 export interface ExternalIds {
   mondayBoardId:  string          // MA-004 board ID (7321609006)
   mondayBoardUrl: string          // MA-004 board URL
+  mainBoardUrl?:  string          // The project's main Monday board (MA-003 "Main Board" link column)
   mondayItemId?:  string          // MA-004 item ID for this project
   ma003ItemId?:   string          // MA-003 item ID (links TS-001 timesheet rows)
   driveFolderId?: string          // Google Drive folder ID (Phase 3)
@@ -28,6 +29,17 @@ export interface ExternalIds {
 
 export type ProjectStatus = 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck'
 export type SyncStatus = 'ok' | 'partial' | 'error' | 'never'
+
+// Which discipline "team" a timesheet Subject (label__1) is counted under on the
+// Hours Analytics page. 'none' = not counted in either bank. Defaults: the
+// canonical 'Model MGMT'/'Superposition' subjects map to their own team; every
+// other subject defaults to 'none' until the user assigns it.
+export type HoursTeam = 'modelMgmt' | 'superposition' | 'none'
+
+export interface HoursConfig {
+  // Subject label (exactly as stored in Monday's label__1) → team assignment.
+  subjectTeam: Record<string, HoursTeam>
+}
 
 export interface ProjectSnapshot {
   status:            ProjectStatus | null
@@ -55,6 +67,7 @@ export interface IProject extends Document {
   projectNumber: string
   externalIds:   ExternalIds
   snapshot:      ProjectSnapshot
+  hoursConfig?:  HoursConfig
   isActive:      boolean
   displayOrder?: number
   createdAt:     Date
@@ -78,6 +91,7 @@ const ExternalIdsSchema = new Schema<ExternalIds>(
   {
     mondayBoardId:  { type: String, required: true },
     mondayBoardUrl: { type: String, required: true },
+    mainBoardUrl:   String,
     mondayItemId:   String,
     ma003ItemId:    String,
     driveFolderId:  String,
@@ -123,6 +137,15 @@ const SnapshotSchema = new Schema<ProjectSnapshot>(
   { _id: false }
 )
 
+const HoursConfigSchema = new Schema<HoursConfig>(
+  {
+    // Record<subjectLabel, 'modelMgmt' | 'superposition' | 'none'>. Stored as a
+    // free-form object — the whole map is replaced on save, so Mixed is fine.
+    subjectTeam: { type: Schema.Types.Mixed, default: {} },
+  },
+  { _id: false }
+)
+
 // ── Main schema ────────────────────────────────────────────────────────────
 
 const ProjectSchema = new Schema<IProject>(
@@ -131,6 +154,7 @@ const ProjectSchema = new Schema<IProject>(
     projectNumber: { type: String, required: true },
     externalIds:   { type: ExternalIdsSchema, required: true },
     snapshot:      { type: SnapshotSchema, default: () => ({}) },
+    hoursConfig:   { type: HoursConfigSchema, default: undefined },
     isActive:      { type: Boolean, default: true },
     displayOrder:  Number,
   },

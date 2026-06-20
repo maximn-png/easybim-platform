@@ -6,12 +6,21 @@ export interface TeamMemberPayload {
 
 export interface ProjectLinks {
   mondayBoard: string
+  mainBoard?: string   // MA-003 "Main Board" link — the project's main Monday board
   driveFolder: string
   hoursSheet?: string
   acc?: string
 }
 
 export type AccLinkSource = 'auto' | 'manual' | 'ma003'
+
+// Discipline team a timesheet Subject is counted under on the Hours Analytics
+// page. 'none' = not counted in either bank. Mirrors HoursTeam in the model.
+export type HoursTeam = 'modelMgmt' | 'superposition' | 'none'
+
+export interface HoursConfig {
+  subjectTeam: Record<string, HoursTeam>
+}
 
 export interface ProjectSyncMeta {
   lastSyncedAt: string | null
@@ -40,6 +49,7 @@ export interface ProjectRow {
   bimManager?: TeamMemberPayload
   mepCoordinator?: TeamMemberPayload
   bimModeller?: TeamMemberPayload
+  hoursConfig?: HoursConfig
   sync: ProjectSyncMeta
 }
 

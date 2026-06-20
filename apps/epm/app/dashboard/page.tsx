@@ -1,5 +1,6 @@
 import { mockProjects } from '@/lib/mockProjects'
 import type { ProjectsApiResponse } from '@/lib/types'
+import { deriveHoursProgress } from '@/lib/hours'
 import DashboardClient from '@/components/DashboardClient'
 
 async function fetchProjects(): Promise<ProjectsApiResponse> {
@@ -21,6 +22,8 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
     const projects = (docs as unknown as Record<string, unknown>[]).map(doc => {
       const snap = (doc.snapshot ?? {}) as Record<string, unknown>
       const ext  = (doc.externalIds ?? {}) as Record<string, unknown>
+      const actualHours = (snap.actualHours as number | null) ?? null
+      const budgetHours = (snap.budgetHours as number | null) ?? null
       return {
         _id: String(doc._id),
         projectName: String(doc.projectName),
@@ -28,6 +31,7 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
         displayOrder: doc.displayOrder as number | undefined,
         links: {
           mondayBoard: String(ext.mondayBoardUrl ?? ''),
+          mainBoard: ext.mainBoardUrl as string | undefined,
           driveFolder: String(ext.driveFolderUrl ?? ''),
           hoursSheet: ext.hoursSheetUrl as string | undefined,
           acc: ext.accProjectUrl as string | undefined,
@@ -37,9 +41,9 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
         accExternalHub: ext.accExternalHub as boolean | undefined,
         status: (snap.status as import('@/lib/types').ProjectRow['status']) ?? null,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
-        hoursProgress: (snap.hoursProgress as number | null) ?? null,
-        actualHours: (snap.actualHours as number | null) ?? null,
-        budgetHours: (snap.budgetHours as number | null) ?? null,
+        hoursProgress: deriveHoursProgress(actualHours, budgetHours),
+        actualHours,
+        budgetHours,
         openIssuesCount: (snap.openIssuesCount as number | null) ?? null,
         accModelStatus: (snap.accModelStatus as string | null) ?? null,
         bimManager: snap.bimManager as import('@/lib/types').TeamMemberPayload | undefined,

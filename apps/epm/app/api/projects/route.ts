@@ -30,6 +30,7 @@ function toProjectRow(doc: Record<string, unknown>): ProjectRow {
     displayOrder: doc.displayOrder as number | undefined,
     links: {
       mondayBoard: String(ext.mondayBoardUrl ?? ''),
+      mainBoard: ext.mainBoardUrl as string | undefined,
       driveFolder: String(ext.driveFolderUrl ?? ''),
       hoursSheet: ext.hoursSheetUrl as string | undefined,
       acc: ext.accProjectUrl as string | undefined,

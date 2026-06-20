@@ -12,11 +12,18 @@ import {
   CheckCircle2,
   Circle,
 } from 'lucide-react'
-import type { ProjectRow, ReportListItem } from '@/lib/types'
+import type { ProjectRow, ReportListItem, HoursTeam } from '@/lib/types'
 import StatusBadge from './StatusBadge'
 import TeamMemberCell from './TeamMemberCell'
 import FormaConnectPanel from './FormaConnectPanel'
 import ReportViewModal from './ReportViewModal'
+
+// Canonical subjects default to their namesake team; everything else to 'none'
+// until assigned on the Hours Analytics page. Mirrors HoursAnalyticsClient.
+const CANONICAL_DEFAULT: Record<string, HoursTeam> = {
+  'Model MGMT':    'modelMgmt',
+  'Superposition': 'superposition',
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,14 +61,21 @@ function MilestoneRing({ value }: { value: number }) {
   )
 }
 
-function DisciplineBar({ label, value, color }: { label: string; value: number | null; color: string }) {
-  // value may exceed 100 (over bank) — show the true % but clamp the bar fill.
-  const fill = Math.min(100, Math.max(0, value ?? 0))
+function DisciplineBar({ label, spent, bank, totalBudget = null, color }: { label: string; spent: number; bank: number | null; totalBudget?: number | null; color: string }) {
+  // Use the discipline's own bank when set; otherwise (the project has only a total
+  // budget, no per-discipline price breakdown) fall back to the total budget so the
+  // bar still shows a percentage rather than a bare hours count.
+  const denom = bank != null && bank > 0 ? bank : (spent > 0 ? totalBudget : null)
+  // pct may exceed 100 (over bank) — show the true % but clamp the bar fill.
+  const pct = denom != null && denom > 0 ? Math.round((spent / denom) * 100) : null
+  const fill = Math.min(100, Math.max(0, pct ?? 0))
+  // %, when a denominator exists; bare hours only if there's no budget at all; else —.
+  const display = pct !== null ? `${pct}%` : spent > 0 ? `${Math.round(spent).toLocaleString()} hrs` : '—'
   return (
     <div className="flex flex-col gap-1">
       <div className="flex justify-between text-xs">
         <span className="text-gray-600">{label}</span>
-        <span className="font-semibold text-[#1e248c]">{value === null ? '—' : `${value}%`}</span>
+        <span className="font-semibold text-[#1e248c]">{display}</span>
       </div>
       <div className="h-2 rounded-full bg-[#e7eefe] overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${fill}%`, background: color }} />
@@ -106,10 +120,17 @@ export default function ProjectDetailClient({
 
   // Live hours from the same source as the Hours Analytics page (Monday), so the
   // card reflects edits immediately rather than the cached snapshot.actualHours
-  // (which only refreshes when the updateHours job re-runs).
+  // (which only refreshes when the updateHours job re-runs). Subjects are routed
+  // into the two disciplines via the per-project map set on the Hours Analytics
+  // page (hoursConfig.subjectTeam); the headline uses ALL logged hours vs the
+  // total budget, so it matches the dashboard %.
+  const subjectTeam = project.hoursConfig?.subjectTeam ?? {}
+  const teamFor = (subject: string): HoursTeam =>
+    subjectTeam[subject] ?? CANONICAL_DEFAULT[subject] ?? 'none'
+
   const [hours, setHours] = useState<{
-    modelMgmtSpent: number; modelMgmtBank: number | null
-    superSpent: number; superBank: number | null
+    modelMgmtSpent: number; superSpent: number; allSpent: number
+    modelMgmtBank: number | null; superBank: number | null; totalBudget: number | null
   } | null>(null)
   useEffect(() => {
     let alive = true
@@ -117,29 +138,34 @@ export default function ProjectDetailClient({
       .then(r => r.json())
       .then((json: {
         breakdown?: { totalsBySubject?: Record<string, number> }
-        banks?: { modelMgmt: number | null; superposition: number | null }
+        banks?: { modelMgmt: number | null; superposition: number | null; total: number | null }
       }) => {
         if (!alive) return
         const totals = json.breakdown?.totalsBySubject ?? {}
+        let modelMgmtSpent = 0, superSpent = 0, allSpent = 0
+        for (const [subject, h] of Object.entries(totals)) {
+          allSpent += h
+          const t = teamFor(subject)
+          if (t === 'modelMgmt')          modelMgmtSpent += h
+          else if (t === 'superposition') superSpent += h
+        }
         setHours({
-          modelMgmtSpent: totals['Model MGMT'] ?? 0,
+          modelMgmtSpent, superSpent, allSpent,
           modelMgmtBank: json.banks?.modelMgmt ?? null,
-          superSpent: totals['Superposition'] ?? 0,
           superBank: json.banks?.superposition ?? null,
+          totalBudget: json.banks?.total ?? null,
         })
       })
       .catch(() => { /* leave null → shows — */ })
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project._id])
 
-  const pct = (spent: number, bank: number | null) => (bank && bank > 0 ? Math.round((spent / bank) * 100) : null)
-  const modelMgmtPct = hours ? pct(hours.modelMgmtSpent, hours.modelMgmtBank) : null
-  const superPct     = hours ? pct(hours.superSpent, hours.superBank) : null
-  // Headline / totals from the two disciplines' live spent vs their banks.
-  const liveSpent = hours ? hours.modelMgmtSpent + hours.superSpent : 0
-  const liveBank  = hours ? (hours.modelMgmtBank ?? 0) + (hours.superBank ?? 0) : 0
+  // Headline = all logged hours vs the total budget (שכט סופי ÷ 300).
+  const liveSpent = hours ? hours.allSpent : 0
+  const liveBank  = hours ? (hours.totalBudget ?? 0) : 0
   const headlinePct = hours && liveBank > 0 ? Math.round((liveSpent / liveBank) * 100) : null
-  const hoursLeft = liveBank - liveSpent // signed: negative = over banked
+  const hoursLeft = liveBank - liveSpent // signed: negative = over budget
 
   return (
     <div
@@ -165,27 +191,38 @@ export default function ProjectDetailClient({
           {/* 2×2 panel grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-            {/* Milestone Status */}
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-[#44b8d3]" /> Milestone Status
-                </h2>
-                <Link href="#" className="text-xs text-[#44b8d3] hover:underline">Full Milestones →</Link>
+            {/* Milestone Status — not built yet, shown with a "Coming Soon" stamp */}
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden">
+              {/* Coming-soon stamp overlay */}
+              <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                <span className="rotate-[-12deg] border-2 border-[#1e248c]/40 text-[#1e248c]/70 rounded-xl px-5 py-2 text-xl font-extrabold uppercase tracking-widest bg-white/50 shadow-sm">
+                  Coming Soon
+                </span>
               </div>
-              <div className="flex items-center gap-6">
-                <div className="flex flex-col gap-3 flex-1">
-                  <DisciplineBar label="BIM Management" value={bimMilestone} color="#1e248c" />
-                  <DisciplineBar label="MEP Coordination" value={mepMilestone} color="#44b8d3" />
+
+              {/* Placeholder content, dimmed & non-interactive behind the stamp */}
+              <div className="flex flex-col gap-4 opacity-30 pointer-events-none select-none blur-[1px]">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
+                    <CheckCircle2 size={15} className="text-[#44b8d3]" /> Milestone Status
+                  </h2>
+                  <span className="text-xs text-[#44b8d3]">Full Milestones →</span>
                 </div>
-                <div className="flex flex-col items-center shrink-0">
-                  <MilestoneRing value={overallMilestone} />
-                  <p className="text-[10px] text-gray-400 mt-1">Overall Stage</p>
+                <div className="flex items-center gap-6">
+                  <div className="flex flex-col gap-3 flex-1">
+                    {/* Mock placeholder values rendered as plain percentages (bank=100). */}
+                    <DisciplineBar label="BIM Management" spent={bimMilestone} bank={100} color="#1e248c" />
+                    <DisciplineBar label="MEP Coordination" spent={mepMilestone} bank={100} color="#44b8d3" />
+                  </div>
+                  <div className="flex flex-col items-center shrink-0">
+                    <MilestoneRing value={overallMilestone} />
+                    <p className="text-[10px] text-gray-400 mt-1">Overall Stage</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex gap-2 text-xs text-gray-500 mt-auto">
-                <span className="flex items-center gap-1"><Circle size={8} className="fill-[#44b8d3] text-[#44b8d3]" /> In Progress</span>
-                <span className="flex items-center gap-1 ml-3"><Circle size={8} className="fill-green-500 text-green-500" /> Completed</span>
+                <div className="flex gap-2 text-xs text-gray-500 mt-auto">
+                  <span className="flex items-center gap-1"><Circle size={8} className="fill-[#44b8d3] text-[#44b8d3]" /> In Progress</span>
+                  <span className="flex items-center gap-1 ml-3"><Circle size={8} className="fill-green-500 text-green-500" /> Completed</span>
+                </div>
               </div>
             </div>
 
@@ -203,12 +240,12 @@ export default function ProjectDetailClient({
                 </span>
               </div>
               <div className="flex flex-col gap-3">
-                <DisciplineBar label="BIM Management" value={modelMgmtPct} color="#1e248c" />
-                <DisciplineBar label="MEP Coordination" value={superPct} color="#44b8d3" />
+                <DisciplineBar label="BIM Management" spent={hours?.modelMgmtSpent ?? 0} bank={hours?.modelMgmtBank ?? null} totalBudget={hours?.totalBudget ?? null} color="#1e248c" />
+                <DisciplineBar label="MEP Coordination" spent={hours?.superSpent ?? 0} bank={hours?.superBank ?? null} totalBudget={hours?.totalBudget ?? null} color="#44b8d3" />
               </div>
               <div className="flex justify-between text-xs pt-2 border-t border-gray-100">
                 <div>
-                  <p className="text-gray-400">Spent vs Banked</p>
+                  <p className="text-gray-400">Spent vs Budget</p>
                   <p className="font-semibold text-[#1e248c]">
                     {hours ? `${Math.round(liveSpent).toLocaleString()} / ${Math.round(liveBank).toLocaleString()} hrs` : '—'}
                   </p>
@@ -233,14 +270,14 @@ export default function ProjectDetailClient({
                 <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
                   <FileText size={15} className="text-[#44b8d3]" /> Activity & Reports
                 </h2>
-                <span className="text-[10px] text-gray-400 font-mono">{reports.length} דוחות</span>
+                <span dir="rtl" className="text-[10px] text-gray-400 font-mono">{reports.length} דוחות</span>
               </div>
               <div className="flex flex-col gap-3">
                 {reports.length === 0 && (
-                  <p className="text-xs text-gray-400 py-2">עדיין לא נוצרו דוחות. צרו טיוטת מייל בעמוד הדוחות והם יופיעו כאן.</p>
+                  <p dir="rtl" className="text-xs text-gray-400 py-2">עדיין לא נוצרו דוחות. צרו טיוטת מייל בעמוד הדוחות והם יופיעו כאן.</p>
                 )}
                 {reports.map(r => (
-                  <div key={r._id} className="group flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
+                  <div key={r._id} dir="rtl" className="group flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0 last:pb-0">
                     <button
                       onClick={() => setOpenReportId(r._id)}
                       className="flex items-start gap-3 flex-1 min-w-0 text-right"
