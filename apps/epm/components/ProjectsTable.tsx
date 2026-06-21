@@ -20,7 +20,7 @@ function ColInfo({
     <span className="relative group/ci cursor-default inline-flex items-center ml-1 align-middle">
       <Eye size={11} className="text-gray-300 group-hover/ci:text-gray-500 transition-colors" />
       <div className={`absolute top-full ${pos} mt-1.5 bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 opacity-0 group-hover/ci:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl whitespace-nowrap normal-case font-normal text-left space-y-1`}>
-        {note && <p className="text-gray-200 leading-snug">{note}</p>}
+        {note && <div className="text-gray-200 leading-snug">{note}</div>}
         {formula && <p className="text-gray-300 font-mono">{formula}</p>}
         {rows.map((s, i) => (
           <p key={i} className="leading-snug">
@@ -77,18 +77,30 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
     <div className="rounded-2xl border border-white/80 shadow-sm">
       <table className="w-full table-fixed border-collapse text-sm">
         <colgroup>
-          <col className="w-8" />            {/* checkbox */}
-          <col />                            {/* Project Name — takes remaining width */}
-          <col className="w-[68px]" />       {/* Proj # */}
-          <col className="w-[92px]" />       {/* Status */}
-          <col className="w-[84px]" />       {/* Milestone */}
-          <col className="w-[84px]" />       {/* Hours */}
-          <col className="w-[60px]" />       {/* BIM Mgmt */}
-          <col className="w-[60px]" />       {/* MEP Coord */}
-          <col className="w-[64px]" />       {/* BIM Modelling */}
-          <col className="w-[58px]" />       {/* Monday */}
-          <col className="w-[58px]" />       {/* Drive */}
-          <col className="w-[58px]" />       {/* ACC */}
+          {/* checkbox */}
+          <col className="w-8" />
+          {/* Project Name — takes remaining width */}
+          <col />
+          {/* Proj # */}
+          <col className="w-[68px]" />
+          {/* Status */}
+          <col className="w-[92px]" />
+          {/* Milestone */}
+          <col className="w-[84px]" />
+          {/* Hours */}
+          <col className="w-[84px]" />
+          {/* BIM Mgmt */}
+          <col className="w-[60px]" />
+          {/* MEP Coord */}
+          <col className="w-[60px]" />
+          {/* BIM Modelling */}
+          <col className="w-[64px]" />
+          {/* Monday */}
+          <col className="w-[58px]" />
+          {/* Drive */}
+          <col className="w-[58px]" />
+          {/* ACC */}
+          <col className="w-[58px]" />
         </colgroup>
         <thead>
           <tr className="bg-gray-50/80 border-b border-gray-200">
