@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { Newspaper, Database, Cpu, ArrowRight, Clock, Sparkles } from 'lucide-react'
+import { Newspaper, Database, BookOpen, ArrowRight, Clock, Sparkles } from 'lucide-react'
 import AppHeader from '@/components/AppHeader'
 import CursorEffect from '@/components/CursorEffect'
 import PhotoGallery from '@/components/PhotoGallery'
@@ -51,16 +51,16 @@ const TOOLS = [
     description:
       'Track, manage, and collaborate on BIM projects in one place. Built around the EasyBIM team\'s workflow.',
     icon: Database,
-    href: '#',
-    status: 'coming-soon' as const,
+    href: process.env.NEXT_PUBLIC_EPM_URL || '#',
+    status: 'live' as const,
     color: '#44b8d3',
   },
   {
     id: 'revit-sync',
-    title: 'Revit MCP Sync',
+    title: 'EasyBIM Knowledge Center',
     description:
-      'Connect Revit models to Google Sheets, Docs, and Monday.com. Automate quantity take-offs and drawing registers.',
-    icon: Cpu,
+      'Your central hub for EasyBIM standards, BIM guides, templates, and best practices — find the right workflow and answer in seconds.',
+    icon: BookOpen,
     href: '#',
     status: 'coming-soon' as const,
     color: '#818cf8',
@@ -99,9 +99,9 @@ export default async function DashboardPage() {
 
       <main className="relative z-10">
         {/* ── Centered hero header ── */}
-        <div className="flex flex-col items-center text-center px-6 pt-14 pb-10">
+        <div className="flex flex-col items-center text-center px-6 pt-6 pb-4">
           <div
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mb-6"
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mb-3"
             style={{ background: 'rgba(68,184,211,0.10)', borderColor: 'rgba(68,184,211,0.30)', color: '#1e248c' }}
           >
             <Sparkles size={11} style={{ color: '#44b8d3' }} />
@@ -115,12 +115,12 @@ export default async function DashboardPage() {
             Your EasyBIM Platform
           </h1>
 
-          <p className="text-sm mb-4" style={{ color: '#6b7280' }}>
+          <p className="text-sm mb-2" style={{ color: '#6b7280' }}>
             All EasyBIM workflow tools — one click away.
           </p>
 
           {quote && (
-            <div className="max-w-lg mx-auto text-center mt-4">
+            <div className="max-w-lg mx-auto text-center mt-2">
               <p className="italic text-sm leading-relaxed" style={{ color: '#4b5563' }}>
                 <span className="text-xl font-black not-italic mr-0.5" style={{ color: '#44b8d3' }}>&ldquo;</span>
                 {quote.content}
@@ -134,7 +134,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* ── Tool cards ── */}
-        <div className="px-6 pb-16 max-w-4xl mx-auto w-full">
+        <div className="px-6 pb-6 max-w-4xl mx-auto w-full">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {TOOLS.map((tool) => {
               const Icon = tool.icon
