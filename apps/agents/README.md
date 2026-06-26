@@ -69,9 +69,12 @@ NEXT_PUBLIC_PORTAL_URL=http://localhost:3000
 
 ## STATUS (2026-06-26) & how to continue
 
-**Phase 1: VERIFIED WORKING LIVE.** Author pass ran end-to-end against the real `EasyBIM_Posts` board — drafted 2 on-brand posts, set PostType + Publish Date, posted to Updates, tagged Maxim, set `Pending Approval`, and persisted the `AgentRun` to Mongo. Type-check GREEN across all workspaces.
+**Phases 1–3: VERIFIED WORKING LIVE (2026-06-26).** The whole Peacock loop runs end-to-end against the real `EasyBIM_Posts` board, plus the Agent Kingdom dashboard and branded-image-on-approval. Only the Vercel deploy + live Monday automation remain. Type-check GREEN across all workspaces.
 
-- ✅ **Live author dry-run passed** (2026-06-26). Created items `12378837665` + `12378873327` at `Pending Approval`. The reused Monday token (from `apps/epm`) **has write scope** — items/updates/notifications/status all worked. Anthropic key + Mongo persistence confirmed.
+- ✅ **Phase 1 — author + watcher (both branches) verified live.** Author drafts 2 posts → `Pending Approval`. Watcher on `Approved` → `Ready to Publish`; on `Revise` → reads Maxim's reply feedback, rewrites shorter, → `Pending Approval`. (Items `12378837665`, `12378873327`.)
+- ✅ **Phase 2 — Agent Kingdom dashboard.** Portal card → agents `/` (Kingdom, agent cards from `registry` with live status) → `/dashboard/[agentKey]` (run history from `AgentRun` + message thread from `AgentMessage`, polling). Protected via Clerk satellite (portal session carries over, no re-login). Verified in-browser end-to-end.
+- ✅ **Phase 3 — branded image on approval.** `generate_image` tool (Nano Banana `gemini-2.5-flash-image`) builds an on-brand cover image from the post, `addFileToUpdate` attaches it to Monday, then `Ready to Publish`. Verified live: themed building-core wireframe attached.
+- ✅ The reused Monday token (from `apps/epm`) **has write scope** — items/updates/notifications/status/file-upload all worked. Anthropic + Gemini keys + Mongo persistence confirmed.
 - ✅ **`get_backlog` bug fixed.** `getItemsByStatusLabelIds` failed twice during the run (so the agent created new items instead of developing the backlog). Root cause: Monday 2024-10 GraphQL types — `column_id` must be `ID!` (was `String!`), `compare_value` must be the `CompareValue` scalar (was `[String!]!`), and label indexes must be **integers** (string indexes silently match nothing). Fixed in `lib/integrations/monday/client.ts`; verified it now returns the real Idea/Drafting backlog.
 - ✅ **Type-check passes.** (Earlier zod fix: `@anthropic-ai/sdk@0.69`'s `betaZodTool` is typed against **zod v4**; app now declares `zod@^4.3.6`, deduped to `zod@4.4.3`.)
 - ✅ **`apps/agents/.env.local` reconstructed** (gitignored) from sibling apps: Mongo/Clerk/Encryption/Gemini ← newsletter, Monday/Cron ← epm, Anthropic key added manually. Clerk satellite needs the absolute sign-in URLs (`NEXT_PUBLIC_CLERK_SIGN_IN_URL=http://localhost:3000/sign-in`, etc.) or the app 500s on every route.
@@ -80,13 +83,12 @@ NEXT_PUBLIC_PORTAL_URL=http://localhost:3000
 
 **Architecture decision (2026-06-26):** build the kingdom on the **custom Next.js app (this repo)**, not Claude Cowork (desktop-only, dies when the machine sleeps — can't run unattended) and not Managed Agents (container model is overkill for API-call agents like Peacock). Revisit Managed Agents later for the 🦁 Lion orchestrator (its multiagent coordinator fits) and any future container-using agents (Owl/analytics, Octopus/support).
 
-**Next, in order:**
-1. **Test the watcher pass** — in Monday, set a draft's Status to `Approved` (or `Revise`) and `POST` the Monday webhook payload to `/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`. Approved → `Ready to Publish`; Revise → reads comments, rewrites, re-posts.
-2. **Monday automation** → webhook: "when Status changes to Approved or Revise, POST to `<deployed-url>/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`".
-3. **Vercel deploy** — create the project, set env vars, wire the weekly cron (`vercel.json`).
-4. **Re-run author** once the backlog fix is live to confirm it now develops existing Idea/Drafting items instead of creating new ones.
+**Next, in order — the Vercel deploy (last local-first step):**
+1. **Create the Vercel project** for `apps/agents` (root dir `apps/agents`, or the monorepo with the right root). Set env vars: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MONDAY_API_TOKEN` (write scope), `MONDAY_WEBHOOK_SECRET`, `CRON_SECRET`, `MONGODB_URI`, `ENCRYPTION_SECRET`, and Clerk (`NEXT_PUBLIC_CLERK_*`, `CLERK_SECRET_KEY`) with the **production** satellite domain + `NEXT_PUBLIC_PORTAL_URL`.
+2. **Point the portal card** `NEXT_PUBLIC_AGENTS_URL` at the deployed agents URL.
+3. **Monday automation** → webhook: "when Status changes to Approved or Revise, POST to `<deployed-url>/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`" (this is the only piece that needs a public URL; the handler is already proven via replayed payloads).
+4. **Cron** is in `vercel.json` (weekly Sun 06:00 → `/api/cron/peacock/author`). Smoke-test the deployed cron + webhook.
 
-**Phase 2:** agents dashboard UI (list from `registry`, run history/status from `AgentRun`, SSE chat from `AgentMessage`).
-**Phase 3:** branded image (port `nanobana` Nano Banana template), Drive/Gmail/Canva/newsletter/WhatsApp tools, the 🦁 Lion orchestrator + agent-to-agent messaging; extract a shared `agent-core` package once a 2nd animal lands.
+**Later (not started):** Drive/Gmail/Canva/newsletter/WhatsApp tools; the 🦁 Lion orchestrator + agent-to-agent messaging (revisit Managed Agents here); extract a shared `agent-core` package once a 2nd animal lands.
 
 > Branch: `dev1`.
