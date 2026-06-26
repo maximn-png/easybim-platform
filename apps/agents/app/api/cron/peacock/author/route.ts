@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runAgent } from '@/lib/core/agentRuntime'
 import { peacock, AUTHOR_SYSTEM, authorInstruction, buildDateContext } from '@/lib/agents/peacock'
+import { getGuidance, guidanceBlock } from '@/lib/agents/peacock/guidance'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -20,11 +21,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const dateContext = buildDateContext(new Date())
+    const guidance = await getGuidance(peacock.key)
     const { runId, summary } = await runAgent({
       agentKey: peacock.key,
       pass: 'author',
       trigger: 'cron',
-      system: AUTHOR_SYSTEM,
+      system: AUTHOR_SYSTEM + guidanceBlock(guidance),
       tools: peacock.tools,
       userMessage: authorInstruction(dateContext),
     })

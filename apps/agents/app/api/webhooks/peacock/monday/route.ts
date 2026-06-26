@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { runAgent } from '@/lib/core/agentRuntime'
 import { peacock, WATCHER_SYSTEM, watcherInstruction } from '@/lib/agents/peacock'
+import { getGuidance, guidanceBlock } from '@/lib/agents/peacock/guidance'
 import { BOARD_ID, COL } from '@/lib/agents/peacock/board'
 
 export const runtime = 'nodejs'
@@ -50,11 +51,12 @@ export async function POST(req: NextRequest) {
   // Ack fast; run the watcher in the background so Monday doesn't retry on timeout.
   after(async () => {
     try {
+      const guidance = await getGuidance(peacock.key)
       await runAgent({
         agentKey: peacock.key,
         pass: 'watcher',
         trigger: 'webhook',
-        system: WATCHER_SYSTEM,
+        system: WATCHER_SYSTEM + guidanceBlock(guidance),
         tools: peacock.tools,
         userMessage: watcherInstruction(itemId!, label!),
         context: { itemId, signal: label },

@@ -89,3 +89,33 @@ export async function runAgent(args: RunAgentArgs): Promise<RunAgentResult> {
     throw err
   }
 }
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/**
+ * Run a multi-turn advisor chat to completion. Unlike runAgent, this does NOT
+ * create an AgentRun (chat is separate from scheduled/triggered passes); the
+ * caller persists the user + assistant messages.
+ */
+export async function runChat(args: {
+  system: string
+  tools: AgentTool[]
+  history: ChatTurn[]
+}): Promise<string> {
+  const final = await client().beta.messages.toolRunner({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    system: args.system,
+    tools: args.tools,
+    messages: args.history.map((t) => ({ role: t.role, content: t.content })),
+  })
+
+  return final.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
+    .map((b) => b.text)
+    .join('\n')
+    .trim()
+}

@@ -4,6 +4,8 @@ import { ArrowLeft } from 'lucide-react'
 import { getAgent } from '@/lib/core/registry'
 import { getPresentation } from '@/lib/agents/presentation'
 import RunHistory from './RunHistory'
+import HowItWorks from './HowItWorks'
+import Chat from './Chat'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +49,14 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
             <p className="text-sm leading-relaxed" style={{ color: '#6b7280' }}>{agent.description}</p>
           </div>
         </div>
+
+        <HowItWorks accent={p.accent} />
+
+        {agentKey === 'peacock' && (
+          <div className="mb-8">
+            <Chat agentKey={agentKey} accent={p.accent} emoji={p.emoji} />
+          </div>
+        )}
 
         <h2 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#9ca3af' }}>Run history</h2>
         <RunHistory agentKey={agentKey} accent={p.accent} />
