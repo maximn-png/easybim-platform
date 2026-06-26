@@ -1,6 +1,7 @@
 import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 import * as board from './board'
+import { generatePostImage } from './image'
 
 // Each tool returns a string (the tool result the model reads back).
 
@@ -134,6 +135,24 @@ export const setDriveLink = betaZodTool({
   },
 })
 
+export const generateImage = betaZodTool({
+  name: 'generate_image',
+  description:
+    'Generate an on-brand EasyBIM cover image for an approved post and attach it to the item Updates feed. Use this on approval, before setting Ready to Publish. Pass the final approved post text so the image matches the theme.',
+  inputSchema: z.object({
+    itemId: z.string(),
+    postText: z.string().describe('the approved post body, for thematic inspiration'),
+    postType: z.string().describe('the board PostType, e.g. "1. Professional"'),
+    caption: z.string().optional().describe('short RTL caption for the update the image is posted under'),
+  }),
+  run: async ({ itemId, postText, postType, caption }) => {
+    const { base64, mimeType } = await generatePostImage(postText, postType)
+    const bytes = Buffer.from(base64, 'base64')
+    await board.postImageToUpdate(itemId, bytes, caption ?? '🎨 תמונה מותגת לפוסט')
+    return `generated + attached branded image (${bytes.length} bytes, ${mimeType})`
+  },
+})
+
 export const peacockTools = [
   getBacklog,
   readItem,
@@ -144,4 +163,5 @@ export const peacockTools = [
   postDraft,
   readUpdates,
   setDriveLink,
+  generateImage,
 ]

@@ -23,7 +23,9 @@ export const AUTHOR_SYSTEM = [
 export const WATCHER_SYSTEM = [
   COMMON,
   '',
-  `מצב Watcher (תגובה לשינוי סטטוס): נקרא עבור Item ספציפי כשמקסים שינה סטטוס ל-Approved או Revise. אם Approved: סכם שהפוסט מאושר וקבע Status="Ready to Publish" (יצירת תמונה + חבילה יתווספו ב-Phase 3). אם Revise: קרא את ההערות האחרונות ב-Updates, שכתב את הטיוטה, פרסם מחדש עם תיוג, והשאר Status="Pending Approval".`,
+  `מצב Watcher (תגובה לשינוי סטטוס): נקרא עבור Item ספציפי כשמקסים שינה סטטוס ל-Approved או Revise.
+אם Approved: קרא את הפוסט המאושר (הטיוטה האחרונה ב-Updates), הפעל את generate_image עם טקסט הפוסט ו-PostType כדי לייצר תמונה מותגת ולצרף אותה ל-Updates, ואז קבע Status="Ready to Publish". סכם בקצרה מה נוצר.
+אם Revise: קרא את ההערות האחרונות ב-Updates (כולל replies), שכתב את הטיוטה לפיהן, פרסם מחדש עם תיוג, והשאר Status="Pending Approval".`,
 ].join('\n')
 
 export function authorInstruction(dateContext: string): string {
@@ -37,7 +39,7 @@ export function authorInstruction(dateContext: string): string {
 export function watcherInstruction(itemId: string, signal: string): string {
   return [
     `הרץ את מצב Watcher עבור Item ${itemId}. הסטטוס שונה ל-"${signal}".`,
-    `קרא את הפריט ואת ה-Updates האחרונים, ופעל לפי החוקים (Approved -> Ready to Publish; Revise -> שכתב + פרסם מחדש + השאר Pending Approval). החזר שורת סיכום קצרה.`,
+    `קרא את הפריט ואת ה-Updates האחרונים, ופעל לפי החוקים (Approved -> generate_image + צירוף + Status=Ready to Publish; Revise -> שכתב לפי ההערות + פרסם מחדש + השאר Pending Approval). החזר שורת סיכום קצרה.`,
   ].join('\n')
 }
 

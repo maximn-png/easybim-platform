@@ -1,6 +1,7 @@
 // Peacock = the EasyBIM LinkedIn marketing agent.
 // Resolved EasyBIM_Posts board constants (verified 2026-06-24) + typed helpers.
 import {
+  addFileToUpdate,
   changeColumnValues,
   createItem,
   createNotification,
@@ -92,4 +93,11 @@ export async function postDraftAndTag(itemId: string, bodyHtml: string, notifyTe
 
 export async function readUpdates(itemId: string, limit = 25) {
   return getUpdates(itemId, limit)
+}
+
+/** Post a branded image to the item Updates feed (a new update with the file attached). */
+export async function postImageToUpdate(itemId: string, bytes: Buffer, caption: string) {
+  const updateId = await createUpdate(itemId, caption)
+  await addFileToUpdate(updateId, bytes, 'easybim-post.png')
+  return updateId
 }

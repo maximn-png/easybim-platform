@@ -118,6 +118,32 @@ export async function createUpdate(itemId: string, bodyHtml: string): Promise<st
   return data.create_update.id
 }
 
+/**
+ * Attach a file to an update via Monday's multipart file endpoint (GraphQL
+ * multipart request spec: `query` + `map` + the file part). Used to attach a
+ * generated branded image to a post item.
+ */
+export async function addFileToUpdate(
+  updateId: string,
+  bytes: Buffer,
+  filename: string,
+  mimeType = 'image/png'
+): Promise<void> {
+  const form = new FormData()
+  form.append('query', `mutation ($file: File!) { add_file_to_update(update_id: ${updateId}, file: $file) { id } }`)
+  form.append('map', JSON.stringify({ image: 'variables.file' }))
+  form.append('image', new Blob([new Uint8Array(bytes)], { type: mimeType }), filename)
+  const res = await fetch(`${MONDAY_API}/file`, {
+    method: 'POST',
+    headers: { Authorization: token(), 'API-Version': MONDAY_API_VERSION },
+    body: form,
+  })
+  const json = await res.json()
+  if (json.errors) {
+    throw new Error(`monday file upload error: ${JSON.stringify(json.errors)}`)
+  }
+}
+
 export interface MondayReply {
   id: string
   text_body: string
