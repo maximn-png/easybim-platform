@@ -12,7 +12,7 @@ interface Msg {
 const SUGGESTIONS = [
   'מה עשית בריצה האחרונה?',
   'תקצר את הפוסטים לעתיד',
-  'איך אתה בוחר נושאים?',
+  'פתח עכשיו את הרעיון שהוספתי ללוח',
 ]
 
 export default function Chat({ agentKey, accent, emoji }: { agentKey: string; accent: string; emoji: string }) {
@@ -66,7 +66,7 @@ export default function Chat({ agentKey, accent, emoji }: { agentKey: string; ac
         <span className="text-lg">{emoji}</span>
         <div>
           <p className="text-sm font-bold" style={{ color: '#111827' }}>Chat with Peacock</p>
-          <p className="text-[11px]" style={{ color: '#9ca3af' }}>Ask questions · give feedback it remembers · advisor only (no board changes)</p>
+          <p className="text-[11px]" style={{ color: '#9ca3af' }}>Ask questions · give feedback it remembers · ask it to draft an item now (→ Pending Approval)</p>
         </div>
       </div>
 

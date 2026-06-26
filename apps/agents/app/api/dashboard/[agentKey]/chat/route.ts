@@ -6,7 +6,7 @@ import { runChat, ChatTurn } from '@/lib/core/agentRuntime'
 import { AGENT_KEY, buildChatSystem, makeChatTools } from '@/lib/agents/peacock/chat'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 300 // an on-demand draft_item_now runs a full author pass (~30-90s)
 
 // Chat messages are AgentMessages with no runId (separate from author/watcher passes).
 const CHAT_FILTER = (agentKey: string) => ({ agentKey, runId: { $exists: false } })
