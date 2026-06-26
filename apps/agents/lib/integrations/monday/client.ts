@@ -118,19 +118,32 @@ export async function createUpdate(itemId: string, bodyHtml: string): Promise<st
   return data.create_update.id
 }
 
+export interface MondayReply {
+  id: string
+  text_body: string
+  creator_id: string
+  created_at: string
+}
+
 export interface MondayUpdate {
   id: string
   body: string
   text_body: string
   created_at: string
   creator_id: string
+  replies: MondayReply[]
 }
 
 export async function getUpdates(itemId: string, limit = 25): Promise<MondayUpdate[]> {
+  // Include replies — Maxim's revise feedback is usually a reply to the draft update,
+  // not a new top-level update, so the watcher must read the reply thread too.
   const query = `
     query ($itemId: ID!, $limit: Int!) {
       items(ids: [$itemId]) {
-        updates(limit: $limit) { id body text_body created_at creator_id }
+        updates(limit: $limit) {
+          id body text_body created_at creator_id
+          replies { id text_body creator_id created_at }
+        }
       }
     }`
   const data = await mondayApi<{ items: { updates: MondayUpdate[] }[] }>(query, { itemId, limit })

@@ -112,7 +112,15 @@ export const readUpdates = betaZodTool({
   inputSchema: z.object({ itemId: z.string(), limit: z.number().optional() }),
   run: async ({ itemId, limit }) => {
     const ups = await board.readUpdates(itemId, limit ?? 25)
-    return JSON.stringify(ups.map((u) => ({ id: u.id, text: u.text_body, by: u.creator_id, at: u.created_at })))
+    return JSON.stringify(
+      ups.map((u) => ({
+        id: u.id,
+        text: u.text_body,
+        by: u.creator_id,
+        at: u.created_at,
+        replies: u.replies.map((r) => ({ text: r.text_body, by: r.creator_id, at: r.created_at })),
+      }))
+    )
   },
 })
 
