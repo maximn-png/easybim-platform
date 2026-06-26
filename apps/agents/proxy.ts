@@ -1,11 +1,13 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 
-// Public routes: landing, Monday webhooks, and Vercel Cron entrypoints.
-// Webhook + cron requests don't carry a Clerk session — they authenticate
-// via their own secret/signature checks inside the route handlers.
+// Public routes: Monday webhooks and Vercel Cron entrypoints only.
+// They don't carry a Clerk session — they authenticate via their own
+// secret/signature checks inside the route handlers.
+// Everything else (the Kingdom page `/`, `/dashboard/*`, dashboard APIs) is
+// gated: a signed-in portal session syncs here via the Clerk satellite, so
+// users arriving from the portal aren't re-prompted.
 const isPublicRoute = createRouteMatcher([
-  '/',
   '/api/webhook(.*)',
   '/api/cron(.*)',
 ])

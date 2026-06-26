@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { Newspaper, Database, BookOpen, ArrowRight, Clock, Sparkles } from 'lucide-react'
+import { Newspaper, Database, BookOpen, ArrowRight, Clock, Sparkles, Crown } from 'lucide-react'
 import AppHeader from '@/components/AppHeader'
 import CursorEffect from '@/components/CursorEffect'
 import PhotoGallery from '@/components/PhotoGallery'
@@ -64,6 +64,16 @@ const TOOLS = [
     href: '#',
     status: 'coming-soon' as const,
     color: '#818cf8',
+  },
+  {
+    id: 'agents',
+    title: 'EasyBIM Agents Kingdom',
+    description:
+      'Autonomous agents that run your workflows. Peacock drafts and routes weekly LinkedIn posts through Monday — you just approve.',
+    icon: Crown,
+    href: process.env.NEXT_PUBLIC_AGENTS_URL || '#',
+    status: 'live' as const,
+    color: '#7c3aed',
   },
 ]
 
