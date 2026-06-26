@@ -50,6 +50,16 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
           </div>
         </div>
 
+        {p.why && (
+          <div
+            className="mb-8 rounded-xl px-4 py-3 text-sm leading-relaxed"
+            style={{ background: `${p.accent}0d`, borderLeft: `3px solid ${p.accent}`, color: '#4b5563' }}
+          >
+            <span className="font-semibold" style={{ color: p.accent }}>Why {agent.name}? </span>
+            {p.why}
+          </div>
+        )}
+
         <HowItWorks accent={p.accent} />
 
         {agentKey === 'peacock' && (
