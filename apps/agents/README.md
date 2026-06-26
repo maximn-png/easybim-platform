@@ -44,8 +44,9 @@ Runs on **port 3002** (portal 3000, newsletter 3001). Mirrors `apps/newsletter` 
 ### Resolved Monday facts (board `EasyBIM_Posts`)
 - board `18419189644`, group `Posts` `________mkkf70xa`, Maxim user `26773504`.
 - columns: Status `status`, PostType `dropdown_mm05jq6f`, Publish Date `dup__of_start_mkm8svar`, Drive Link `link_mm4mqdp`.
-- status filter uses **label IDs**: Idea 7, Drafting 9, Pending Approval 0, Approved 3, Ready to Publish 4, Scheduled 10, Published 1 (+ Revise).
+- status filter uses **label indexes**: Idea 7, Drafting 9, Pending Approval 0, Approved 3, Ready to Publish 4, Scheduled 10, Published 1, Revise 2.
 - ⚠️ set Publish Date with `change_multiple_column_values` and **read back** (setting it inside `create_item` dropped the day in testing).
+- ⚠️ `items_page` status filter (Monday 2024-10): `column_id` is `ID!`, `compare_value` is the `CompareValue` scalar, and label indexes must be **integers** — `["7","9"]` silently matches nothing; `[7,9]` works. (See `getItemsByStatusLabelIds` in `lib/integrations/monday/client.ts`.)
 
 ---
 
@@ -66,22 +67,26 @@ NEXT_PUBLIC_PORTAL_URL=http://localhost:3000
 
 ---
 
-## STATUS (2026-06-25) & how to continue
+## STATUS (2026-06-26) & how to continue
 
-**Phase 1 code: complete. Type-check: GREEN** across all workspaces (`@easybim/agents` included).
+**Phase 1: VERIFIED WORKING LIVE.** Author pass ran end-to-end against the real `EasyBIM_Posts` board — drafted 2 on-brand posts, set PostType + Publish Date, posted to Updates, tagged Maxim, set `Pending Approval`, and persisted the `AgentRun` to Mongo. Type-check GREEN across all workspaces.
 
-- ✅ **Type-check passes.** Root cause of the earlier errors: `@anthropic-ai/sdk@0.69`'s `betaZodTool` is typed against **zod v4**, but the app declared `zod@^3.25` so `import { z } from 'zod'` resolved to v3 (incompatible `ZodObject`/`ZodType`). **Fix:** bumped `apps/agents` dep to `zod@^4.3.6` (now deduped to a single `zod@4.4.3` with the SDK). `tools.ts` unchanged.
-- ✅ **`apps/agents/.env.local` skeleton created** (gitignored) — values still need filling.
+- ✅ **Live author dry-run passed** (2026-06-26). Created items `12378837665` + `12378873327` at `Pending Approval`. The reused Monday token (from `apps/epm`) **has write scope** — items/updates/notifications/status all worked. Anthropic key + Mongo persistence confirmed.
+- ✅ **`get_backlog` bug fixed.** `getItemsByStatusLabelIds` failed twice during the run (so the agent created new items instead of developing the backlog). Root cause: Monday 2024-10 GraphQL types — `column_id` must be `ID!` (was `String!`), `compare_value` must be the `CompareValue` scalar (was `[String!]!`), and label indexes must be **integers** (string indexes silently match nothing). Fixed in `lib/integrations/monday/client.ts`; verified it now returns the real Idea/Drafting backlog.
+- ✅ **Type-check passes.** (Earlier zod fix: `@anthropic-ai/sdk@0.69`'s `betaZodTool` is typed against **zod v4**; app now declares `zod@^4.3.6`, deduped to `zod@4.4.3`.)
+- ✅ **`apps/agents/.env.local` reconstructed** (gitignored) from sibling apps: Mongo/Clerk/Encryption/Gemini ← newsletter, Monday/Cron ← epm, Anthropic key added manually. Clerk satellite needs the absolute sign-in URLs (`NEXT_PUBLIC_CLERK_SIGN_IN_URL=http://localhost:3000/sign-in`, etc.) or the app 500s on every route.
 
-> Local note: Node isn't on PATH in fresh shells — prepend `C:\Program Files\nodejs` (`$env:Path = "C:\Program Files\nodejs;" + $env:Path`) before `node`/`npm`.
+> Local notes: Node isn't on PATH in fresh shells — prepend `C:\Program Files\nodejs`. Dev server: `npm run dev` (port 3002). `proxy.ts` (Next 16) is the active middleware; the duplicate `middleware.ts` is stale and should be removed.
+
+**Architecture decision (2026-06-26):** build the kingdom on the **custom Next.js app (this repo)**, not Claude Cowork (desktop-only, dies when the machine sleeps — can't run unattended) and not Managed Agents (container model is overkill for API-call agents like Peacock). Revisit Managed Agents later for the 🦁 Lion orchestrator (its multiagent coordinator fits) and any future container-using agents (Owl/analytics, Octopus/support).
 
 **Next, in order:**
-1. ✅ ~~Type-check~~ — done (see above).
-2. **`apps/agents/.env.local`** — fill the empty vars (skeleton already written). Generate a fresh Monday write token + Gemini key.
-3. **Dry-run Peacock author** (with `npm run dev` running): `curl -H "Authorization: Bearer <CRON_SECRET>" http://localhost:3002/api/cron/peacock/author` → expect 2 drafts on the board at `Pending Approval`. (A 🧪 TEST item `12361269017` already exists on the board from the prototype.)
-4. **Monday automation** → webhook: "when Status changes to Approved or Revise, POST to `<deployed-url>/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`".
+1. **Test the watcher pass** — in Monday, set a draft's Status to `Approved` (or `Revise`) and `POST` the Monday webhook payload to `/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`. Approved → `Ready to Publish`; Revise → reads comments, rewrites, re-posts.
+2. **Monday automation** → webhook: "when Status changes to Approved or Revise, POST to `<deployed-url>/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`".
+3. **Vercel deploy** — create the project, set env vars, wire the weekly cron (`vercel.json`).
+4. **Re-run author** once the backlog fix is live to confirm it now develops existing Idea/Drafting items instead of creating new ones.
 
 **Phase 2:** agents dashboard UI (list from `registry`, run history/status from `AgentRun`, SSE chat from `AgentMessage`).
 **Phase 3:** branded image (port `nanobana` Nano Banana template), Drive/Gmail/Canva/newsletter/WhatsApp tools, the 🦁 Lion orchestrator + agent-to-agent messaging; extract a shared `agent-core` package once a 2nd animal lands.
 
-> Branch: `dev1`. Nothing committed yet — commit when ready.
+> Branch: `dev1`.

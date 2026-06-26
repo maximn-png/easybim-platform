@@ -44,8 +44,11 @@ export async function getItemsByStatusLabelIds(
   labelIds: number[],
   columnIds: string[]
 ): Promise<MondayItem[]> {
+  // Monday 2024-10: query_params column_id is ID!, compare_value is the CompareValue
+  // scalar, and a status `any_of` filter matches on label *index* as integers
+  // (string indexes silently match nothing).
   const query = `
-    query ($boardId: ID!, $statusColumnId: String!, $labelIds: [String!]!, $columnIds: [String!]) {
+    query ($boardId: ID!, $statusColumnId: ID!, $labelIds: CompareValue!, $columnIds: [String!]) {
       boards(ids: [$boardId]) {
         items_page(
           limit: 100,
@@ -58,7 +61,7 @@ export async function getItemsByStatusLabelIds(
   const data = await mondayApi<{ boards: { items_page: { items: MondayItem[] } }[] }>(query, {
     boardId,
     statusColumnId,
-    labelIds: labelIds.map(String),
+    labelIds,
     columnIds,
   })
   return data.boards?.[0]?.items_page?.items ?? []
