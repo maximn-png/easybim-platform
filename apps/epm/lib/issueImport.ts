@@ -91,6 +91,17 @@ export function parseIssuesWorkbook(buf: ArrayBuffer | Buffer): ParseResult {
     closedAt:    idxOf(ALIASES.closedAt),
   }
 
+  // ACC embeds each issue's deep link as a hyperlink on the "ID" (#) cell. Map it
+  // by the cell's display value so we can attach a per-issue link in our exports.
+  const idLinkByValue = new Map<string, string>()
+  if (ix.id >= 0 && ws['!ref']) {
+    const rng = XLSX.utils.decode_range(ws['!ref'])
+    for (let r = 1; r <= rng.e.r; r++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c: ix.id })] as { v?: unknown; l?: { Target?: string } } | undefined
+      if (cell?.v != null && cell.l?.Target) idLinkByValue.set(String(cell.v).trim(), cell.l.Target)
+    }
+  }
+
   const issues: AccIssue[] = []
   let total = 0
   for (let r = 1; r < rows.length; r++) {
@@ -103,8 +114,11 @@ export function parseIssuesWorkbook(buf: ArrayBuffer | Buffer): ParseResult {
     if (!title && !status) continue
     total++
 
+    const idVal = str(get(ix.id))
     issues.push({
-      id:          str(get(ix.id)) || `row-${r}`,
+      id:          idVal || `row-${r}`,
+      displayId:   idVal.replace(/^#/, '').trim() || undefined,
+      url:         (idVal && idLinkByValue.get(idVal)) || undefined,
       title:       title || '(untitled)',
       status:      normStatus(status || 'open'),
       issueType:   str(get(ix.type)) || str(get(ix.category)) || 'Other',

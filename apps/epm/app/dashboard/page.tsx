@@ -1,6 +1,7 @@
 import { mockProjects } from '@/lib/mockProjects'
 import type { ProjectsApiResponse } from '@/lib/types'
 import { deriveHoursProgress } from '@/lib/hours'
+import { resolveAccUrl } from '@/lib/services/apsService'
 import DashboardClient from '@/components/DashboardClient'
 
 // Always render on request so the table reflects the latest MongoDB sync. Without
@@ -40,7 +41,7 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
           mainBoard: ext.mainBoardUrl as string | undefined,
           driveFolder: String(ext.driveFolderUrl ?? ''),
           hoursSheet: ext.hoursSheetUrl as string | undefined,
-          acc: ext.accProjectUrl as string | undefined,
+          acc: resolveAccUrl(ext),
         },
         accProjectId: ext.accProjectId as string | undefined,
         accLinkSource: ext.accLinkSource as import('@/lib/types').AccLinkSource | undefined,

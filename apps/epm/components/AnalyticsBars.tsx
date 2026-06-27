@@ -6,7 +6,7 @@
 // v4 emits oklch() colors which break canvas serialization.
 import { useMemo } from 'react'
 import type { AccIssue } from '@/lib/services/apsService'
-import { type GroupKey, groupValue, statusColor, statusLabel, segmentTextColor } from '@/lib/reportGrouping'
+import { type GroupKey, groupValue, statusColor, statusLabel } from '@/lib/reportGrouping'
 
 export default function AnalyticsBars({
   issues, groupBy, maxRows = 8, renderName, width,
@@ -52,7 +52,7 @@ export default function AnalyticsBars({
                     const seg = (c / total) * 100
                     return (
                       <div key={s} style={{ width: `${seg}%`, background: statusColor(s), display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }} title={`${statusLabel(s)}: ${c}`}>
-                        {seg >= 14 && <span style={{ fontSize: 8, fontWeight: 600, color: segmentTextColor(s), lineHeight: 1 }}>{c}</span>}
+                        {seg >= 9 && <span style={{ fontSize: 9, fontWeight: 700, color: '#fff', textShadow: '0 0 2px rgba(0,0,0,0.75)', lineHeight: 1 }}>{c}</span>}
                       </div>
                     )
                   })}

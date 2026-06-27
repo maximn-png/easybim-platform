@@ -98,6 +98,8 @@ export async function refreshApsUserToken(refreshToken: string): Promise<{
 
 export interface AccIssue {
   id: string
+  displayId?: string   // ACC issue number shown to users (e.g. "398")
+  url?: string         // deep link to this issue in ACC
   title: string
   status: string
   issueType: string
@@ -186,9 +188,24 @@ export function getApsAccountId(): string {
   return accountId
 }
 
-// Builds a display URL for an ACC project. Shape matches parseAccProjectId().
+// Builds a display URL that opens the project itself in ACC. The bare
+// `/projects/{id}` route just lands on the account project LIST, so we deep-link
+// into the project's Files (Docs) view — a module every project has, and the same
+// `/docs/.../projects/{id}/...` shape the working Issues link uses. Still matches
+// parseAccProjectId().
 export function accProjectUrl(id: string): string {
-  return `https://acc.autodesk.com/projects/${id}`
+  return `https://acc.autodesk.com/docs/files/projects/${id}`
+}
+
+// Resolve the ACC link to show for a project. External/client hubs keep their
+// real stored link (we can't synthesize cross-account URLs); for our own hub we
+// always build the deep link from the GUID so it opens the project — never a
+// stale `/projects/{id}` value that lands on the account project list.
+export function resolveAccUrl(ext: Record<string, unknown>): string | undefined {
+  const stored = ext.accProjectUrl as string | undefined
+  if (ext.accExternalHub) return stored
+  const id = ext.accProjectId as string | undefined
+  return id ? accProjectUrl(id) : stored
 }
 
 // ── ACC project list cache ───────────────────────────────────────────────────
@@ -368,18 +385,35 @@ async function buildAssigneeRoleMap(
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>()
 
-  // Helper: extract a readable role label from a user record
+  // Role label from a user's project roles (may be empty for many users).
   const roleOf = (u: Record<string, unknown>): string | null => {
     const roles = (u.roles as Array<Record<string, unknown>> | undefined) ?? []
     const names = roles.map(r => String(r.name ?? '')).filter(Boolean)
     return names.length ? names.join(', ') : null
   }
+  // Display name fallback — so a user WITHOUT a project role still resolves to a
+  // person instead of "Unassigned" (the root cause of missing assignees).
+  const nameOf = (u: Record<string, unknown>): string | null => {
+    const name = String(u.name ?? '').trim()
+    if (name) return name
+    const full = [u.firstName, u.lastName].map(x => String(x ?? '').trim()).filter(Boolean).join(' ')
+    if (full) return full
+    const email = String(u.email ?? '').trim()
+    return email || null
+  }
 
   for (const pid of [`b.${projectId}`, projectId]) {
-    const users = await accGet(
-      `${ACC_ADMIN_BASE}/projects/${pid}/users?limit=200`,
-      twoLeggedToken, `projectUsers/${pid}`
-    )
+    // Fetch ALL project users (paginate — a 200-cap silently dropped assignees on
+    // large projects, which also showed up as "Unassigned").
+    const users: unknown[] = []
+    for (let offset = 0; offset < 10_000; offset += 200) {
+      const page = await accGet(
+        `${ACC_ADMIN_BASE}/projects/${pid}/users?limit=200&offset=${offset}`,
+        twoLeggedToken, `projectUsers/${pid}@${offset}`
+      )
+      users.push(...page)
+      if (page.length < 200) break
+    }
     if (users.length === 0) continue
 
     // Tally roles per company so we can pick the dominant one
@@ -389,14 +423,28 @@ async function buildAssigneeRoleMap(
     for (const raw of users) {
       const u = raw as Record<string, unknown>
       const role = roleOf(u)
+      // Prefer the role (keeps role-based grouping); fall back to the name so the
+      // assignee is never lost.
+      const label = role ?? nameOf(u)
 
-      // Direct user-assignee mappings
-      if (role) {
-        if (u.autodeskId != null) map.set(String(u.autodeskId), role)
-        if (u.id != null)         map.set(String(u.id), role)
+      // Direct user-assignee mappings — keyed by every id the Issues API may use.
+      if (label) {
+        if (u.autodeskId != null) map.set(String(u.autodeskId), label)
+        if (u.id != null)         map.set(String(u.id), label)
       }
 
-      // Accumulate votes toward the user's company
+      // Role-assignee mappings: issues assigned to a ROLE (assignedToType "role")
+      // carry the role id, not a person — map both the role UUID and its numeric
+      // group id to the role name so those issues resolve instead of "Unassigned".
+      const userRoles = (u.roles as Array<Record<string, unknown>> | undefined) ?? []
+      for (const r of userRoles) {
+        const rname = String(r.name ?? '').trim()
+        if (!rname) continue
+        if (r.id != null)          map.set(String(r.id), rname)
+        if (r.roleGroupId != null) map.set(String(r.roleGroupId), rname)
+      }
+
+      // Accumulate votes toward the user's company (role only — companies group by role)
       const groupId = u.companyGroupId != null ? String(u.companyGroupId) : null
       if (groupId) {
         if (u.companyId != null) companyIdToGroup.set(String(u.companyId), groupId)
@@ -542,8 +590,11 @@ export async function fetchAccIssues(projectId: string, userToken: string): Prom
       ? (attribMap.get(String(disciplineAttr.value ?? '')) ?? '')
       : ''
 
+    const issueId = String(item.id ?? '')
     return {
-      id: String(item.id ?? ''),
+      id: issueId,
+      displayId: item.displayId != null ? String(item.displayId) : undefined,
+      url: issueId ? `https://acc.autodesk.com/docs/issues/projects/${projectId}/issues?issueId=${issueId}` : undefined,
       title: String(item.title ?? ''),
       status: String(item.status ?? 'open'),
       issueType,

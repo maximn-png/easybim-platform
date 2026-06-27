@@ -12,6 +12,10 @@ export interface IReport extends Document {
   previewHtml:     string          // self-contained email HTML (images as data: URLs)
   pdf:             Buffer          // the generated PDF bytes
   pdfName:         string
+  xlsx?:           Buffer          // the generated Excel bytes
+  xlsxName?:       string
+  chartPng?:       Buffer          // analytics chart PNG — served publicly for the email body
+  screenshotPng?:  Buffer          // optional instructional screenshot — served publicly for the email body
   draftId?:        string          // Gmail draft id
   gmailUrl?:       string          // link to open the Gmail draft
   issueCount?:     number
@@ -32,6 +36,10 @@ const ReportSchema = new Schema<IReport>(
     previewHtml:     { type: String, required: true },
     pdf:             { type: Buffer, required: true },
     pdfName:         { type: String, required: true },
+    xlsx:            Buffer,
+    xlsxName:        String,
+    chartPng:        Buffer,
+    screenshotPng:   Buffer,
     draftId:         String,
     gmailUrl:        String,
     issueCount:      Number,

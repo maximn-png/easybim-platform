@@ -3,35 +3,8 @@
 import { useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Newspaper, Database, Cpu, ArrowRight, Sparkles, Zap, Globe } from 'lucide-react'
+import { ArrowRight, Sparkles, Zap, Globe } from 'lucide-react'
 import CursorEffect from './CursorEffect'
-
-const TOOLS = [
-  {
-    icon: Newspaper,
-    title: 'AI Newsletter Generator',
-    description:
-      'Transform 21 BIM & AEC RSS feeds into polished Hebrew newsletters in under a minute — AI-curated, ready to send.',
-    color: '#1e248c',
-    status: 'Live' as const,
-  },
-  {
-    icon: Database,
-    title: 'EasyBIM Projects',
-    description:
-      'Track, manage, and collaborate on BIM projects in one place. Built around the EasyBIM team\'s workflow.',
-    color: '#44b8d3',
-    status: 'Coming Soon' as const,
-  },
-  {
-    icon: Cpu,
-    title: 'Revit MCP Sync',
-    description:
-      'Connect Revit models to Google Sheets, Docs, and Monday.com for automated quantity take-offs and drawing registers.',
-    color: '#818cf8',
-    status: 'Coming Soon' as const,
-  },
-]
 
 // Static positions to avoid hydration mismatch
 const PARTICLES = [
@@ -136,41 +109,9 @@ export default function LandingPage() {
           <span className="text-[#1e248c] font-semibold">@easybim.co.il</span> account
         </p>
 
-        {/* ── Feature cards ── */}
-        <div style={{ animation: 'landing-fade-up 0.8s 0.65s ease both' }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl w-full mx-auto mt-20"
-        >
-          {TOOLS.map((tool) => {
-            const Icon = tool.icon
-            return (
-              <div
-                key={tool.title}
-                className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 text-left shadow-sm hover:shadow-lg hover:-translate-y-1.5 transition-all duration-300"
-              >
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
-                  style={{ background: `${tool.color}18` }}>
-                  <Icon size={20} style={{ color: tool.color }} />
-                </div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold text-[#111827] text-sm">{tool.title}</span>
-                </div>
-                <p className="text-xs text-[#6b7280] leading-relaxed mb-3">{tool.description}</p>
-                <span className="inline-block text-xs px-2.5 py-0.5 rounded-full font-semibold"
-                  style={{
-                    background: tool.status === 'Live' ? '#dcfce7' : '#f0f2ff',
-                    color:      tool.status === 'Live' ? '#15803d' : '#6b7280',
-                  }}
-                >
-                  {tool.status}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-
         {/* ── Bottom value strip ── */}
-        <div style={{ animation: 'landing-fade-up 0.8s 0.8s ease both' }}
-          className="flex items-center gap-10 mt-16 text-xs text-[#9ca3af]"
+        <div style={{ animation: 'landing-fade-up 0.8s 0.65s ease both' }}
+          className="flex items-center gap-10 mt-20 text-xs text-[#9ca3af]"
         >
           {[
             { icon: Zap,   label: 'Lightning Fast' },

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import type { ProjectRow, ReportListItem } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import { deriveHoursProgress } from '@/lib/hours'
+import { resolveAccUrl } from '@/lib/services/apsService'
 import ProjectDetailClient from '@/components/ProjectDetailClient'
 
 // Render on request so detail data reflects the latest sync (not a build snapshot).
@@ -61,7 +62,7 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow } | null>
           mondayBoard: String(ext.mondayBoardUrl ?? ''),
           driveFolder: String(ext.driveFolderUrl ?? ''),
           hoursSheet: ext.hoursSheetUrl as string | undefined,
-          acc: ext.accProjectUrl as string | undefined,
+          acc: resolveAccUrl(ext),
         },
         accProjectId: ext.accProjectId as string | undefined,
         accLinkSource: ext.accLinkSource as ProjectRow['accLinkSource'],

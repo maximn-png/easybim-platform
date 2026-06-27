@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import type { ProjectRow, ProjectsApiResponse } from '@/lib/types'
 import type { ExternalIds } from '@/app/models/Project'
 import { mockProjects } from '@/lib/mockProjects'
+import { resolveAccUrl } from '@/lib/services/apsService'
 
 function isAdmin(userId: string): boolean {
   const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
@@ -33,7 +34,7 @@ function toProjectRow(doc: Record<string, unknown>): ProjectRow {
       mainBoard: ext.mainBoardUrl as string | undefined,
       driveFolder: String(ext.driveFolderUrl ?? ''),
       hoursSheet: ext.hoursSheetUrl as string | undefined,
-      acc: ext.accProjectUrl as string | undefined,
+      acc: resolveAccUrl(ext),
     },
     accProjectId: ext.accProjectId as string | undefined,
     accLinkSource: ext.accLinkSource as ProjectRow['accLinkSource'],

@@ -4,19 +4,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useUser, useReverification } from '@clerk/nextjs'
 import { isReverificationCancelledError } from '@clerk/nextjs/errors'
 import { toPng } from 'html-to-image'
-import { Download, Mail, X, Check, FileText, Plus, Loader2, ExternalLink } from 'lucide-react'
+import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue, AccMember } from '@/lib/services/apsService'
-import { type GroupKey, GROUP_OPTIONS } from '@/lib/reportGrouping'
+import { type GroupKey, GROUP_OPTIONS, statusLabel } from '@/lib/reportGrouping'
 import {
   REPORT_TEMPLATES, pdfNameFor, matchHints, seedBodyLines, accIssuesUrl, segmentBodyText, resolveVariant,
   type ReportTemplate, type BodyLink,
 } from '@/lib/reportTemplates'
 import { buildEmailHtml } from '@/lib/emailHtml'
-import { generateReportPdf } from '@/lib/reportPdf'
+import type { ReportMeta } from '@/lib/server/reportHtml'
 import MultiSelect from './MultiSelect'
 import AnalyticsBars from './AnalyticsBars'
-import ReportPdfDocument from './ReportPdfDocument'
 
 // Gmail scope the draft API needs; requested when (re)connecting the Google account.
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.compose'
@@ -41,6 +40,7 @@ const HIGHLIGHT_PREVIEW: React.CSSProperties = {
 
 export default function ExportReportModal({
   open, onClose, project, issues, issueTypes, disciplines,
+  allStatuses,
 }: {
   open: boolean
   onClose: () => void
@@ -68,6 +68,7 @@ export default function ExportReportModal({
   const [templateId, setTemplateId] = useState<string>(REPORT_TEMPLATES[0].id)
   const [selIssueTypes, setSelIssueTypes] = useState<string[]>([])
   const [selDisciplines, setSelDisciplines] = useState<string[]>([])
+  const [selStatuses, setSelStatuses] = useState<string[]>([])
   const [groupBy, setGroupBy] = useState<GroupKey>('assignedTo')
   const [bodyText, setBodyText] = useState('')
   // Manually-edited link to the ACC model (only for templates with needsModelLink).
@@ -81,13 +82,13 @@ export default function ExportReportModal({
   const [manualEmail, setManualEmail] = useState('')
 
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [xlsxBusy, setXlsxBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [draftUrl, setDraftUrl] = useState<string | null>(null)
   const [needsGoogle, setNeedsGoogle] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const fetchedRef = useRef(false)
-  const pdfNodeRef = useRef<HTMLDivElement>(null)
   const emailChartRef = useRef<HTMLDivElement>(null)
 
   const template = REPORT_TEMPLATES.find(t => t.id === templateId)!
@@ -108,6 +109,7 @@ export default function ExportReportModal({
   const seedFilters = (t: ReportTemplate) => {
     setSelIssueTypes(matchHints(t.issueTypeHints, issueTypes))
     setSelDisciplines(matchHints(t.disciplineHints, disciplines))
+    setSelStatuses([]) // show all statuses by default
   }
   const seedRecipients = (t: ReportTemplate, list: AccMember[]) => {
     const lowered = t.roleHints.map(h => h.toLowerCase())
@@ -166,22 +168,33 @@ export default function ExportReportModal({
     setDraftUrl(null)
   }
 
-  // Issues after the modal's own issue-type / discipline selections
+  // Issues after the modal's own status / issue-type / discipline selections
   const effectiveIssues = useMemo(() => issues.filter(i => {
+    if (selStatuses.length && !selStatuses.includes(i.status)) return false
     if (selIssueTypes.length && !selIssueTypes.includes(i.issueType)) return false
     const disc = i.discipline?.trim() || 'No Discipline'
     if (selDisciplines.length && !selDisciplines.includes(disc)) return false
     return true
-  }), [issues, selIssueTypes, selDisciplines])
+  }), [issues, selStatuses, selIssueTypes, selDisciplines])
 
   const subject = `${resolved.title} — ${project.projectName}`
   const pdfName = pdfNameFor(template, project.projectName, project.projectNumber)
+  const xlsxName = pdfName.replace(/\.pdf$/i, '.xlsx')
   const pdfPages = Math.max(1, Math.ceil(effectiveIssues.length / 15))
-  const issueTypeLabel = selIssueTypes.length ? selIssueTypes.join(' · ') : 'כל הסוגים'
   const filtersSummary = [
+    selStatuses.length ? `סטטוס: ${selStatuses.map(statusLabel).join(', ')}` : '',
     selIssueTypes.length ? `סוג: ${selIssueTypes.join(', ')}` : '',
     selDisciplines.length ? `דיסציפלינה: ${selDisciplines.join(', ')}` : '',
   ].filter(Boolean).join(' · ') || 'ללא סינון'
+
+  // Payload the server uses to render the PDF + Excel.
+  const reportMeta: ReportMeta = {
+    projectName: project.projectName,
+    projectNumber: project.projectNumber,
+    templateTitle: resolved.title,
+    groupBy,
+    filtersSummary,
+  }
 
 
   const addManual = () => {
@@ -197,17 +210,52 @@ export default function ExportReportModal({
   const suggestions = members.filter(m => !recipients.some(r => r.email === m.email)).slice(0, 8)
   const toLine = recipients.length ? recipients.map(r => r.name).join(' · ') : '—'
 
-  // ── PDF review ──────────────────────────────────────────────────────────
+  // ── PDF review (server-rendered via headless Chromium) ────────────────────
   const handleOpenPdf = async () => {
-    if (!pdfNodeRef.current || pdfBusy) return
+    if (pdfBusy) return
     setPdfBusy(true); setActionError(null)
     try {
-      const { blobUrl } = await generateReportPdf(pdfNodeRef.current, pdfName)
-      window.open(blobUrl, '_blank')
+      const res = await fetch(`/api/projects/${project._id}/report-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meta: reportMeta, issues: effectiveIssues, pdfName }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      window.open(URL.createObjectURL(blob), '_blank')
     } catch (e) {
       setActionError('שגיאה ביצירת ה-PDF: ' + String(e))
     } finally {
       setPdfBusy(false)
+    }
+  }
+
+  // ── Excel review (download) ───────────────────────────────────────────────
+  const handleOpenXlsx = async () => {
+    if (xlsxBusy) return
+    setXlsxBusy(true); setActionError(null)
+    try {
+      const res = await fetch(`/api/projects/${project._id}/report-xlsx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issues: effectiveIssues, xlsxName }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = xlsxName
+      document.body.appendChild(a); a.click(); a.remove()
+    } catch (e) {
+      setActionError('שגיאה ביצירת ה-Excel: ' + String(e))
+    } finally {
+      setXlsxBusy(false)
     }
   }
 
@@ -244,11 +292,11 @@ export default function ExportReportModal({
     if (recipients.length === 0) { setActionError('יש לבחור לפחות נמען אחד'); return }
     setCreating(true); setActionError(null); setDraftUrl(null); setNeedsGoogle(false)
     try {
-      // 1. email HTML
-      const bodyHtml = buildEmailHtml({
+      // 1. email parts — the SERVER builds the final HTML (with hosted image URLs)
+      const emailParts = {
         bodyText, links, highlightPhrases: resolved.highlightPhrases,
         hasChart: true, hasScreenshot: !!template.bodyImage,
-      })
+      }
       // 2. chart PNG (hidden fixed-width node)
       let chartPngBase64: string | undefined
       if (emailChartRef.current) {
@@ -256,13 +304,7 @@ export default function ExportReportModal({
         const dataUrl = await toPng(emailChartRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' })
         chartPngBase64 = stripDataUrl(dataUrl)
       }
-      // 3. report PDF
-      let pdfBase64 = ''
-      if (pdfNodeRef.current) {
-        const pdf = await generateReportPdf(pdfNodeRef.current, pdfName)
-        pdfBase64 = pdf.base64
-      }
-      // 4. screenshot → base64 (CID)
+      // 3. screenshot → base64 (CID)
       let screenshotPngBase64: string | undefined
       if (template.bodyImage) {
         try {
@@ -277,19 +319,20 @@ export default function ExportReportModal({
           screenshotPngBase64 = stripDataUrl(dataUrl)
         } catch { /* screenshot optional */ }
       }
-      // 5. Self-contained preview HTML (images inlined) — saved for report history.
+      // 4. Self-contained preview HTML (images inlined) — saved for report history.
       const previewHtml = buildEmailHtml({
         bodyText, links, highlightPhrases: resolved.highlightPhrases,
         hasChart: true, hasScreenshot: !!template.bodyImage,
         inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
       })
-      // 6. POST
+      // 5. POST — server renders the PDF (Chromium) + Excel from meta/issues.
       const res = await fetch(`/api/projects/${project._id}/gmail-draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: recipients.map(r => r.email),
-          subject, bodyHtml, pdfBase64, pdfName,
+          subject, emailParts, pdfName, xlsxName,
+          meta: reportMeta, issues: effectiveIssues,
           chartPngBase64, screenshotPngBase64,
           title: resolved.title, previewHtml,
           issueCount: effectiveIssues.length, filtersSummary, groupBy,
@@ -395,6 +438,10 @@ export default function ExportReportModal({
                   >
                     {GROUP_OPTIONS.map(o => <option key={o.value} value={o.value}>{GROUP_LABELS_HE[o.value]}</option>)}
                   </select>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono uppercase text-gray-400">סטטוס</span>
+                  <MultiSelect placeholder="כל הסטטוסים" options={allStatuses} selected={selStatuses} onChange={setSelStatuses} renderLabel={statusLabel} />
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-mono uppercase text-gray-400">סוג נושא</span>
@@ -538,6 +585,21 @@ export default function ExportReportModal({
                   </span>
                   <ExternalLink size={13} className="text-gray-400 shrink-0" />
                 </button>
+                {/* Excel attachment chip (click to download) */}
+                <button
+                  onClick={handleOpenXlsx}
+                  disabled={xlsxBusy}
+                  className="inline-flex items-center gap-3 border border-gray-200 rounded-xl p-2.5 bg-gray-50 max-w-full text-right hover:border-[#1D6F42] transition disabled:opacity-60"
+                >
+                  <span className="w-9 h-10 rounded grid place-items-center bg-white border border-[#9cc6ab] text-[#1D6F42] shrink-0">
+                    {xlsxBusy ? <Loader2 size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}
+                  </span>
+                  <span className="min-w-0">
+                    <b className="block text-xs text-gray-800 truncate">{xlsxName}</b>
+                    <span className="block text-[11px] text-gray-500 truncate">לחץ להורדה · {effectiveIssues.length} נושאים</span>
+                  </span>
+                  <Download size={13} className="text-gray-400 shrink-0" />
+                </button>
               </div>
             </div>
 
@@ -567,7 +629,7 @@ export default function ExportReportModal({
                     {creating ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
                     {creating ? 'יוצר טיוטה…' : 'אשר ופתח ב-Gmail'}
                   </button>
-                  <span className="text-[11px] text-gray-400">תיווצר טיוטה עם ה-PDF מצורף</span>
+                  <span className="text-[11px] text-gray-400">תיווצר טיוטה עם קבצי ה-PDF וה-Excel מצורפים</span>
                 </div>
               )}
               {actionError && <p className="text-[11px] text-red-500">{actionError}</p>}
@@ -585,15 +647,6 @@ export default function ExportReportModal({
           <AnalyticsBars issues={effectiveIssues} groupBy={groupBy} renderName={localizeGroup} width={576} />
         </div>
       </div>
-      <ReportPdfDocument
-        ref={pdfNodeRef}
-        projectName={project.projectName}
-        projectNumber={project.projectNumber}
-        templateTitle={template.title}
-        groupBy={groupBy}
-        issues={effectiveIssues}
-        filtersSummary={filtersSummary}
-      />
     </div>
   )
 }

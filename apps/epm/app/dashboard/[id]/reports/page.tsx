@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import type { ProjectRow } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import BimReportClient from '@/components/BimReportClient'
+import { resolveAccUrl } from '@/lib/services/apsService'
 
 // Render on request so report data reflects the latest sync (not a build snapshot).
 export const dynamic = 'force-dynamic'
@@ -32,7 +33,7 @@ async function fetchProject(id: string): Promise<ProjectRow | null> {
         mondayBoard: String(ext.mondayBoardUrl ?? ''),
         driveFolder: String(ext.driveFolderUrl ?? ''),
         hoursSheet: ext.hoursSheetUrl as string | undefined,
-        acc: ext.accProjectUrl as string | undefined,
+        acc: resolveAccUrl(ext),
       },
       accProjectId: ext.accProjectId as string | undefined,
       accExternalHub: ext.accExternalHub as boolean | undefined,

@@ -104,9 +104,10 @@ function GroupBar({
                 style={{ width: `${segPct}%`, background: statusColor(s) }}
                 title={`${statusLabel(s)}: ${c}`}
               >
-                {/* Show the count when the segment is wide enough to fit it */}
-                {segPct >= 10 && (
-                  <span className="text-[9px] font-semibold leading-none" style={{ color: segmentTextColor(s) }}>
+                {/* Show the count when the segment is wide enough to fit it.
+                    White + dark halo stays legible on any status colour. */}
+                {segPct >= 9 && (
+                  <span className="text-[9px] font-bold leading-none" style={{ color: '#fff', textShadow: '0 0 2px rgba(0,0,0,0.75)' }}>
                     {c}
                   </span>
                 )}
