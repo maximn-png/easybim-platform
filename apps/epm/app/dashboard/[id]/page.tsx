@@ -4,6 +4,9 @@ import { mockProjects } from '@/lib/mockProjects'
 import { deriveHoursProgress } from '@/lib/hours'
 import ProjectDetailClient from '@/components/ProjectDetailClient'
 
+// Render on request so detail data reflects the latest sync (not a build snapshot).
+export const dynamic = 'force-dynamic'
+
 // Saved report drafts for this project (metadata only), newest first.
 async function fetchReports(id: string): Promise<ReportListItem[]> {
   if (!process.env.MONGODB_URI) return []

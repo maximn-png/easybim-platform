@@ -542,3 +542,63 @@ export async function fetchProjectBanks(ma004ItemId: string): Promise<Discipline
     total:         round(total),
   }
 }
+
+// ── Dedicated per-project boards ───────────────────────────────────────────
+// Each project owns a cluster of boards whose names all start with the project
+// number, e.g. for 22234:
+//   22234_Congress_Center            ← the main board we want
+//   22234_Congress_Center_Members    ← secondary
+//   22234_Congress_Center_ModelQA    ← secondary
+//   Subitems of 22234_Congress_Center← Monday-generated subitems board
+// We page through every board, then for each project number keep only the main
+// board: name starts with "<number>_", is not a "Subitems of …" board, and does
+// not carry a secondary suffix (_Members / _ModelQA / _Gantt).
+//   exactly one main board → return its URL    zero / many → omit (caller falls back)
+
+const MONDAY_SUBDOMAIN = 'easybim-company'
+
+// Suffixes that mark a board as a secondary view of a project, not its main board.
+// Covers member rosters, QA boards, Gantt boards (with "_" or " " separator), and
+// the per-year timesheet boards (…_2024_TS, …_2023_Timesheet).
+const SECONDARY_BOARD_SUFFIXES = ['_Members', '_ModelQA', '_Gantt', ' Gantt', '_TS', '_Timesheet']
+
+interface MondayBoardLite { id: string; name: string }
+
+// True when `name` is the project's MAIN board (not a member/QA/gantt/subitems board).
+function isMainProjectBoard(name: string, num: string): boolean {
+  if (!name.startsWith(`${num}_`)) return false   // also excludes "Subitems of …" and longer numbers like 222234
+  return !SECONDARY_BOARD_SUFFIXES.some(s => name.endsWith(s))
+}
+
+export async function fetchDedicatedBoardUrls(
+  projectNumbers: string[],
+): Promise<{ urls: Map<string, string>; ambiguous: string[] }> {
+  // 1. Page through all boards (id + name only).
+  const boards: MondayBoardLite[] = []
+  for (let page = 1; ; page++) {
+    const data = await mondayQuery(
+      `query ($page: Int!) { boards(limit: 100, page: $page, state: active) { id name } }`,
+      { page },
+    ) as { boards: MondayBoardLite[] | null }
+    const batch = data.boards ?? []
+    if (batch.length === 0) break
+    boards.push(...batch)
+    if (batch.length < 100) break
+  }
+
+  // 2. Match each project number to its single main board.
+  const urls = new Map<string, string>()
+  const ambiguous: string[] = []
+
+  for (const num of projectNumbers) {
+    if (!num) continue
+    const matches = boards.filter(b => isMainProjectBoard(b.name, num))
+    if (matches.length === 1) {
+      urls.set(num, `https://${MONDAY_SUBDOMAIN}.monday.com/boards/${matches[0].id}`)
+    } else if (matches.length > 1) {
+      ambiguous.push(`${num} (${matches.map(m => m.name).join(' | ')})`)
+    }
+  }
+
+  return { urls, ambiguous }
+}

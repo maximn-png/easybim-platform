@@ -45,11 +45,13 @@ export async function POST(req: NextRequest) {
     const [
       { connectDB },
       ProjectModule,
-      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos },
+      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls },
+      { driveEnabled, findProjectFolders },
     ] = await Promise.all([
       import('@easybim/db'),
       import('@/app/models/Project'),
       import('@/lib/services/mondayService'),
+      import('@/lib/services/driveService'),
     ])
 
     const Project = ProjectModule.default
@@ -86,6 +88,36 @@ export async function POST(req: NextRequest) {
     const accListOk = accProjects.length > 0
     const easybimIdSet = new Set(accProjects.map(p => p.id))
     const isExternalHub = (id?: string) => !!id && !easybimIdSet.has(id)
+
+    const projectNumbers = ma004Projects.map(p => p.projectNumber).filter(Boolean)
+
+    // 1c. Resolve each project's dedicated Monday board (matched by project
+    // number across all boards) — best-effort; failure must not abort the sync.
+    const dedicatedBoardUrls = new Map<string, string>()
+    try {
+      const { urls, ambiguous } = await fetchDedicatedBoardUrls(projectNumbers)
+      urls.forEach((url, num) => dedicatedBoardUrls.set(num, url))
+      if (ambiguous.length > 0) {
+        errors.push(`Dedicated board ambiguous matches: ${ambiguous.join(', ')}`)
+      }
+    } catch (err) {
+      errors.push(`Dedicated boards: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    // 1d. Resolve each project's Google Drive folder (matched by project number
+    // inside the parent folder) — best-effort; only runs when Drive is configured.
+    const driveFolders = new Map<string, { id: string; url: string }>()
+    if (driveEnabled()) {
+      try {
+        const { folders, ambiguous } = await findProjectFolders(projectNumbers)
+        folders.forEach((folder, num) => driveFolders.set(num, folder))
+        if (ambiguous.length > 0) {
+          errors.push(`Drive folder ambiguous matches: ${ambiguous.join(', ')}`)
+        }
+      } catch (err) {
+        errors.push(`Drive folders: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
 
     // 2. Collect all MA-003 item IDs — live from board_relation + stored fallbacks
     const allMa003Ids = [...new Set([
@@ -176,6 +208,12 @@ export async function POST(req: NextRequest) {
               'externalIds.mondayItemId':   p.itemId,
               'externalIds.ma003ItemId':    ma003Id ?? undefined,
               'externalIds.mainBoardUrl':   ma003?.mainBoardUrl ?? undefined,
+              'externalIds.dedicatedBoardUrl': dedicatedBoardUrls.get(p.projectNumber) ?? undefined,
+              ...(driveFolders.has(p.projectNumber) ? {
+                'externalIds.driveFolderId':  driveFolders.get(p.projectNumber)!.id,
+                'externalIds.driveFolderUrl': driveFolders.get(p.projectNumber)!.url,
+                'snapshot.sheetsLastSyncedAt': new Date(),
+              } : {}),
               ...accFields,
               'snapshot.status':             p.status,
               // Total budget = שכט סופי ÷ 300 (formula8). Only overwrite when the

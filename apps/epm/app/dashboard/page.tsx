@@ -3,6 +3,11 @@ import type { ProjectsApiResponse } from '@/lib/types'
 import { deriveHoursProgress } from '@/lib/hours'
 import DashboardClient from '@/components/DashboardClient'
 
+// Always render on request so the table reflects the latest MongoDB sync. Without
+// this the route is statically cached at build time and never updates in prod
+// (the cron writes to Mongo, but the page keeps serving the build-time snapshot).
+export const dynamic = 'force-dynamic'
+
 async function fetchProjects(): Promise<ProjectsApiResponse> {
   if (!process.env.MONGODB_URI) {
     return { projects: mockProjects, count: mockProjects.length, asOf: new Date().toISOString(), lastSyncedAt: null }
@@ -31,6 +36,7 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
         displayOrder: doc.displayOrder as number | undefined,
         links: {
           mondayBoard: String(ext.mondayBoardUrl ?? ''),
+          dedicatedBoard: ext.dedicatedBoardUrl as string | undefined,
           mainBoard: ext.mainBoardUrl as string | undefined,
           driveFolder: String(ext.driveFolderUrl ?? ''),
           hoursSheet: ext.hoursSheetUrl as string | undefined,

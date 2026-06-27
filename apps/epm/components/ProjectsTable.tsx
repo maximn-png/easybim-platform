@@ -74,13 +74,14 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-white/80 shadow-sm">
-      <table className="w-full table-fixed border-collapse text-sm">
+    <div className="overflow-x-auto">
+      <div className="inline-block min-w-full md:min-w-0 mx-auto rounded-2xl border border-white/80 shadow-sm">
+      <table className="table-fixed border-collapse text-sm">
         <colgroup>
           {/* checkbox */}
           <col className="w-8" />
-          {/* Project Name — takes remaining width */}
-          <col />
+          {/* Project Name — capped so it no longer dwarfs the other columns */}
+          <col className="w-[240px]" />
           {/* Proj # */}
           <col className="w-[68px]" />
           {/* Status */}
@@ -123,8 +124,8 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
             <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Mgmt<ColInfo board="MA-003" column="Model MGMT" /></th>
             <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">MEP<br/>Coord<ColInfo board="MA-003" column="MEP Coordination" /></th>
             <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Modelling<ColInfo board="MA-003" column="Modelling / BIM Coord" align="right" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Monday<ColInfo board="MA-003" column="Main Board" note="Opens the project's main Monday board." align="right" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Drive<ColInfo note="Coming soon" align="right" /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Monday<ColInfo note="Opens the project's dedicated Monday board (matched by project number), falling back to the MA-003 main board, then MA-004." align="right" /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Drive<ColInfo note="Opens the project's Google Drive folder (matched by project number)." align="right" /></th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">ACC<ColInfo align="right" note={
               <div className="space-y-1.5">
                 <p className="flex items-center gap-1.5">
@@ -166,6 +167,7 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                 <td className="px-3 py-1.5 font-medium" dir="rtl">
                   <Link
                     href={`/dashboard/${project._id}`}
+                    title={project.projectName}
                     className="block truncate text-[#1e248c] hover:underline"
                     onClick={e => e.stopPropagation()}
                   >
@@ -210,14 +212,17 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                     falling back to the MA-004 board when no main board is set */}
                 <td className="px-2 py-1.5 text-center">
                   {(() => {
-                    const href = project.links.mainBoard || project.links.mondayBoard
+                    const href = project.links.dedicatedBoard || project.links.mainBoard || project.links.mondayBoard
+                    const title = project.links.dedicatedBoard
+                      ? 'Open dedicated Monday board'
+                      : project.links.mainBoard ? 'Open main Monday board' : 'Open MA-004 board'
                     return href ? (
                       <a
                         href={href}
                         target="_blank"
                         rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
-                        title={project.links.mainBoard ? 'Open main Monday board' : 'Open MA-004 board'}
+                        title={title}
                         className="inline-flex items-center justify-center w-7 h-7 rounded text-[#1e248c] bg-blue-50 hover:bg-blue-100 transition-colors"
                       >
                         <LayoutGrid size={13} />
@@ -233,18 +238,27 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                   })()}
                 </td>
 
-                {/* Drive Folder — icon only */}
+                {/* Drive Folder — icon only; disabled grey state when no folder is linked */}
                 <td className="px-2 py-1.5 text-center">
-                  <a
-                    href={project.links.driveFolder}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    title="Open Google Drive Folder"
-                    className="inline-flex items-center justify-center w-7 h-7 rounded text-[#00687a] bg-teal-50 hover:bg-teal-100 transition-colors"
-                  >
-                    <FolderOpen size={13} />
-                  </a>
+                  {project.links.driveFolder ? (
+                    <a
+                      href={project.links.driveFolder}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      title="Open Google Drive Folder"
+                      className="inline-flex items-center justify-center w-7 h-7 rounded text-[#00687a] bg-teal-50 hover:bg-teal-100 transition-colors"
+                    >
+                      <FolderOpen size={13} />
+                    </a>
+                  ) : (
+                    <span
+                      title="No Google Drive folder linked"
+                      className="inline-flex items-center justify-center w-7 h-7 rounded text-gray-300 bg-gray-50 cursor-not-allowed"
+                    >
+                      <FolderOpen size={13} />
+                    </span>
+                  )}
                 </td>
 
                 {/* Forma / BIM360 / ACC — icon only. Amber + corner dot when the
@@ -277,6 +291,7 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }

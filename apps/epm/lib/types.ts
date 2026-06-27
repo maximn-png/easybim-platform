@@ -6,6 +6,7 @@ export interface TeamMemberPayload {
 
 export interface ProjectLinks {
   mondayBoard: string
+  dedicatedBoard?: string   // The project's own Monday board, matched by project number
   mainBoard?: string   // MA-003 "Main Board" link — the project's main Monday board
   driveFolder: string
   hoursSheet?: string

@@ -14,6 +14,7 @@ export interface ExternalIds {
   mondayBoardId:  string          // MA-004 board ID (7321609006)
   mondayBoardUrl: string          // MA-004 board URL
   mainBoardUrl?:  string          // The project's main Monday board (MA-003 "Main Board" link column)
+  dedicatedBoardUrl?: string      // The project's own Monday board, matched by project number across all boards
   mondayItemId?:  string          // MA-004 item ID for this project
   ma003ItemId?:   string          // MA-003 item ID (links TS-001 timesheet rows)
   driveFolderId?: string          // Google Drive folder ID (Phase 3)
@@ -92,6 +93,7 @@ const ExternalIdsSchema = new Schema<ExternalIds>(
     mondayBoardId:  { type: String, required: true },
     mondayBoardUrl: { type: String, required: true },
     mainBoardUrl:   String,
+    dedicatedBoardUrl: String,
     mondayItemId:   String,
     ma003ItemId:    String,
     driveFolderId:  String,

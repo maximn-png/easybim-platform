@@ -3,6 +3,9 @@ import type { ProjectRow } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import BimReportClient from '@/components/BimReportClient'
 
+// Render on request so report data reflects the latest sync (not a build snapshot).
+export const dynamic = 'force-dynamic'
+
 async function fetchProject(id: string): Promise<ProjectRow | null> {
   if (!process.env.MONGODB_URI) {
     return mockProjects.find(p => p._id === id) ?? mockProjects[0] ?? null
