@@ -72,7 +72,9 @@ const TOOLS = [
       'Autonomous agents that run your workflows. Peacock drafts and routes weekly LinkedIn posts through Monday — you just approve.',
     icon: Crown,
     href: process.env.NEXT_PUBLIC_AGENTS_URL || '#',
-    status: 'live' as const,
+    // Only advertise as Live when the agents URL is actually configured for this
+    // environment — otherwise show "coming soon" instead of a dead `#` link.
+    status: (process.env.NEXT_PUBLIC_AGENTS_URL ? 'live' : 'coming-soon') as 'live' | 'coming-soon',
     color: '#7c3aed',
   },
 ]
