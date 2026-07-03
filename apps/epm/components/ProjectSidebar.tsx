@@ -48,7 +48,7 @@ export default function ProjectSidebar({ project, onClose }: ProjectSidebarProps
 
       {/* Progress */}
       <SidebarRow label="Milestone">
-        <ProgressBar value={project.milestoneProgress} />
+        <ProgressBar value={project.milestoneProgress} higherIsBetter />
       </SidebarRow>
       <SidebarRow label="Hours">
         <ProgressBar value={project.hoursProgress} />

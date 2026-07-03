@@ -38,6 +38,9 @@ export interface ReportTemplate {
   disciplineHints: string[]
   roleHints: string[]     // matched against ACC member roles to preselect recipients
   pdfBaseName: string     // PDF file base name (project number appended at runtime)
+  // When true, selecting this template resets the export to ALL issues (no
+  // filters) grouped by discipline — e.g. a final project-wide summary.
+  forceAllIssues?: boolean
 }
 
 export const REPORT_TEMPLATES: ReportTemplate[] = [
@@ -136,6 +139,25 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
     disciplineHints: ['מיזוג', 'חשמל', 'אינסטלציה'],
     roleHints: ['Mechanical', 'Electrical', 'Plumbing', 'MEP'],
     pdfBaseName: 'Coord_MEP_Systems',
+  },
+  {
+    id: 'final-quality-coordination',
+    icon: '✓',
+    title: 'דוח סופי לפרויקט - איכות המודלים ותאום מערכות',
+    desc: 'סיכום סופי: סיום סבבי תיאום מערכות, אדריכלות וקונסטרוקציה — כל ההערות לפי דיסציפלינה.',
+    bodyLines: [
+      'שלום רב,',
+      'ברצוני לעדכן על סיומו הרשמי של תהליך ניהול המודלים (BIM), יחד עם תיאום המערכות, האדריכלות והקונסטרוקציה בפרויקט {project}.',
+      'במסגרת עבודתנו, הושלמו במלואם כלל סבבי התיאום המתוכננים. מרבית הערות איכות המודלים והערות תיאום המערכות אשר תועדו במערכת טופלו, יושמו ונסגרו כנדרש.',
+      'ביחס למספר מצומצם של הערות אשר נותרו בסטטוס "פתוח" – מובהר בזאת כי סופקו על ידינו כלל הפתרונות ההנדסיים הנדרשים עבורן. החל משלב זה, האחריות על יישום והטמעת פתרונות אלו הלכה למעשה בתוכניות העבודה, חלה באופן בלעדי על מתכנני הפרויקט, כל אחד בתחומו.',
+      'מצורפים למייל זה דוח הערות מסכם וכן סט תוכניות סופיות ומוחלטות מטעמנו.',
+    ],
+    linkKinds: [],
+    issueTypeHints: [],
+    disciplineHints: [],
+    roleHints: ['Architect', 'Structural', 'Mechanical', 'Electrical', 'Plumbing', 'MEP'],
+    pdfBaseName: 'Final_Report_Quality_Coordination',
+    forceAllIssues: true,
   },
 ]
 

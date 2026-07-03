@@ -1,17 +1,22 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import {
   ChevronRight, Filter, X, FileDown, AlertCircle, Loader2,
-  ArrowUp, ArrowDown, ArrowUpDown,
+  ArrowUp, ArrowDown, ArrowUpDown, Cloud,
 } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue } from '@/lib/services/apsService'
 import {
-  GROUP_OPTIONS, type GroupKey, groupValue,
+  buildGroupOptions, groupLabelFor, type GroupKey, groupValue,
   statusColor, statusLabel, segmentTextColor,
 } from '@/lib/reportGrouping'
+
+// The reports page always defaults its "Stack by" to the project's discipline
+// dimension (as it was before). These labels identify it across ACC naming
+// conventions, incl. the Hebrew "תחום" used on imported projects.
+const DISCIPLINE_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסציפלינה', 'משמעת']
 import IssuesByMonthChart from './IssuesByMonthChart'
 import MultiSelect from './MultiSelect'
 import ExportReportModal from './ExportReportModal'
@@ -72,12 +77,14 @@ function GroupCard({ name, count, total }: { name: string; count: number; total:
 // Bar length is proportional to the group's share of the largest group (maxTotal),
 // so groups with more issues render visibly longer.
 function GroupBar({
-  name, issues, allStatuses, maxTotal,
+  name, issues, allStatuses, maxTotal, selected, onSelect,
 }: {
   name: string
   issues: AccIssue[]
   allStatuses: string[]
   maxTotal: number
+  selected: { group: string; status?: string } | null
+  onSelect: (group: string, status?: string) => void
 }) {
   const total = issues.length
   if (total === 0) return null
@@ -86,10 +93,18 @@ function GroupBar({
     allStatuses.map(s => [s, issues.filter(i => i.status === s).length])
   )
   const fillPct = maxTotal > 0 ? (total / maxTotal) * 100 : 0
+  const isGroupSel = selected?.group === name
+  const dim = selected != null && !isGroupSel // fade non-selected groups
 
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-xs text-gray-600 w-32 shrink-0 truncate" title={name}>{name}</span>
+    <div className={`flex items-center gap-3 transition-opacity ${dim ? 'opacity-40 hover:opacity-100' : ''}`}>
+      <button
+        onClick={() => onSelect(name)}
+        title={`Filter the table by ${name}`}
+        className={`text-xs w-32 shrink-0 truncate text-left cursor-pointer hover:text-[#1e248c] transition-colors ${isGroupSel && !selected?.status ? 'text-[#1e248c] font-semibold' : 'text-gray-600'}`}
+      >
+        {name}
+      </button>
       {/* Track spans full width; the filled portion scales with group size */}
       <div className="flex-1 h-5 rounded-full bg-gray-100 overflow-hidden">
         <div className="flex h-full gap-px rounded-full overflow-hidden" style={{ width: `${fillPct}%` }}>
@@ -97,12 +112,17 @@ function GroupBar({
             const c = countByStatus[s] ?? 0
             if (c === 0) return null
             const segPct = (c / total) * 100
+            const segSel = isGroupSel && selected?.status === s
             return (
               <div
                 key={s}
-                className="flex items-center justify-center overflow-hidden"
-                style={{ width: `${segPct}%`, background: statusColor(s) }}
-                title={`${statusLabel(s)}: ${c}`}
+                onClick={() => onSelect(name, s)}
+                className="flex items-center justify-center overflow-hidden cursor-pointer"
+                style={{
+                  width: `${segPct}%`, background: statusColor(s),
+                  outline: segSel ? '2px solid #1e248c' : 'none', outlineOffset: '-2px',
+                }}
+                title={`${statusLabel(s)}: ${c} — click to filter the table`}
               >
                 {/* Show the count when the segment is wide enough to fit it.
                     White + dark halo stays legible on any status colour. */}
@@ -138,6 +158,8 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
   const [filterDisciplines, setFilterDisciplines] = useState<string[]>([])
   const [selectedIssue, setSelectedIssue] = useState<AccIssue | null>(null)
   const [groupBy, setGroupBy] = useState<GroupKey>('discipline')
+  // Click-to-filter from the chart: a chosen group (+ optional status segment).
+  const [chartSel, setChartSel] = useState<{ group: string; status?: string } | null>(null)
 
   // Per-column table filters (affect table only)
   const [colText, setColText] = useState<{ title: string; description: string }>({ title: '', description: '' })
@@ -145,14 +167,12 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
     assignedTo: [], discipline: [], status: [], issueType: [],
   })
 
-  // Table sorting
-  const [sortCol, setSortCol] = useState<string | null>(null)
+  // Table sorting — default to the ACC issue number, ascending.
+  const [sortCol, setSortCol] = useState<string | null>('displayId')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   // Export Report modal
   const [exportOpen, setExportOpen] = useState(false)
-
-  const groupLabel = GROUP_OPTIONS.find(o => o.value === groupBy)!.label
 
   useEffect(() => {
     fetch(`/api/projects/${project._id}/issues`)
@@ -181,6 +201,28 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
     [issues]
   )
 
+  // Stack-by options are dynamic: base dimensions + every ACC custom attribute
+  // present on this project's issues (Discipline, Phase, …) + Due Date.
+  const groupOptions = useMemo(() => buildGroupOptions(normalizedIssues), [normalizedIssues])
+  const groupLabel = groupLabelFor(groupBy, groupOptions)
+
+  // Always default the stack-by to the project's discipline dimension, for every
+  // project type. No persistence — every visit starts on discipline (as before);
+  // the user can still switch it for the current view. Falls back to Assigned To
+  // only if a project genuinely has no discipline attribute.
+  const stackInited = useRef(false)
+  useEffect(() => {
+    // Wait until issues have actually loaded — the base options exist even with
+    // zero issues, so gating on groupOptions would fire before the custom
+    // attributes (incl. Discipline) are known and lock onto the wrong default.
+    if (stackInited.current || normalizedIssues.length === 0) return
+    stackInited.current = true
+    const discipline = groupOptions.find(o =>
+      o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase())
+    )
+    setGroupBy(discipline ? discipline.value : 'assignedTo')
+  }, [normalizedIssues, groupOptions])
+
   // Unique filter options
   const assignees = useMemo(() =>
     [...new Set(normalizedIssues.map(i => i.assignedTo!))].sort(),
@@ -207,6 +249,9 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
     return true
   }), [normalizedIssues, filterAssignees, filterTypes, filterDisciplines])
 
+  // A chart selection is only meaningful for the current grouping / global filters.
+  useEffect(() => { setChartSel(null) }, [groupBy, filterAssignees, filterTypes, filterDisciplines])
+
   // Group by the chosen dimension for bars + top cards
   const grouped = useMemo(() => {
     const map = new Map<string, AccIssue[]>()
@@ -226,6 +271,8 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
   // ── Table: per-column filters + sorting (applied on top of global filters) ──
   const sortValueOf = (i: AccIssue, col: string): string => {
     switch (col) {
+      // Zero-pad the ACC number so it sorts numerically as a string (2 before 14).
+      case 'displayId':   return String(parseInt(i.displayId ?? '', 10) || 0).padStart(12, '0')
       case 'title':       return i.title.toLowerCase()
       case 'assignedTo':  return (i.assignedTo ?? '').toLowerCase()
       case 'discipline':  return (i.discipline ?? '').toLowerCase()
@@ -233,12 +280,18 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
       case 'status':      return statusLabel(i.status).toLowerCase()
       case 'issueType':   return (i.issueType ?? '').toLowerCase()
       case 'createdAt':   return i.createdAt
+      case 'createdBy':   return (i.createdBy ?? '').toLowerCase()
       default:            return ''
     }
   }
 
   const tableRows = useMemo(() => {
     const rows = filtered.filter(i => {
+      // Chart click-to-filter: restrict to the selected group (+ status segment).
+      if (chartSel) {
+        if (groupValue(i, groupBy) !== chartSel.group) return false
+        if (chartSel.status && i.status !== chartSel.status) return false
+      }
       if (colText.title && !i.title.toLowerCase().includes(colText.title.toLowerCase())) return false
       if (colText.description && !(i.description ?? '').toLowerCase().includes(colText.description.toLowerCase())) return false
       if (colSel.assignedTo.length && !colSel.assignedTo.includes(i.assignedTo ?? 'Unassigned')) return false
@@ -255,7 +308,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
       })
     }
     return rows
-  }, [filtered, colText, colSel, sortCol, sortDir])
+  }, [filtered, colText, colSel, sortCol, sortDir, chartSel, groupBy])
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
@@ -303,11 +356,29 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <Breadcrumb project={project} />
-            <h1 className="text-3xl font-bold text-[#1e248c] mt-1">
-              Reports –{' '}
-              <span dir="rtl" className="inline-block">{project.projectName}</span>
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">Project Status Update · Generated {today}</p>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              <h1 className="text-3xl font-bold text-[#1e248c]">
+                Reports –{' '}
+                <span dir="rtl" className="inline-block">{project.projectName}</span>
+              </h1>
+              <span className="text-sm font-bold px-2.5 py-1 rounded-full bg-white/70 border border-[#1e248c]/15 text-[#1e248c] whitespace-nowrap">
+                #{project.projectNumber}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              <p className="text-sm text-gray-500">Project Status Update · Generated {today}</p>
+              {project.links.acc && (
+                <a
+                  href={project.links.acc}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={project.accExternalHub ? 'Open in ACC (external / client hub)' : 'Open the project in Autodesk ACC'}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-[#1e248c] hover:text-[#44b8d3] transition-colors"
+                >
+                  <Cloud size={13} /> Open in ACC
+                </a>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-3 self-start flex-wrap">
             {!isExternal && (
@@ -343,7 +414,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
               onChange={e => setGroupBy(e.target.value as GroupKey)}
               className="border border-[#1e248c]/30 rounded-lg px-3 py-1.5 text-sm bg-[#e7eefe]/60 font-medium text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
             >
-              {GROUP_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              {groupOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
 
@@ -472,12 +543,24 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                 <div className="glass-card rounded-2xl p-5 lg:col-span-3 flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <h2 className="font-semibold text-[#1e248c] text-sm">Issues by {groupLabel}</h2>
-                    <span className="text-xs text-gray-400">{grouped.length} {grouped.length === 1 ? 'group' : 'groups'}</span>
+                    <span className="text-xs text-gray-400">{grouped.length} {grouped.length === 1 ? 'group' : 'groups'} · click to filter</span>
                   </div>
 
                   <div className="flex flex-col gap-3">
                     {grouped.map(([name, iss]) => (
-                      <GroupBar key={name} name={name} issues={iss} allStatuses={allStatuses} maxTotal={maxGroupTotal} />
+                      <GroupBar
+                        key={name}
+                        name={name}
+                        issues={iss}
+                        allStatuses={allStatuses}
+                        maxTotal={maxGroupTotal}
+                        selected={chartSel}
+                        onSelect={(group, status) =>
+                          setChartSel(prev =>
+                            prev && prev.group === group && prev.status === status ? null : { group, status }
+                          )
+                        }
+                      />
                     ))}
                   </div>
 
@@ -500,13 +583,26 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
             {/* BIM Issues table */}
             {totalFiltered > 0 && (
               <div className="glass-card rounded-2xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h2 className="font-semibold text-[#1e248c] text-sm">
-                    BIM Issues
-                    <span className="ml-2 text-[11px] font-normal text-gray-400">
-                      {tableRows.length} of {issues.length}
-                    </span>
-                  </h2>
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="font-semibold text-[#1e248c] text-sm">
+                      BIM Issues
+                      <span className="ml-2 text-[11px] font-normal text-gray-400">
+                        {tableRows.length} of {issues.length}
+                      </span>
+                    </h2>
+                    {chartSel && (
+                      <button
+                        onClick={() => setChartSel(null)}
+                        title="Clear chart filter"
+                        className="inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full bg-[#e7eefe] text-[#1e248c] hover:bg-[#d8ddff] transition-colors"
+                      >
+                        <span className="text-[10px] opacity-70">chart:</span>
+                        {chartSel.group}{chartSel.status ? ` · ${statusLabel(chartSel.status)}` : ''}
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
                   {hasColFilters && (
                     <button
                       onClick={clearColFilters}
@@ -520,7 +616,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="bg-gray-50/80 border-b border-gray-100">
-                        <th className="px-4 py-2.5 text-left font-medium text-gray-500 w-8">#</th>
+                        <SortHeader col="displayId" label="#" />
                         <SortHeader col="title" label="Title" />
                         <SortHeader col="assignedTo" label="Assigned To" />
                         <SortHeader col="discipline" label="Discipline" />
@@ -528,6 +624,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                         <SortHeader col="status" label="Status" align="center" />
                         <SortHeader col="issueType" label="Type" />
                         <SortHeader col="createdAt" label="Created" />
+                        <SortHeader col="createdBy" label="Created By" />
                       </tr>
                       {/* Per-column filter row */}
                       <tr className="bg-white border-b border-gray-100 align-top">
@@ -571,6 +668,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                             onChange={v => setColSel(c => ({ ...c, issueType: v }))} />
                         </th>
                         <th />
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
@@ -586,7 +684,22 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                                 : i % 2 === 0 ? 'bg-white hover:bg-blue-50/40' : 'bg-blue-50/20 hover:bg-blue-50/50'
                             }`}
                           >
-                            <td className="px-4 py-2.5 text-gray-400 font-mono">{i + 1}</td>
+                            <td className="px-4 py-2.5 font-mono whitespace-nowrap">
+                              {issue.url ? (
+                                <a
+                                  href={issue.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={e => e.stopPropagation()}
+                                  title="Open this issue in ACC"
+                                  className="text-[#1e248c] hover:text-[#44b8d3] hover:underline"
+                                >
+                                  #{issue.displayId ?? '—'}
+                                </a>
+                              ) : (
+                                <span className="text-gray-500">#{issue.displayId ?? '—'}</span>
+                              )}
+                            </td>
                             <td className="px-4 py-2.5 font-medium text-gray-800 max-w-[200px] truncate" title={issue.title}>{issue.title}</td>
                             <td className="px-4 py-2.5 text-gray-600">{issue.assignedTo ?? '—'}</td>
                             <td className="px-4 py-2.5 text-gray-600">{issue.discipline || '—'}</td>
@@ -606,12 +719,13 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                             <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap">
                               {new Date(issue.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
                             </td>
+                            <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{issue.createdBy ?? '—'}</td>
                           </tr>
                         )
                       })}
                       {tableRows.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                          <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                             No issues match the column filters.
                           </td>
                         </tr>
@@ -643,6 +757,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                       <div><p className="text-gray-400">Type</p><p className="font-medium text-gray-700 mt-0.5">{selectedIssue.issueType}</p></div>
                       <div><p className="text-gray-400">Discipline</p><p className="font-medium text-gray-700 mt-0.5">{selectedIssue.discipline || '—'}</p></div>
                       <div><p className="text-gray-400">Created</p><p className="font-medium text-gray-700 mt-0.5">{new Date(selectedIssue.createdAt).toLocaleDateString('en-GB')}</p></div>
+                      <div><p className="text-gray-400">Created By</p><p className="font-medium text-gray-700 mt-0.5">{selectedIssue.createdBy ?? '—'}</p></div>
                     </div>
                     {selectedIssue.description && (
                       <p className="text-xs text-gray-600 bg-white/70 rounded-lg p-3 leading-relaxed">{selectedIssue.description}</p>
@@ -663,11 +778,15 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         project={project}
-        issues={filtered}
+        issues={normalizedIssues}
         allStatuses={allStatuses}
         issueTypes={issueTypes}
         disciplines={disciplines}
         assignees={assignees}
+        defaultGroupBy={groupBy}
+        defaultAssignees={filterAssignees}
+        defaultTypes={filterTypes}
+        defaultDisciplines={filterDisciplines}
       />
     </div>
   )

@@ -13,6 +13,9 @@ export interface ReportMeta {
   projectNumber?: string
   templateTitle:  string
   groupBy:        GroupKey
+  // Display label for the grouping (resolved client-side, incl. Hebrew + dynamic
+  // custom-attribute names). Falls back to the static option label / raw key.
+  groupLabel?:    string
   filtersSummary: string
 }
 
@@ -66,10 +69,19 @@ function issueRows(issues: AccIssue[]): string {
   if (issues.length === 0) {
     return `<tr><td colspan="7" style="text-align:center;color:#9ca3af">אין נושאים</td></tr>`
   }
-  return issues.map((i, idx) => {
+  // Sort by the real ACC issue number (numeric), matching the reports page.
+  const sorted = [...issues].sort(
+    (a, b) => (parseInt(a.displayId ?? '', 10) || 0) - (parseInt(b.displayId ?? '', 10) || 0)
+  )
+  return sorted.map((i) => {
     const pill = `<span style="display:inline-block;padding:1px 6px;border-radius:999px;font-size:9px;font-weight:600;background:${statusColor(i.status)};color:${segmentTextColor(i.status)}">${esc(statusLabel(i.status))}</span>`
+    // Real ACC number, linked to the exact issue in ACC (Chromium keeps <a> clickable in the PDF).
+    const numText = i.displayId ? `#${esc(i.displayId)}` : '—'
+    const numCell = i.url
+      ? `<a href="${esc(i.url)}" style="color:#1e248c;font-weight:600;text-decoration:underline">${numText}</a>`
+      : `<span style="color:#6b7280">${numText}</span>`
     return `<tr>
-      <td style="color:#9ca3af">${idx + 1}</td>
+      <td style="white-space:nowrap">${numCell}</td>
       <td>${esc(i.title)}</td>
       <td dir="rtl" style="white-space:pre-wrap">${esc(i.description?.trim() || '—')}</td>
       <td>${esc(i.assignedTo ?? '—')}</td>
@@ -86,7 +98,9 @@ export function buildReportHtml(
   opts: { fontCss: string; logoSrc: string },
 ): string {
   const today = new Date().toLocaleDateString('he-IL', { day: '2-digit', month: 'long', year: 'numeric' })
-  const groupLabel = GROUP_OPTIONS.find(o => o.value === meta.groupBy)?.label ?? meta.groupBy
+  const groupLabel = meta.groupLabel
+    || GROUP_OPTIONS.find(o => o.value === meta.groupBy)?.label
+    || (meta.groupBy.startsWith('attr:') ? meta.groupBy.slice(5) : meta.groupBy)
   const sub = `${esc(meta.projectName)}${meta.projectNumber ? ` · ${esc(meta.projectNumber)}` : ''}`
 
   return `<!doctype html>

@@ -34,10 +34,25 @@ const ALIASES = {
   discipline:  ['discipline'],
   description: ['description'],
   assignedTo:  ['assigned to', 'assignee'],
+  createdBy:   ['created by', 'creator', 'author', 'reported by', 'opened by'],
   createdAt:   ['created on', 'created at', 'created date', 'created'],
   updatedAt:   ['updated on', 'updated at'],
   closedAt:    ['closed at', 'closed on'],
+  dueDate:     ['due date', 'due on', 'due', 'due date/time'],
 } as const
+
+// Headers we map to fixed AccIssue fields — every OTHER column (plus Discipline)
+// becomes a generic custom attribute so the reports page can stack by it.
+const CORE_HEADERS = new Set<string>([
+  ...ALIASES.id, ...ALIASES.title, ...ALIASES.status, ...ALIASES.type,
+  ...ALIASES.category, ...ALIASES.description, ...ALIASES.assignedTo, ...ALIASES.createdBy,
+  ...ALIASES.createdAt, ...ALIASES.updatedAt, ...ALIASES.closedAt, ...ALIASES.dueDate,
+])
+
+// "root cause" → "Root Cause", "discipline" → "Discipline"
+function titleCase(h: string): string {
+  return h.split(/\s+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
+}
 
 const str = (v: unknown): string =>
   v == null ? '' : String(v).replace(/\s*\n\s*/g, ' ').trim()
@@ -86,9 +101,11 @@ export function parseIssuesWorkbook(buf: ArrayBuffer | Buffer): ParseResult {
     discipline:  idxOf(ALIASES.discipline),
     description: idxOf(ALIASES.description),
     assignedTo:  idxOf(ALIASES.assignedTo),
+    createdBy:   idxOf(ALIASES.createdBy),
     createdAt:   idxOf(ALIASES.createdAt),
     updatedAt:   idxOf(ALIASES.updatedAt),
     closedAt:    idxOf(ALIASES.closedAt),
+    dueDate:     idxOf(ALIASES.dueDate),
   }
 
   // ACC embeds each issue's deep link as a hyperlink on the "ID" (#) cell. Map it
@@ -114,6 +131,17 @@ export function parseIssuesWorkbook(buf: ArrayBuffer | Buffer): ParseResult {
     if (!title && !status) continue
     total++
 
+    // Every non-core column (plus Discipline) → a generic custom attribute, so the
+    // reports page can stack by whatever dimensions this export happens to carry.
+    const attributes: Record<string, string> = {}
+    headers.forEach((h, i) => {
+      if (!h) return
+      if (h === 'discipline' || !CORE_HEADERS.has(h)) {
+        const val = str(row[i])
+        if (val) attributes[titleCase(h)] = val
+      }
+    })
+
     const idVal = str(get(ix.id))
     issues.push({
       id:          idVal || `row-${r}`,
@@ -125,9 +153,12 @@ export function parseIssuesWorkbook(buf: ArrayBuffer | Buffer): ParseResult {
       discipline:  str(get(ix.discipline)),
       description: str(get(ix.description)),
       assignedTo:  str(get(ix.assignedTo)) || null,
+      createdBy:   str(get(ix.createdBy)) || null,
       createdAt:   toIso(get(ix.createdAt)) || new Date(0).toISOString(),
       updatedAt:   toIso(get(ix.updatedAt)) || null,
       closedAt:    toIso(get(ix.closedAt)) || null,
+      dueDate:     toIso(get(ix.dueDate)) || null,
+      attributes,
     })
   }
 

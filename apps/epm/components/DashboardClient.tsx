@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { Search, RefreshCw } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import FilterTabs from './FilterTabs'
 import ProjectsTable from './ProjectsTable'
+import PersonFilter, { type FilterPerson } from './PersonFilter'
 
 interface DashboardClientProps {
   projects: ProjectRow[]
@@ -12,6 +13,9 @@ interface DashboardClientProps {
 }
 
 type StatusFilter = ProjectRow['status'] | null
+
+// Persist the person filter per-browser so it survives navigation / reloads.
+const PERSON_FILTER_KEY = 'epm:projectsPersonFilter'
 
 function sortByProjectNumber(a: ProjectRow, b: ProjectRow): number {
   const numA = parseInt(a.projectNumber.replace(/[^0-9]/g, '')) || 0
@@ -31,6 +35,7 @@ function formatSyncTime(iso: string): string {
 export default function DashboardClient({ projects, lastSyncedAt }: DashboardClientProps) {
   const [activeStatus, setActiveStatus] = useState<StatusFilter>('Working on it')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedPerson, setSelectedPerson] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ synced: number; durationMs: number } | { error: string } | null>(null)
 
@@ -61,9 +66,42 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
     return result
   }, [projects])
 
+  // Unique people across all three roles (deduped by name), for the person filter.
+  const people = useMemo<FilterPerson[]>(() => {
+    const map = new Map<string, FilterPerson>()
+    for (const p of projects) {
+      for (const m of [p.bimManager, p.mepCoordinator, p.bimModeller]) {
+        if (m?.name && !map.has(m.name)) map.set(m.name, { name: m.name, avatarUrl: m.avatarUrl })
+      }
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [projects])
+
+  // Restore the saved person filter on mount (only if that person still exists).
+  useEffect(() => {
+    const saved = localStorage.getItem(PERSON_FILTER_KEY)
+    if (saved && people.some(p => p.name === saved)) setSelectedPerson(saved)
+  }, [people])
+
+  // Persist changes. Skip the very first run so we don't clear the saved value
+  // before the restore effect above has read it.
+  const persistReady = useRef(false)
+  useEffect(() => {
+    if (!persistReady.current) {
+      persistReady.current = true
+      return
+    }
+    if (selectedPerson) localStorage.setItem(PERSON_FILTER_KEY, selectedPerson)
+    else localStorage.removeItem(PERSON_FILTER_KEY)
+  }, [selectedPerson])
+
   const filtered = useMemo(() => {
     const list = projects.filter(p => {
       if (activeStatus && p.status !== activeStatus) return false
+      if (selectedPerson) {
+        const assigned = [p.bimManager, p.mepCoordinator, p.bimModeller].some(m => m?.name === selectedPerson)
+        if (!assigned) return false
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase()
         return (
@@ -74,7 +112,7 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
       return true
     })
     return [...list].sort(sortByProjectNumber)
-  }, [projects, activeStatus, searchQuery])
+  }, [projects, activeStatus, searchQuery, selectedPerson])
 
   return (
     <div className="flex flex-col gap-5">
@@ -127,10 +165,16 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
         </div>
       </div>
 
+      {/* Quick filter by person — click a face to show only their projects (any role) */}
+      <div className="-mt-1">
+        <PersonFilter people={people} selected={selectedPerson} onSelect={setSelectedPerson} />
+      </div>
+
       {/* Result count */}
       <p className="text-xs text-gray-500 -mt-2">
         Showing {filtered.length} of {projects.length} projects
         {activeStatus && ` · ${activeStatus}`}
+        {selectedPerson && ` · ${selectedPerson}`}
       </p>
 
       {/* Table */}

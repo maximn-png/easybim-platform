@@ -6,6 +6,12 @@ const MONDAY_API_URL = 'https://api.monday.com/v2'
 
 const MA004_BOARD_ID = '7321609006'
 
+// MI-001-MilestonesProjects: each item is a milestone (belonging to one discipline
+// via color_mm06m73n) linked to its MA-004 project via board_relation_mkywzj9x. Each
+// milestone's subitems are "bills" (חשבונות) whose submission status (color_mkyk8mbx)
+// tells us whether the bill is done.
+const MILESTONES_BOARD_ID = '18393427964'
+
 // TS-001/003/004/005 share identical column structure (board_relation_mkqd3xgf + numeric).
 // TS-002 (InteriorBIM) uses a dropdown instead of board_relation — cannot be mapped to MA-003 IDs.
 const TIMESHEET_BOARD_IDS = [
@@ -541,6 +547,142 @@ export async function fetchProjectBanks(ma004ItemId: string): Promise<Discipline
     superposition: round(superpositionPrice / 300),
     total:         round(total),
   }
+}
+
+// ── Milestone completion stats from MI-001-MilestonesProjects ──────────────
+// For each project we compute the % of "bills" (milestone subitems) that are
+// completed — per discipline and pooled overall. A bill counts as completed when
+// its submission status (color_mkyk8mbx) is "Submitted" or "Work completed";
+// everything else (Working on it, Future Steps, Rejected, ?, blank) is incomplete.
+// Bills are grouped by their parent milestone's team (color_mm06m73n).
+// Milestones join to projects via board_relation → MA-004 item id, which the
+// EPM project stores as externalIds.mondayItemId.
+
+// Submission-status labels that mean the bill is done.
+const MILESTONE_COMPLETED_STATUSES = new Set(['Submitted', 'Work completed'])
+
+// Milestone team label (color_mm06m73n) → discipline key + English display label.
+const MILESTONE_DISCIPLINE_MAP: Record<string, { key: string; label: string }> = {
+  'ניהול מודל':   { key: 'bimManagement',  label: 'BIM Management' },
+  'תיאום מערכות': { key: 'mepCoordination', label: 'MEP Coordination' },
+  'מקסים/באין':   { key: 'maximBain',      label: 'Maxim/Bain' },
+}
+
+export interface MilestoneDiscipline {
+  key:       string
+  label:     string
+  completed: number
+  total:     number
+  progress:  number   // round(completed / total * 100)
+}
+
+export interface MilestoneStats {
+  overallProgress: number | null   // pooled completed/total across all bills; null when no bills
+  disciplines:     MilestoneDiscipline[]
+}
+
+// Mutable accumulator used while walking the board.
+interface MilestoneAcc {
+  overall: { completed: number; total: number }
+  byKey:   Map<string, { label: string; completed: number; total: number }>
+}
+
+export async function fetchMilestoneStatsByProject(): Promise<Map<string, MilestoneStats>> {
+  // Page size kept modest: each item pulls its subitems inline, so a large page
+  // can blow Monday's per-query complexity budget.
+  const query = `
+    query ($boardId: ID!, $limit: Int!, $cursor: String) {
+      boards(ids: [$boardId]) {
+        items_page(limit: $limit, cursor: $cursor) {
+          cursor
+          items {
+            column_values(ids: ["color_mm06m73n", "board_relation_mkywzj9x"]) {
+              id
+              text
+              ... on BoardRelationValue { linked_item_ids }
+            }
+            subitems {
+              column_values(ids: ["color_mkyk8mbx"]) {
+                id
+                text
+              }
+            }
+          }
+        }
+      }
+    }
+  `
+
+  const accByProject = new Map<string, MilestoneAcc>()
+  let cursor: string | null = null
+
+  do {
+    const data = await mondayQuery(query, { boardId: MILESTONES_BOARD_ID, limit: 50, cursor }) as {
+      boards: Array<{ items_page: { cursor: string | null; items: Array<{
+        column_values: Array<{ id: string; text: string; linked_item_ids?: string[] }>
+        subitems: Array<{ column_values: Array<{ id: string; text: string }> }>
+      }> } }>
+    }
+
+    const items = data.boards[0]?.items_page?.items ?? []
+    cursor = data.boards[0]?.items_page?.cursor ?? null
+
+    for (const item of items) {
+      const colMap = Object.fromEntries(item.column_values.map(c => [c.id, c]))
+
+      const projectItemId = colMap['board_relation_mkywzj9x']?.linked_item_ids?.[0]
+      if (!projectItemId) continue                         // milestone not linked to a project
+
+      const bills = item.subitems ?? []
+      if (!bills.length) continue                          // milestone with no bills contributes nothing
+
+      const teamLabel = (colMap['color_mm06m73n']?.text ?? '').trim()
+      const discipline = MILESTONE_DISCIPLINE_MAP[teamLabel]  // undefined → counts toward overall only
+
+      let acc = accByProject.get(projectItemId)
+      if (!acc) {
+        acc = { overall: { completed: 0, total: 0 }, byKey: new Map() }
+        accByProject.set(projectItemId, acc)
+      }
+
+      for (const bill of bills) {
+        const status = (bill.column_values.find(c => c.id === 'color_mkyk8mbx')?.text ?? '').trim()
+        const done = MILESTONE_COMPLETED_STATUSES.has(status)
+
+        acc.overall.total += 1
+        if (done) acc.overall.completed += 1
+
+        if (discipline) {
+          let bucket = acc.byKey.get(discipline.key)
+          if (!bucket) {
+            bucket = { label: discipline.label, completed: 0, total: 0 }
+            acc.byKey.set(discipline.key, bucket)
+          }
+          bucket.total += 1
+          if (done) bucket.completed += 1
+        }
+      }
+    }
+  } while (cursor)
+
+  const pct = (completed: number, total: number) => Math.round((completed / total) * 100)
+
+  const result = new Map<string, MilestoneStats>()
+  for (const [projectItemId, acc] of accByProject) {
+    const disciplines: MilestoneDiscipline[] = Array.from(acc.byKey.entries()).map(([key, b]) => ({
+      key,
+      label:     b.label,
+      completed: b.completed,
+      total:     b.total,
+      progress:  pct(b.completed, b.total),
+    }))
+    result.set(projectItemId, {
+      overallProgress: acc.overall.total > 0 ? pct(acc.overall.completed, acc.overall.total) : null,
+      disciplines,
+    })
+  }
+
+  return result
 }
 
 // ── Dedicated per-project boards ───────────────────────────────────────────

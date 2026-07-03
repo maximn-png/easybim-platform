@@ -10,7 +10,8 @@ import {
   Users,
   BarChart2,
   CheckCircle2,
-  Circle,
+  Trash2,
+  Loader2,
 } from 'lucide-react'
 import type { ProjectRow, ReportListItem, HoursTeam } from '@/lib/types'
 import StatusBadge from './StatusBadge'
@@ -23,6 +24,13 @@ import ReportViewModal from './ReportViewModal'
 const CANONICAL_DEFAULT: Record<string, HoursTeam> = {
   'Model MGMT':    'modelMgmt',
   'Superposition': 'superposition',
+}
+
+// Bar color per milestone discipline; anything unmapped falls back to the accent.
+const MILESTONE_DISCIPLINE_COLOR: Record<string, string> = {
+  bimManagement:   '#1e248c',
+  mepCoordination: '#44b8d3',
+  maximBain:       '#f59e0b',
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -112,11 +120,33 @@ export default function ProjectDetailClient({
   // Report history (seeded from server; mutated locally on delete).
   const [reports, setReports] = useState<ReportListItem[]>(initialReports)
   const [openReportId, setOpenReportId] = useState<string | null>(null)
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null)
 
-  // Mock discipline splits
-  const bimMilestone = 20
-  const mepMilestone = 60
-  const overallMilestone = Math.round((bimMilestone + mepMilestone) / 2)
+  async function handleDeleteReport(reportId: string) {
+    if (deletingReportId) return
+    if (!confirm('למחוק את הדוח? לא ניתן לשחזר.')) return
+    setDeletingReportId(reportId)
+    try {
+      const res = await fetch(`/api/projects/${project._id}/reports/${reportId}`, { method: 'DELETE' })
+      if (res.ok) {
+        setReports(prev => prev.filter(r => r._id !== reportId))
+      } else {
+        alert('מחיקת הדוח נכשלה. נסו שוב.')
+      }
+    } catch {
+      alert('שגיאת רשת. נסו שוב.')
+    } finally {
+      setDeletingReportId(null)
+    }
+  }
+
+  // Milestone completion, computed during sync from MI-001-MilestonesProjects.
+  // Disciplines are dynamic per project (most have BIM Management + MEP
+  // Coordination; a few also have Maxim/Bain). overallMilestone is the pooled
+  // completed/total across all bills.
+  const milestoneDisciplines = project.milestoneDisciplines ?? []
+  const overallMilestone = project.milestoneProgress
+  const hasMilestones = overallMilestone != null
 
   // Live hours from the same source as the Hours Analytics page (Monday), so the
   // card reflects edits immediately rather than the cached snapshot.actualHours
@@ -191,39 +221,43 @@ export default function ProjectDetailClient({
           {/* 2×2 panel grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-            {/* Milestone Status — not built yet, shown with a "Coming Soon" stamp */}
-            <div className="glass-card rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden">
-              {/* Coming-soon stamp overlay */}
-              <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                <span className="rotate-[-12deg] border-2 border-[#1e248c]/40 text-[#1e248c]/70 rounded-xl px-5 py-2 text-xl font-extrabold uppercase tracking-widest bg-white/50 shadow-sm">
-                  Coming Soon
-                </span>
+            {/* Milestone Status — % of bills completed, per discipline + overall */}
+            <div className="glass-card rounded-2xl p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-[#44b8d3]" /> Milestone Status
+                </h2>
               </div>
 
-              {/* Placeholder content, dimmed & non-interactive behind the stamp */}
-              <div className="flex flex-col gap-4 opacity-30 pointer-events-none select-none blur-[1px]">
-                <div className="flex items-center justify-between">
-                  <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
-                    <CheckCircle2 size={15} className="text-[#44b8d3]" /> Milestone Status
-                  </h2>
-                  <span className="text-xs text-[#44b8d3]">Full Milestones →</span>
-                </div>
-                <div className="flex items-center gap-6">
-                  <div className="flex flex-col gap-3 flex-1">
-                    {/* Mock placeholder values rendered as plain percentages (bank=100). */}
-                    <DisciplineBar label="BIM Management" spent={bimMilestone} bank={100} color="#1e248c" />
-                    <DisciplineBar label="MEP Coordination" spent={mepMilestone} bank={100} color="#44b8d3" />
+              {hasMilestones ? (
+                <>
+                  <div className="flex items-center gap-6">
+                    <div className="flex flex-col gap-3 flex-1">
+                      {milestoneDisciplines.length > 0 ? (
+                        milestoneDisciplines.map(d => (
+                          <DisciplineBar
+                            key={d.key}
+                            label={d.label}
+                            spent={d.progress}
+                            bank={100}
+                            color={MILESTONE_DISCIPLINE_COLOR[d.key] ?? '#44b8d3'}
+                          />
+                        ))
+                      ) : (
+                        <p className="text-xs text-gray-400">No discipline breakdown</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-center shrink-0">
+                      <MilestoneRing value={overallMilestone!} />
+                      <p className="text-[10px] text-gray-400 mt-1">Overall Completed</p>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-center shrink-0">
-                    <MilestoneRing value={overallMilestone} />
-                    <p className="text-[10px] text-gray-400 mt-1">Overall Stage</p>
-                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center py-8">
+                  <p className="text-sm text-gray-400">No milestone data</p>
                 </div>
-                <div className="flex gap-2 text-xs text-gray-500 mt-auto">
-                  <span className="flex items-center gap-1"><Circle size={8} className="fill-[#44b8d3] text-[#44b8d3]" /> In Progress</span>
-                  <span className="flex items-center gap-1 ml-3"><Circle size={8} className="fill-green-500 text-green-500" /> Completed</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Hours Analytics summary */}
@@ -301,6 +335,16 @@ export default function ProjectDetailClient({
                         צפייה
                       </button>
                     </div>
+                    <button
+                      onClick={() => handleDeleteReport(r._id)}
+                      disabled={deletingReportId === r._id}
+                      title="מחק דוח"
+                      className="shrink-0 self-center text-gray-300 hover:text-red-500 transition-colors disabled:opacity-50"
+                    >
+                      {deletingReportId === r._id
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <Trash2 size={14} />}
+                    </button>
                   </div>
                 ))}
               </div>

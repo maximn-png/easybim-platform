@@ -64,21 +64,73 @@ export function segmentTextColor(s: string) {
 }
 
 // ── Stack-by dimensions ──────────────────────────────────────────────────────
+// Static set used by the Export modal / PDF / server HTML (fixed layouts).
 export const GROUP_OPTIONS = [
   { value: 'assignedTo', label: 'Assigned To' },
   { value: 'discipline', label: 'Discipline' },
   { value: 'status',     label: 'Status' },
   { value: 'issueType',  label: 'Issue Type' },
 ] as const
-export type GroupKey = typeof GROUP_OPTIONS[number]['value']
+
+// A plain string: the on-screen reports page builds options dynamically from the
+// issues' ACC custom attributes (values like "attr:Phase"), beyond the static set.
+export type GroupKey = string
+
+export interface GroupOption { value: string; label: string }
+
+// Dimensions always available, independent of a project's custom attributes.
+const BASE_GROUP_OPTIONS: GroupOption[] = [
+  { value: 'assignedTo', label: 'Assigned To' },
+  { value: 'status',     label: 'Status' },
+  { value: 'issueType',  label: 'Issue Type' },
+  { value: 'dueDate',    label: 'Due Date' },
+]
+
+// Full stack-by list for a set of issues: base dimensions + one option per ACC
+// custom attribute present (Discipline, Phase, …), each valued "attr:<Title>".
+export function buildGroupOptions(issues: AccIssue[]): GroupOption[] {
+  const titles = new Set<string>()
+  for (const i of issues) {
+    if (i.attributes) for (const k of Object.keys(i.attributes)) {
+      const t = k.trim()
+      if (t) titles.add(t)
+    }
+  }
+  const attrOptions = [...titles]
+    .sort((a, b) => a.localeCompare(b))
+    .map(t => ({ value: `attr:${t}`, label: t }))
+  return [...BASE_GROUP_OPTIONS, ...attrOptions]
+}
+
+// Resolve a display label for a group key (handles the dynamic "attr:" values).
+export function groupLabelFor(groupBy: string, options: GroupOption[]): string {
+  const found = options.find(o => o.value === groupBy)
+  if (found) return found.label
+  return groupBy.startsWith('attr:') ? groupBy.slice(5) : groupBy
+}
+
+// Bucket a due date relative to today, for stacking by "Due Date".
+export function dueDateBucket(due: string | null | undefined): string {
+  if (!due) return 'No Due Date'
+  const d = new Date(due)
+  if (isNaN(d.getTime())) return 'No Due Date'
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diffDays = Math.floor((d.getTime() - today.getTime()) / 86_400_000)
+  if (diffDays < 0) return 'Overdue'
+  if (diffDays <= 7) return 'Due This Week'
+  if (diffDays <= 30) return 'Due This Month'
+  return 'Later'
+}
 
 // Returns the group label for an issue under the chosen dimension.
-export function groupValue(issue: AccIssue, groupBy: GroupKey): string {
-  switch (groupBy) {
-    case 'status':     return statusLabel(issue.status)
-    case 'discipline': return issue.discipline?.trim() || 'No Discipline'
-    case 'issueType':  return issue.issueType?.trim() || 'Other'
-    case 'assignedTo':
-    default:           return issue.assignedTo?.trim() || 'Unassigned'
+export function groupValue(issue: AccIssue, groupBy: string): string {
+  if (groupBy === 'status')     return statusLabel(issue.status)
+  if (groupBy === 'issueType')  return issue.issueType?.trim() || 'Other'
+  if (groupBy === 'dueDate')    return dueDateBucket(issue.dueDate)
+  if (groupBy === 'discipline') return issue.discipline?.trim() || 'No Discipline'
+  if (groupBy.startsWith('attr:')) {
+    const title = groupBy.slice(5)
+    return issue.attributes?.[title]?.trim() || `No ${title}`
   }
+  return issue.assignedTo?.trim() || 'Unassigned'
 }

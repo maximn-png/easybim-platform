@@ -23,6 +23,15 @@ export interface HoursConfig {
   subjectTeam: Record<string, HoursTeam>
 }
 
+// Per-discipline milestone completion (mirrors MilestoneDiscipline in the model).
+export interface MilestoneDiscipline {
+  key: string
+  label: string
+  completed: number
+  total: number
+  progress: number
+}
+
 export interface ProjectSyncMeta {
   lastSyncedAt: string | null
   syncStatus: 'ok' | 'partial' | 'error' | 'never'
@@ -42,6 +51,7 @@ export interface ProjectRow {
   accExternalHub?: boolean
   status: 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck' | null
   milestoneProgress: number | null
+  milestoneDisciplines?: MilestoneDiscipline[]
   hoursProgress: number | null
   actualHours: number | null
   budgetHours: number | null

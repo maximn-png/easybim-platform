@@ -21,6 +21,10 @@ export const mockProjects: ProjectRow[] = [
     },
     status: 'On Hold',
     milestoneProgress: 65,
+    milestoneDisciplines: [
+      { key: 'bimManagement',  label: 'BIM Management',  completed: 5, total: 10, progress: 50 },
+      { key: 'mepCoordination', label: 'MEP Coordination', completed: 8, total: 10, progress: 80 },
+    ],
     hoursProgress: 65,
     actualHours: null,
     budgetHours: null,
@@ -131,6 +135,11 @@ export const mockProjects: ProjectRow[] = [
     },
     status: 'Working on it',
     milestoneProgress: 78,
+    milestoneDisciplines: [
+      { key: 'bimManagement',  label: 'BIM Management',  completed: 7, total: 10, progress: 70 },
+      { key: 'mepCoordination', label: 'MEP Coordination', completed: 9, total: 10, progress: 90 },
+      { key: 'maximBain',      label: 'Maxim/Bain',      completed: 2, total: 5,  progress: 40 },
+    ],
     hoursProgress: 70,
     actualHours: null,
     budgetHours: null,

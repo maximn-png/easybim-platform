@@ -18,15 +18,20 @@ export interface IIssueImport extends Document {
 const IssueSchema = new Schema<AccIssue>(
   {
     id:          { type: String, required: true },
+    displayId:   String,   // ACC issue number shown to users (from the export's ID column)
+    url:         String,   // deep link to the issue in ACC (from the ID cell hyperlink)
     title:       String,
     status:      String,
     issueType:   String,
     discipline:  String,
     description: String,
     assignedTo:  { type: String, default: null },
+    createdBy:   { type: String, default: null },
     createdAt:   String,
     updatedAt:   { type: String, default: null },
     closedAt:    { type: String, default: null },
+    dueDate:     { type: String, default: null },
+    attributes:  { type: Schema.Types.Mixed, default: {} },
   },
   { _id: false }
 )

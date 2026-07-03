@@ -116,7 +116,7 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
             <th className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">Project Name<ColInfo board="MA-004" column="Item name" /></th>
             <th className="px-2 py-2 text-left font-medium text-gray-600 whitespace-nowrap">Proj #<ColInfo board="MA-004" column="מס פרויקט" /></th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Status<ColInfo board="MA-004" column="Status" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Milestone<ColInfo note="Coming soon" /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Milestone<ColInfo board="MI-001" column="סטאטוס הגשה" formula="completed bills ÷ total bills × 100" note="Share of milestone bills marked Submitted / Work completed, pooled across all disciplines." /></th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Hours<ColInfo formula="actual ÷ budget × 100" sources={[
               { label: 'Actual', board: 'TS-001/003/004/005', column: 'ש״ע (numeric)' },
               { label: 'Budget', board: 'MA-004', column: 'כמות שעות' },
@@ -183,9 +183,9 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                   <StatusBadge status={project.status} />
                 </td>
 
-                {/* Milestone Progress */}
+                {/* Milestone Progress — neutral gray bar (colour belongs to Hours). */}
                 <td className="px-2 py-1.5 text-center">
-                  <ProgressBar value={project.milestoneProgress} />
+                  <ProgressBar value={project.milestoneProgress} neutral />
                 </td>
 
                 {/* Hours Progress */}

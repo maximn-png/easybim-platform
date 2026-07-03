@@ -31,6 +31,17 @@ export interface ExternalIds {
 export type ProjectStatus = 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck'
 export type SyncStatus = 'ok' | 'partial' | 'error' | 'never'
 
+// Per-discipline milestone completion, computed from MI-001-MilestonesProjects.
+// progress = round(completed / total * 100), where completed = bills whose
+// submission status is "Submitted" or "Work completed".
+export interface MilestoneDiscipline {
+  key:       string   // 'bimManagement' | 'mepCoordination' | 'maximBain'
+  label:     string   // English display label
+  completed: number
+  total:     number
+  progress:  number
+}
+
 // Which discipline "team" a timesheet Subject (label__1) is counted under on the
 // Hours Analytics page. 'none' = not counted in either bank. Defaults: the
 // canonical 'Model MGMT'/'Superposition' subjects map to their own team; every
@@ -44,7 +55,8 @@ export interface HoursConfig {
 
 export interface ProjectSnapshot {
   status:            ProjectStatus | null
-  milestoneProgress: number | null
+  milestoneProgress: number | null           // pooled completed/total across all bills
+  milestoneDisciplines?: MilestoneDiscipline[]
   hoursProgress:     number | null
   budgetHours:       number | null  // MA-004.formula8 (fee ÷ 300)
   actualHours:       number | null  // SUM(TS-001.numeric) for this project
@@ -109,6 +121,17 @@ const ExternalIdsSchema = new Schema<ExternalIds>(
   { _id: false }
 )
 
+const MilestoneDisciplineSchema = new Schema<MilestoneDiscipline>(
+  {
+    key:       { type: String, required: true },
+    label:     { type: String, required: true },
+    completed: { type: Number, required: true },
+    total:     { type: Number, required: true },
+    progress:  { type: Number, required: true },
+  },
+  { _id: false }
+)
+
 const SnapshotSchema = new Schema<ProjectSnapshot>(
   {
     status: {
@@ -116,7 +139,8 @@ const SnapshotSchema = new Schema<ProjectSnapshot>(
       enum:    ['Working on it', 'On Hold', 'Not Started', 'Done', 'Stuck'],
       default: null,
     },
-    milestoneProgress: { type: Number, min: 0, max: 100, default: null },
+    milestoneProgress:     { type: Number, min: 0, max: 100, default: null },
+    milestoneDisciplines:  { type: [MilestoneDisciplineSchema], default: undefined },
     hoursProgress:     { type: Number, min: 0, max: 100, default: null },
     budgetHours:       { type: Number, min: 0, default: null },
     actualHours:       { type: Number, min: 0, default: null },

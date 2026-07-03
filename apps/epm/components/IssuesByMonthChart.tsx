@@ -6,15 +6,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import type { AccIssue } from '@/lib/services/apsService'
+import { groupValue } from '@/lib/reportGrouping'
 
-// Keep in sync with the page's "Stack by" dimensions.
-type GroupKey = 'assignedTo' | 'discipline' | 'status' | 'issueType'
+// groupBy is a plain string: base dimensions + dynamic "attr:<Title>" values.
+type GroupKey = string
 
-const STATUS_LABELS: Record<string, string> = {
-  open: 'Open', draft: 'Draft', pending: 'Pending',
-  inProgress: 'In Progress', in_progress: 'In Progress',
-  completed: 'Completed', resolved: 'Completed', closed: 'Closed',
-}
 const STATUS_LABEL_COLORS: Record<string, string> = {
   'Open': '#FAA21B', 'Pending': '#0696D7', 'In Progress': '#A3BCDC',
   'Completed': '#B7D78C', 'Closed': '#DCDCDC', 'Draft': '#1f2937',
@@ -25,16 +21,6 @@ const PALETTE = [
   '#F47C20', '#0696D7', '#16a085', '#e67e22', '#8e44ad', '#2c3e50',
   '#c0392b', '#27ae60', '#2980b9', '#d35400', '#7f8c8d', '#f1c40f',
 ]
-
-function groupValue(issue: AccIssue, groupBy: GroupKey): string {
-  switch (groupBy) {
-    case 'status':     return STATUS_LABELS[issue.status] ?? issue.status
-    case 'discipline': return issue.discipline?.trim() || 'No Discipline'
-    case 'issueType':  return issue.issueType?.trim() || 'Other'
-    case 'assignedTo':
-    default:           return issue.assignedTo?.trim() || 'Unassigned'
-  }
-}
 
 const monthKey = (iso: string) => {
   const d = new Date(iso)

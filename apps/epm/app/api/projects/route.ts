@@ -41,6 +41,7 @@ function toProjectRow(doc: Record<string, unknown>): ProjectRow {
     accExternalHub: ext.accExternalHub as boolean | undefined,
     status: (snap.status as ProjectRow['status']) ?? null,
     milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
+    milestoneDisciplines: (snap.milestoneDisciplines as ProjectRow['milestoneDisciplines']) ?? undefined,
     hoursProgress: (snap.hoursProgress as number | null) ?? null,
     actualHours: (snap.actualHours as number | null) ?? null,
     budgetHours: (snap.budgetHours as number | null) ?? null,

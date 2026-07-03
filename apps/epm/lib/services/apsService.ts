@@ -106,9 +106,14 @@ export interface AccIssue {
   discipline: string
   description: string
   assignedTo: string | null
+  createdBy?: string | null   // resolved person name of the issue creator
   createdAt: string
   updatedAt: string | null
   closedAt: string | null
+  dueDate?: string | null
+  // Every ACC custom attribute on the issue (title → display value), e.g.
+  // { Discipline: "MEP", Phase: "Phase 2" }. Powers the dynamic "stack by" list.
+  attributes?: Record<string, string>
 }
 
 // A project team member, used as an email-recipient candidate.
@@ -382,8 +387,9 @@ async function accGet(url: string, token: string, label: string): Promise<unknow
 async function buildAssigneeRoleMap(
   projectId: string,
   twoLeggedToken: string,
-): Promise<Map<string, string>> {
+): Promise<{ roleMap: Map<string, string>; nameMap: Map<string, string> }> {
   const map = new Map<string, string>()
+  const nameMap = new Map<string, string>() // user id → person name (for "Created By")
 
   // Role label from a user's project roles (may be empty for many users).
   const roleOf = (u: Record<string, unknown>): string | null => {
@@ -433,6 +439,13 @@ async function buildAssigneeRoleMap(
         if (u.id != null)         map.set(String(u.id), label)
       }
 
+      // Person-name mapping (not role) — resolves an issue's createdBy to a name.
+      const personName = nameOf(u)
+      if (personName) {
+        if (u.autodeskId != null) nameMap.set(String(u.autodeskId), personName)
+        if (u.id != null)         nameMap.set(String(u.id), personName)
+      }
+
       // Role-assignee mappings: issues assigned to a ROLE (assignedToType "role")
       // carry the role id, not a person — map both the role UUID and its numeric
       // group id to the role name so those issues resolve instead of "Unassigned".
@@ -474,8 +487,8 @@ async function buildAssigneeRoleMap(
     break
   }
 
-  console.log(`[ACC][assigneeRoles] map size=${map.size}`)
-  return map
+  console.log(`[ACC][assigneeRoles] role map=${map.size}, name map=${nameMap.size}`)
+  return { roleMap: map, nameMap }
 }
 
 // issueTypeId / issueSubtypeId UUID → human-readable title
@@ -562,11 +575,12 @@ export async function fetchAccIssues(projectId: string, userToken: string): Prom
   // Assignee roles use a 2-legged token (ACC admin project-users API).
   // Issue types & custom attributes are part of the Issues API → 3-legged user token.
   const twoLeggedToken = await getApsToken()
-  const [roleMap, typeMap, attribMap] = await Promise.all([
+  const [assigneeMaps, typeMap, attribMap] = await Promise.all([
     buildAssigneeRoleMap(projectId, twoLeggedToken),
     buildTypeMap(projectId, userToken),
     buildAttribMap(projectId, userToken),
   ])
+  const { roleMap, nameMap } = assigneeMaps
 
   return results.map(raw => {
     const item = raw as Record<string, unknown>
@@ -575,20 +589,32 @@ export async function fetchAccIssues(projectId: string, userToken: string): Prom
     const rawId = item.assignedTo != null ? String(item.assignedTo) : null
     const assignedTo = rawId ? (roleMap.get(rawId) ?? null) : null
 
+    // createdBy: creator user id → person name (falls back to null / raw id).
+    const createdBy = item.createdBy != null
+      ? (nameMap.get(String(item.createdBy)) ?? null)
+      : null
+
     // issueType: subtype (more specific) takes priority over type
     const issueType =
       typeMap.get(String(item.issueSubtypeId ?? '')) ??
       typeMap.get(String(item.issueTypeId ?? '')) ??
       'Other'
 
-    // discipline: lives in customAttributes array as a list UUID
+    // Capture ALL custom attributes (title → display value). List-type values are
+    // option UUIDs resolved via attribMap; other types keep their raw value.
+    // Discipline is just one of these — kept as its own field for the table/filters.
     const customAttribs = (item.customAttributes as Array<Record<string, unknown>>) ?? []
-    const disciplineAttr = customAttribs.find(a =>
-      String(a.title ?? '').toLowerCase() === 'discipline'
-    )
-    const discipline = disciplineAttr
-      ? (attribMap.get(String(disciplineAttr.value ?? '')) ?? '')
-      : ''
+    const attributes: Record<string, string> = {}
+    for (const a of customAttribs) {
+      const title = String(a.title ?? '').trim()
+      if (!title) continue
+      const raw = a.value
+      if (raw == null || String(raw) === '') continue
+      const resolved = attribMap.get(String(raw)) ?? String(raw)
+      if (resolved) attributes[title] = resolved
+    }
+    const disciplineKey = Object.keys(attributes).find(k => k.toLowerCase() === 'discipline')
+    const discipline = disciplineKey ? attributes[disciplineKey] : ''
 
     const issueId = String(item.id ?? '')
     return {
@@ -601,9 +627,12 @@ export async function fetchAccIssues(projectId: string, userToken: string): Prom
       discipline,
       description: String(item.description ?? ''),
       assignedTo,
+      createdBy,
       createdAt: String(item.createdAt ?? new Date().toISOString()),
       updatedAt: item.updatedAt != null ? String(item.updatedAt) : null,
       closedAt: item.closedAt != null ? String(item.closedAt) : null,
+      dueDate: item.dueDate != null && String(item.dueDate) !== '' ? String(item.dueDate) : null,
+      attributes,
     }
   })
 }

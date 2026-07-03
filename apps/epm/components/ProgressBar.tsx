@@ -2,20 +2,36 @@ interface ProgressBarProps {
   value: number | null
   actual?: number | null
   budget?: number | null
+  // Hours are "lower is better" (100%+ = over budget → red). Milestone completion
+  // is the opposite: higher is better, so it should green out as it approaches 100%.
+  higherIsBetter?: boolean
+  // Neutral = no threshold colouring — a plain gray bar + gray %. Used for
+  // Milestone, where the colour would just be noise (colour belongs to Hours).
+  neutral?: boolean
 }
 
-export default function ProgressBar({ value, actual, budget }: ProgressBarProps) {
+export default function ProgressBar({ value, actual, budget, higherIsBetter = false, neutral = false }: ProgressBarProps) {
   if (value === null) return <span className="text-gray-400 text-xs">—</span>
 
-  const barColor =
-    value >= 100 ? 'bg-red-500' :
-    value >= 80  ? 'bg-amber-400' :
-                   'bg-[#00c875]'
+  const barColor = neutral
+    ? 'bg-gray-400'
+    : higherIsBetter
+    ? (value >= 100 ? 'bg-[#00c875]' :
+       value >= 50  ? 'bg-amber-400' :
+                      'bg-red-500')
+    : (value >= 100 ? 'bg-red-500' :
+       value >= 80  ? 'bg-amber-400' :
+                      'bg-[#00c875]')
 
-  const textColor =
-    value >= 100 ? 'text-red-600' :
-    value >= 80  ? 'text-amber-600' :
-                   'text-gray-500'
+  const textColor = neutral
+    ? 'text-gray-500'
+    : higherIsBetter
+    ? (value >= 100 ? 'text-green-600' :
+       value >= 50  ? 'text-amber-600' :
+                      'text-red-600')
+    : (value >= 100 ? 'text-red-600' :
+       value >= 80  ? 'text-amber-600' :
+                      'text-gray-500')
 
   const showNumbers = actual != null && budget != null
 

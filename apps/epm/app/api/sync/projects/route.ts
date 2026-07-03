@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const [
       { connectDB },
       ProjectModule,
-      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls },
+      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject },
       { driveEnabled, findProjectFolders },
     ] = await Promise.all([
       import('@easybim/db'),
@@ -119,6 +119,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 1e. Milestone completion stats from MI-001-MilestonesProjects, keyed by the
+    // project's MA-004 item id — best-effort; failure must not abort the sync.
+    let milestoneStats = new Map<string, import('@/lib/services/mondayService').MilestoneStats>()
+    try {
+      milestoneStats = await fetchMilestoneStatsByProject()
+    } catch (err) {
+      errors.push(`Milestones: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
     // 2. Collect all MA-003 item IDs — live from board_relation + stored fallbacks
     const allMa003Ids = [...new Set([
       ...ma004Projects.flatMap(p => p.ma003ItemIds),
@@ -148,6 +157,9 @@ export async function POST(req: NextRequest) {
         // Use live board_relation first, fall back to stored value if empty
         const ma003Id   = p.ma003ItemIds[0] ?? storedMa003Map.get(p.projectNumber) ?? null
         const ma003     = ma003Id ? ma003Map.get(ma003Id) : undefined
+
+        // Milestone completion (joined by MA-004 item id). Absent → leave null/[].
+        const milestones = milestoneStats.get(p.itemId)
 
         // ACC link resolution. Only act when the ACC account list loaded — see
         // accListOk note above. Priority:
@@ -216,6 +228,8 @@ export async function POST(req: NextRequest) {
               } : {}),
               ...accFields,
               'snapshot.status':             p.status,
+              'snapshot.milestoneProgress':  milestones?.overallProgress ?? null,
+              'snapshot.milestoneDisciplines': milestones?.disciplines ?? [],
               // Total budget = שכט סופי ÷ 300 (formula8). Only overwrite when the
               // formula resolved, so a transient empty read can't wipe a good value.
               ...(p.budgetHours != null ? { 'snapshot.budgetHours': p.budgetHours } : {}),

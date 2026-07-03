@@ -7,7 +7,7 @@ import { toPng } from 'html-to-image'
 import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue, AccMember } from '@/lib/services/apsService'
-import { type GroupKey, GROUP_OPTIONS, statusLabel } from '@/lib/reportGrouping'
+import { type GroupKey, buildGroupOptions, groupValue, statusLabel } from '@/lib/reportGrouping'
 import {
   REPORT_TEMPLATES, pdfNameFor, matchHints, seedBodyLines, accIssuesUrl, segmentBodyText, resolveVariant,
   type ReportTemplate, type BodyLink,
@@ -21,8 +21,31 @@ import AnalyticsBars from './AnalyticsBars'
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.compose'
 
 const UNASSIGNED = 'לא משויך'
-const GROUP_LABELS_HE: Record<GroupKey, string> = {
-  assignedTo: 'משויך אל', discipline: 'דיסציפלינה', status: 'סטטוס', issueType: 'סוג נושא',
+// Hebrew labels for the base stack-by dimensions; custom-attribute options
+// (Discipline, Level, תחום, …) show their attribute title as-is.
+const GROUP_LABELS_HE: Record<string, string> = {
+  assignedTo: 'משויך אל', status: 'סטטוס', issueType: 'סוג נושא', dueDate: 'תאריך יעד',
+  discipline: 'דיסציפלינה', createdBy: 'נוצר על ידי',
+}
+function groupLabelHe(value: string): string {
+  if (GROUP_LABELS_HE[value]) return GROUP_LABELS_HE[value]
+  if (value.startsWith('attr:')) {
+    const title = value.slice(5)
+    // Show the discipline attribute in Hebrew (the ACC title is English "Discipline").
+    if (['discipline', 'disciplines'].includes(title.trim().toLowerCase())) return 'דיסציפלינה'
+    return title
+  }
+  return value
+}
+
+// The fixed filter rows already cover these; keep them out of the "any column" picker.
+const FIXED_FILTER_KEYS = new Set(['assignedTo', 'status', 'issueType'])
+const DISCIPLINE_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסציפלינה', 'משמעת']
+
+// Value of any parameter for an issue (base dimensions, createdBy, or a custom attr:*).
+function issueParamValue(i: AccIssue, key: string): string {
+  if (key === 'createdBy') return i.createdBy?.trim() || 'לא ידוע'
+  return groupValue(i, key)
 }
 const localizeGroup = (n: string) =>
   n === 'Unassigned' ? UNASSIGNED : n === 'No Discipline' ? 'ללא דיסציפלינה' : n === 'Other' ? 'אחר' : n
@@ -39,8 +62,8 @@ const HIGHLIGHT_PREVIEW: React.CSSProperties = {
 }
 
 export default function ExportReportModal({
-  open, onClose, project, issues, issueTypes, disciplines,
-  allStatuses,
+  open, onClose, project, issues, issueTypes, disciplines, allStatuses, assignees,
+  defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines,
 }: {
   open: boolean
   onClose: () => void
@@ -50,6 +73,11 @@ export default function ExportReportModal({
   issueTypes: string[]
   disciplines: string[]
   assignees: string[]
+  // Defaults inherited from the reports page (stack-by + filter selections).
+  defaultGroupBy: GroupKey
+  defaultAssignees: string[]
+  defaultTypes: string[]
+  defaultDisciplines: string[]
 }) {
   const { user } = useUser()
   // Connecting / reauthorizing a Google account is a Clerk-protected action: it
@@ -66,10 +94,13 @@ export default function ExportReportModal({
   )
 
   const [templateId, setTemplateId] = useState<string>(REPORT_TEMPLATES[0].id)
-  const [selIssueTypes, setSelIssueTypes] = useState<string[]>([])
-  const [selDisciplines, setSelDisciplines] = useState<string[]>([])
+  const [selAssignees, setSelAssignees] = useState<string[]>(defaultAssignees)
+  const [selIssueTypes, setSelIssueTypes] = useState<string[]>(defaultTypes)
+  const [selDisciplines, setSelDisciplines] = useState<string[]>(defaultDisciplines)
   const [selStatuses, setSelStatuses] = useState<string[]>([])
-  const [groupBy, setGroupBy] = useState<GroupKey>('assignedTo')
+  // Ad-hoc "filter by any column" rows: { key, values }.
+  const [extraFilters, setExtraFilters] = useState<{ key: string; values: string[] }[]>([])
+  const [groupBy, setGroupBy] = useState<GroupKey>(defaultGroupBy)
   const [bodyText, setBodyText] = useState('')
   // Manually-edited link to the ACC model (only for templates with needsModelLink).
   const [modelLink, setModelLink] = useState('')
@@ -168,23 +199,74 @@ export default function ExportReportModal({
     setDraftUrl(null)
   }
 
-  // Issues after the modal's own status / issue-type / discipline selections
+  // Stack-by options mirror the reports page (base dims + custom attributes).
+  const groupOptions = useMemo(() => buildGroupOptions(issues), [issues])
+
+  // "Filter by any column": every dimension not already a fixed filter row and
+  // not already added — Due Date, Created By, and each custom attribute.
+  const extraParamOptions = useMemo(() => {
+    const all = [...groupOptions, { value: 'createdBy', label: 'Created By' }]
+    return all.filter(o =>
+      !FIXED_FILTER_KEYS.has(o.value) &&
+      !(o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase())) &&
+      !extraFilters.some(f => f.key === o.value)
+    )
+  }, [groupOptions, extraFilters])
+
+  // Distinct values available for a chosen parameter.
+  const valuesFor = (key: string): string[] =>
+    [...new Set(issues.map(i => issueParamValue(i, key)))].filter(Boolean).sort((a, b) => a.localeCompare(b))
+
+  // Each time the modal opens, seed stack-by + filters from the reports page.
+  // (Only on the open transition, so re-renders don't wipe in-modal edits.)
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      wasOpen.current = true
+      setGroupBy(defaultGroupBy)
+      setSelAssignees(defaultAssignees)
+      setSelIssueTypes(defaultTypes)
+      setSelDisciplines(defaultDisciplines)
+      setSelStatuses([]) // Status is an export-only extra; starts unfiltered.
+      setExtraFilters([])
+    } else if (!open) {
+      wasOpen.current = false
+    }
+  }, [open, defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines])
+
+  // "Final summary" templates (forceAllIssues) reset to ALL issues, grouped by
+  // discipline — overriding the page-seeded defaults when such a template is picked.
+  useEffect(() => {
+    if (!open || !template.forceAllIssues) return
+    setSelAssignees([]); setSelIssueTypes([]); setSelDisciplines([]); setSelStatuses([]); setExtraFilters([])
+    const disc = groupOptions.find(o => o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase()))
+    setGroupBy(disc?.value ?? 'discipline')
+  }, [templateId, open, template.forceAllIssues, groupOptions])
+
+  // Issues after the modal's own assignee / status / issue-type / discipline selections
   const effectiveIssues = useMemo(() => issues.filter(i => {
+    if (selAssignees.length && !selAssignees.includes(i.assignedTo?.trim() || 'Unassigned')) return false
     if (selStatuses.length && !selStatuses.includes(i.status)) return false
     if (selIssueTypes.length && !selIssueTypes.includes(i.issueType)) return false
     const disc = i.discipline?.trim() || 'No Discipline'
     if (selDisciplines.length && !selDisciplines.includes(disc)) return false
+    // Ad-hoc "any column" filters
+    for (const f of extraFilters) {
+      if (f.values.length && !f.values.includes(issueParamValue(i, f.key))) return false
+    }
     return true
-  }), [issues, selStatuses, selIssueTypes, selDisciplines])
+  }), [issues, selAssignees, selStatuses, selIssueTypes, selDisciplines, extraFilters])
 
   const subject = `${resolved.title} — ${project.projectName}`
   const pdfName = pdfNameFor(template, project.projectName, project.projectNumber)
   const xlsxName = pdfName.replace(/\.pdf$/i, '.xlsx')
   const pdfPages = Math.max(1, Math.ceil(effectiveIssues.length / 15))
   const filtersSummary = [
+    selAssignees.length ? `משויך: ${selAssignees.map(a => (a === 'Unassigned' ? UNASSIGNED : a)).join(', ')}` : '',
     selStatuses.length ? `סטטוס: ${selStatuses.map(statusLabel).join(', ')}` : '',
     selIssueTypes.length ? `סוג: ${selIssueTypes.join(', ')}` : '',
     selDisciplines.length ? `דיסציפלינה: ${selDisciplines.join(', ')}` : '',
+    ...extraFilters.filter(f => f.values.length).map(f => `${groupLabelHe(f.key)}: ${f.values.join(', ')}`),
   ].filter(Boolean).join(' · ') || 'ללא סינון'
 
   // Payload the server uses to render the PDF + Excel.
@@ -193,6 +275,7 @@ export default function ExportReportModal({
     projectNumber: project.projectNumber,
     templateTitle: resolved.title,
     groupBy,
+    groupLabel: groupLabelHe(groupBy),
     filtersSummary,
   }
 
@@ -425,23 +508,29 @@ export default function ExportReportModal({
               </section>
             )}
 
-            {/* Filters + Stack By */}
+            {/* Stack By — mirrors the reports page's grouping */}
             <section>
-              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">מסננים · קיבוץ</p>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">קיבוץ</p>
+              <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                <span className="text-[10px] font-mono uppercase text-[#1e248c]">קבץ לפי</span>
+                <select
+                  value={groupBy}
+                  onChange={e => setGroupBy(e.target.value as GroupKey)}
+                  dir="rtl"
+                  className="border border-[#1e248c]/30 rounded-lg px-2 py-1.5 text-sm bg-[#e7eefe]/60 font-medium text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
+                >
+                  {groupOptions.map(o => <option key={o.value} value={o.value}>{groupLabelHe(o.value)}</option>)}
+                </select>
+              </div>
+            </section>
+
+            {/* Filter — seeded from the reports page (assignee / type / discipline) + status */}
+            <section>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">סינון</p>
               <div className="flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-3">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-mono uppercase text-[#1e248c]">קבץ לפי</span>
-                  <select
-                    value={groupBy}
-                    onChange={e => setGroupBy(e.target.value as GroupKey)}
-                    className="border border-[#1e248c]/30 rounded-lg px-2 py-1.5 text-sm bg-[#e7eefe]/60 font-medium text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
-                  >
-                    {GROUP_OPTIONS.map(o => <option key={o.value} value={o.value}>{GROUP_LABELS_HE[o.value]}</option>)}
-                  </select>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-mono uppercase text-gray-400">סטטוס</span>
-                  <MultiSelect placeholder="כל הסטטוסים" options={allStatuses} selected={selStatuses} onChange={setSelStatuses} renderLabel={statusLabel} />
+                  <span className="text-[10px] font-mono uppercase text-gray-400">משויך אל</span>
+                  <MultiSelect placeholder="כל המשויכים" options={assignees} selected={selAssignees} onChange={setSelAssignees} renderLabel={n => (n === 'Unassigned' ? UNASSIGNED : n)} />
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-mono uppercase text-gray-400">סוג נושא</span>
@@ -451,6 +540,45 @@ export default function ExportReportModal({
                   <span className="text-[10px] font-mono uppercase text-gray-400">דיסציפלינה</span>
                   <MultiSelect placeholder="הכל" options={disciplines} selected={selDisciplines} onChange={setSelDisciplines} />
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono uppercase text-gray-400">סטטוס</span>
+                  <MultiSelect placeholder="כל הסטטוסים" options={allStatuses} selected={selStatuses} onChange={setSelStatuses} renderLabel={statusLabel} />
+                </div>
+              </div>
+
+              {/* Filter by any other column/attribute */}
+              <div className="flex flex-col gap-2 mt-2">
+                {extraFilters.map((f, idx) => (
+                  <div key={f.key} className="flex items-center gap-1.5 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-3">
+                    <span className="text-[10px] font-mono uppercase text-[#1e248c]">{groupLabelHe(f.key)}</span>
+                    <MultiSelect
+                      placeholder="ערך"
+                      options={valuesFor(f.key)}
+                      selected={f.values}
+                      onChange={vals => setExtraFilters(prev => prev.map((x, i) => (i === idx ? { ...x, values: vals } : x)))}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setExtraFilters(prev => prev.filter((_, i) => i !== idx))}
+                      title="הסר סינון"
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+
+                {extraParamOptions.length > 0 && (
+                  <select
+                    value=""
+                    onChange={e => { if (e.target.value) setExtraFilters(prev => [...prev, { key: e.target.value, values: [] }]) }}
+                    dir="rtl"
+                    className="self-start border border-dashed border-[#1e248c]/40 rounded-lg px-3 py-1.5 text-sm bg-white text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
+                  >
+                    <option value="">בחר פרמטר נוסף לסינון…</option>
+                    {extraParamOptions.map(o => <option key={o.value} value={o.value}>{groupLabelHe(o.value)}</option>)}
+                  </select>
+                )}
               </div>
             </section>
 
@@ -560,7 +688,7 @@ export default function ExportReportModal({
                 {/* Analytics chart */}
                 <div className="rounded-xl border border-gray-100 bg-white p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-[#1e248c]">נושאים לפי {GROUP_LABELS_HE[groupBy]}</span>
+                    <span className="text-xs font-bold text-[#1e248c]">נושאים לפי {groupLabelHe(groupBy)}</span>
                     <span className="text-[10px] text-gray-400 font-mono">{effectiveIssues.length} נושאים</span>
                   </div>
                   <AnalyticsBars issues={effectiveIssues} groupBy={groupBy} renderName={localizeGroup} />
@@ -642,7 +770,7 @@ export default function ExportReportModal({
       <div style={{ position: 'fixed', top: 0, left: -10000, zIndex: -1 }} aria-hidden>
         <div ref={emailChartRef} style={{ width: 600, background: '#fff', padding: 12, fontFamily: 'Arial, Assistant, sans-serif' }}>
           <div dir="rtl" style={{ fontSize: 13, fontWeight: 700, color: '#1e248c', marginBottom: 8, textAlign: 'right' }}>
-            נושאים לפי {GROUP_LABELS_HE[groupBy]}
+            נושאים לפי {groupLabelHe(groupBy)}
           </div>
           <AnalyticsBars issues={effectiveIssues} groupBy={groupBy} renderName={localizeGroup} width={576} />
         </div>
