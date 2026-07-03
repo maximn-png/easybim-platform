@@ -150,11 +150,11 @@ export default async function DashboardPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {TOOLS.map((tool) => {
               const Icon = tool.icon
-              return (
-                <div
-                  key={tool.id}
-                  className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-                >
+              const isLive = tool.status === 'live'
+              const cardClassName =
+                'bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300'
+              const cardBody = (
+                <>
                   <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center"
                     style={{ background: `${tool.color}18` }}
@@ -179,21 +179,34 @@ export default async function DashboardPage() {
                     <p className="text-xs leading-relaxed" style={{ color: '#6b7280' }}>{tool.description}</p>
                   </div>
 
-                  {tool.status === 'live' ? (
-                    <a
-                      href={tool.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  {isLive ? (
+                    <span
                       className="flex items-center gap-1.5 text-sm font-semibold transition-colors"
                       style={{ color: '#1e248c' }}
                     >
                       Open tool <ArrowRight size={14} />
-                    </a>
+                    </span>
                   ) : (
                     <span className="flex items-center gap-1.5 text-xs" style={{ color: '#9ca3af' }}>
                       <Clock size={13} /> Coming soon
                     </span>
                   )}
+                </>
+              )
+
+              return isLive ? (
+                <a
+                  key={tool.id}
+                  href={tool.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${cardClassName} cursor-pointer`}
+                >
+                  {cardBody}
+                </a>
+              ) : (
+                <div key={tool.id} className={cardClassName}>
+                  {cardBody}
                 </div>
               )
             })}
