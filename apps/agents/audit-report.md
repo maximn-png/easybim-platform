@@ -1,0 +1,366 @@
+# Clients folder audit
+
+Clients: **173**  ·  Projects OK: **48**
+
+Defects — wrapper: **1**, missing-subfolders: **18**, no-standard-subfolders: **317**, top-level-projects: **9**
+
+
+## Redundant wrapper — auto-fixable (unwrap + trash) (1)
+
+- BDO / בית הספר עירוני ח' תל אביב — unwrap "ביה ס תיכון עירוני ח' רחוב התשעים ושלוש תל אביב" up one level, trash "בית הספר עירוני ח' תל אביב"
+
+
+## Missing subfolders — auto-fixable (create missing) (18)
+
+- DEL / כביש541 — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- Effi Capital / מעלה אדומים — missing: חוזה
+- רשת אכסניות  אנא / אשקלון — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- BDO / בית ספר משה שרת הרחבה — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- BDO / ציטלין בית ספר — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- BDO / בריכת אולימפיטת — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- Dagan Shvarz / הסתדרות צפון — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- Ashtrom megurim / עמינדב 12-12 תא — missing: הצעות מחיר, חוזה
+- ERETZ GROUP / בית ספר 2051 — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- Prashkovsky / קריית ההגנה מגרש 2003 רחובות — missing: הצעות מחיר, חוזה
+- Shai - Hai Entrepreneurship and Investments Ltd / Yehud Monson — missing: הצעות מחיר, חוזה
+- Shai - Hai Entrepreneurship and Investments Ltd / Shiva kohavim — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- Selabinui / מגרש 16 נשר — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- IAI / תשתיות פיתוח-מידול צל — missing: הצעות מחיר, חוזה
+- shalev mor yosef / באר יעקוב-צריפין מתחם1 — missing: הצעות מחיר, חוזה
+- Nitzan Inbar / מרכז הקונגרסים בירושלים — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+- Barel Group / פרויקט בת חפר — missing: הצעות מחיר
+- Ashdar / זכרון 7 תא — missing: הצעות מחיר, חומר שהתקבל מהמזמין
+
+
+## No standard subfolders — needs review (317)
+
+- MSB / מתחם גד גדרה — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- PEER Eng / מלילות תמחש 2 — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- DEL / ביש 40 עוקף תעשיה אווירית — folders: [נתונים למינוי מנהל בים] files: 0
+- Nizani Haemek / הצעת מחיר — folders: [—] files: 3
+- EL PRO / חזית הים מגרש 607, חיפה — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- S. Baruch / קרית אתא מגרשים 75-77 שכונת תמל 1025 — folders: [הצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 5
+- ROM / מבנה פגיה תל השומר — folders: [חומר שיתקבל מהמזמין, המעת מחיר] files: 0
+- Oren Raz / פאר לי_א.ת מכבים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Levis Lustig / הרצל 50-56 פת — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 1
+- היחידה לאחזקה / קדמה — folders: [הסכם+הזמנה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Ahim Om / נתניה — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- SO ARCHT / מבנה משולב 661 — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Bluegen / סבחה — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Lea Shneor Arch / הצעת מחיר — folders: [—] files: 3
+- Lea Shneor Arch / חומר שהתקבל — folders: [—] files: 1
+- i.Shtern / חוצות המפרץ — folders: [הסכם, הצעת מחיר] files: 0
+- i.Shtern / החותרים קריית אליעזר — folders: [הצעת מחיר, חומר שהתקבל] files: 0
+- i.Shtern / רכסים — folders: [הצעה חתומה והסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 1
+- Effi Capital / קריית עקרון  מגרשים 203,215 — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Effi Capital / מסדה רמלה מגרשים 107-108 — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Sadot Gettelman / איכלוב פתח תקווה — folders: [הצעה חתומה, חומר שיקתבל מהמזמין, הצעת מחיר] files: 0
+- Snir Eng / מרכז טיפולי ספיר — folders: [הצעת מחיר, S0763A_Shaar_Center-מודל רוויט] files: 0
+- ShaySolberg / הצעת מחיר — folders: [—] files: 2
+- ShaySolberg / jm_dnvJvtEPLU2H1pD — folders: [תכניות אדריכלות, תכניות מערכות-סופרפוזיציה] files: 5
+- A.M eng / לב הבקעה - מגרש 13 — folders: [הסכם חתום, חוזה וביטוחים, הצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- רשת אכסניות  אנא / ערד אנא — folders: [הסכם, הצעת מחיר] files: 0
+- רשת אכסניות  אנא / אכסניית נוער מעיין חרוד — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- רשת אכסניות  אנא / עין גדי — folders: [הסכם, הצעת מחיר] files: 3
+- רשת אכסניות  אנא / ליווי בים ארגוני — folders: [—] files: 9
+- רשת אכסניות  אנא / אכסניה בכרי דשא — folders: [הסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- LS ARCHITECTS / השומר מרגולין — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- D.S.Megurei Israel / מתחם גבעת זאב — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- OptiPlan / סבחה ד' — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Shlomi Dahan / אלעזר נתיבות — folders: [הצעה חתמוה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Beita / בזל 48 תא — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Tsur eng / טרומפלדור 50-54 פת — folders: [הזמנה חתומה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Sharbat LTD / בני עייש מגרש 3000 — folders: [תיקית תיקונים, חומר שיצקבל מהמזמין, הצעת מחיר] files: 0
+- Waxman Group / התשבצ — folders: [הצעה מאושר_תהסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Waxman Group / דרך השלום 77-85 — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Netanel Group / קרית גת - מערב — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Lnbr eng / פארן 1 ירושלים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Margolin / BEYOND — folders: [—] files: 2
+- Margolin / מלון יום המלח — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Margolin / אפלייד מטריאלס — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Ilouz Group / אבן עזרא אשקלון — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Shay Moran / כביש-דרום אמריקה — folders: [—] files: 2
+- רייטר ניהול פרויקטים / עין צורים 18 — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Keren nadlan / עולי הגרדום 9 תל אביב — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- BDO / הורדצקי — folders: [הצעת מחיר, התקבל מהמזמין] files: 0
+- BDO / 409 מבנה — folders: [הסכם, הצעת מחיר, התקבל מהמזמין] files: 0
+- Dagan Shvarz / המרי גבעתיים — folders: [הצעה חתומה והסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Dagan Shvarz / טופס פתיחת ספק — folders: [—] files: 1
+- Dagan Shvarz / דוניץ אלעד - הצעירים רמהש — folders: [ביטוחים וחוזה, הצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Miloslavsky / ההסתדרות גבעתיים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- M.J / ליוי BIM משרדי — folders: [הצעת מחיר] files: 0
+- Baran israel / הצעת מחיר — folders: [—] files: 4
+- Baran israel / חומר שיתקבל מהמזמין — folders: [—] files: 1
+- R.A.Y.K / שרת 45 תל אביב — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- R.A.Y.K / הצעה מאושרת — folders: [—] files: 3
+- R.A.Y.K / הצעת מחיר — folders: [—] files: 3
+- OK אלקטריקל מהנדסים / חומר שיתקבל מהמזמין — folders: [—] files: 1
+- OK אלקטריקל מהנדסים / הצעת מחיר — folders: [—] files: 2
+- Albo engineering / בית ספר 167 — folders: [חומר שיתקבל מהמזמין, חומר עבודה, הצעת מחיר] files: 0
+- Gadish Group / חומר שיתקבל מהמזמין — folders: [—] files: 1
+- Gadish Group / הצעת מחיר — folders: [—] files: 3
+- ELIAS NASSER / פרויקט קרית אתא — folders: [הצעה מאושרת, חומר שיתקבל מהמזמין, הצעת מחיר] files: 1
+- Amiad / הצעת מחיר — folders: [—] files: 3
+- Shaviv / הגדלת שכר טרחה חבצלת השרון — folders: [—] files: 2
+- Shaviv / שלמה המלך 11, 13, 15, 17 לוד — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Shaviv / קהילת צינון הרצליה — folders: [הסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Rotem-Shani / חומר שיתקבל מהמזמין — folders: [—] files: 2
+- Rotem-Shani / הצעת מחיר — folders: [—] files: 5
+- BIM TEAM / מרלוג — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- BIM TEAM / מפעל דורות — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- BIM TEAM / מפעל נירלט — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Isras Investment company Ltd / אשדוד האומן 12-14 — folders: [וביטוחים הצעה חתומה והסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Isras Investment company Ltd / מגרש 9001 טירת הכרמל — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Isras Investment company Ltd / פרויקט נווה אילן — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Hanan Waserman / בית מדא - הרצליה — folders: [הזמנת רכש  + ביטוחים, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Hanan Waserman / הרצליה - אולם ספורט בית ספר היובל — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Ashtrom megurim / חדרה 1-3 תא — folders: [ביטוחים והסכם, הצעה מאושרת, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Ashtrom megurim / שד' טובים 1-5 רג — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 1
+- Gabay / פרויקטים שטרם התקבלו או נדחו — folders: [מלכי צדק 5-7 רמת גן, מתניה 1-10 רמת גן, אבן גבירול 195-201, תל אביב-יפו, קוסובסקי 26, תל אביב-יפו, האלון 33-37, יבנה, מתחם אילת, מחירון גבאי, מנחם ארבר 14-26] files: 0
+- Gabay / פרויקטים שהתקבלו — folders: [ויצמן 18] files: 0
+- Irit Kohavi / הצעת מחיר — folders: [—] files: 2
+- Clalit / Yosftal Eilat — folders: [V2] files: 5
+- Yenon / קו צהוב — folders: [הצעת מחיר] files: 0
+- Yenon / תתל 65 ב — folders: [הצעת מחיר, חומר שיתקבל מהזמין] files: 0
+- EBN / עין יהב, חולון — folders: [הצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- EBN / הבילויים 46-60 — folders: [חוזה , ביטוחים והצעה חתומה, הצעת מחיר, חומר שיתקבל מהזמין] files: 0
+- EBN / פרויקט תל גיבורים,חולון — folders: [הצעה מאושרת, חומר שיקתבל מהמזמין, הצעת מחיר] files: 0
+- EBN / פרויקט סלע בינוי 109-111 — folders: [הצעה מאושרת, הצעת מחיר, חומר ביתקבל מהזמנין] files: 0
+- EBN / שדה דב 301 — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- EBN / פרויקט סלע בינוי 105-108 — folders: [הצעה מאושרת, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Amy Metom / ביטוח וחוזה — folders: [—] files: 10
+- Amy Metom / הצעת מחיר — folders: [—] files: 2
+- Amy Metom / חומר שיתקבל מהמזמין — folders: [—] files: 2
+- GS Engineers / הצעת מחיר — folders: [—] files: 6
+- GS Engineers / חומר שיתקבל מהמזמין — folders: [—] files: 2
+- Zemach Hemerman / ז'אן זורס חולון — folders: [הצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Zemach Hemerman / נתיבי חן חיפה — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Afik Maliot / הצעת מחיר חתומה — folders: [—] files: 1
+- Afik Maliot / הצעת מחיר — folders: [—] files: 2
+- Mlead / METRO — folders: [הגדלת שכט 03.2025, Contract] files: 1
+- Avisror / פת ירושלים — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Avisror / פרויקט לוד — folders: [חומר שיקתבל מהמזמין, הצעת מחיר] files: 0
+- Rotem Yahalon / הצעה חתומה — folders: [—] files: 1
+- Rotem Yahalon / חומר שיתקבל מהמזמין — folders: [—] files: 3
+- Rotem Yahalon / הצעת מחיר — folders: [—] files: 7
+- ע. יפה ניהול פרויקטים בעמ / פרויקט מוזיאון הרצליה — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Harari - eng / חומר שיתקבל מהמזמין — folders: [—] files: 0
+- Harari - eng / הצעת מחיר — folders: [—] files: 4
+- Wolfman / הצעת מחיר — folders: [—] files: 3
+- Efrati - Madpis / פסגות אילה — folders: [הצעת  מחיר, חומר שיתקבל מהמזמין] files: 0
+- Gronner DEL Engineers LTD / 1162024מכרז — folders: [הודעת הבהרה נתיבי איילון, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Lothan Daitch Architects / הצעת מחיר — folders: [—] files: 4
+- Sharist Eng / שמעון חכם — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Sharist Eng / השומר מרגולין — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Sharist Eng / טובול — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Sharist Eng / גבעת הבננה - מגרש 700 — folders: [הצעת מחיר, חומר שהתקבל] files: 0
+- Sharist Eng / בבא סאלי 105 ירושלים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Sharist Eng / המהרל מפראג 41 ירושלים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Sharist Eng / לייף סנטר — folders: [לייף סנטר הוספת מידול פתחים להצעת מחיר, הצעה חתומה, חומר מהמזמין, הצעת מחיר] files: 0
+- ERETZ GROUP / בית ספר 2016 בירושלים — folders: [הצעת מחיר לליווי בביצוע, הצעת מחיר, חוזה וביטוח, חומר שיתקבל מהמזמין] files: 0
+- ERETZ GROUP / בית בן גוריון — folders: [—] files: 1
+- ERETZ GROUP / הגדלת שכט — folders: [—] files: 3
+- ERETZ GROUP / חוזה-ביהס תיירות — folders: [—] files: 3
+- ERETZ GROUP / יפו_167_בית_הספר_לתיירות_אדריכלות_26.01.22 — folders: [הצעת מחיר] files: 0
+- ת.מ.א / הצעת מחיר — folders: [—] files: 2
+- DIMRI / הגפן ירושלים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- DIMRI / פראנקל 10-14 תא — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 1
+- DIMRI / גני אזר רמת גן — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- DIMRI / מתחם רחוב הרצל טירת הכרמל — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- DIMRI / בן סרוק 10-12 תא — folders: [חוזה או הצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- DIMRI / בבלי — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Levitin & Shomani / חומר שיתקבל מהמזמין — folders: [—] files: 2
+- Levitin & Shomani / הצעת מחיר — folders: [—] files: 2
+- Prashkovsky / תמל 3003 רחובות - מגרש B5 ומגרש E3 — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Prashkovsky / 40B 41B מגרשים רחובות — folders: [הצעת  מחיר, חומר שיתקבל מהמזמין] files: 0
+- Prashkovsky / תמל 3000 — folders: [חומר שיתקבל מהמזמין, חוזה וביטוחים, הצעת מחיר] files: 0
+- Y.T.D / מלון 102 ים המלח — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Y.T.D / אפטאון — folders: [הצעה חתומה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- P.Gordi / אהלי יעקב 1-7 תא — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- P.Gordi / איינשטיין 11-13 — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- P.Gordi / שטמפפר פ ת — folders: [חוזים ואישור עבודה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- P.Gordi / Bait Va Gag — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Tiran enginering / הפארק שפרינצק — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Tiran enginering / פארק  מישור -אשקלון — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Tiran enginering / תוכנת BIM כמה פרויקטים — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Tiran enginering / פרויקט רחובות — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Tiran enginering / פרויקט GS CITY — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Tiran enginering / גני אזר - כפר אזר — folders: [חוזה או הצעת מחיר מאושרת, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Tiran enginering / חבצלת השרון, מגרש 207 — folders: [—] files: 12
+- Tiran enginering / פרויקט הרצל זוטא - ירושלים — folders: [הגדלת שכט, הצעת מחיר, חומר שיתקבל מהמזמין, מודל פיתוח, מידול חשמל] files: 0
+- Adam Shuster / רחוב פנחד דוד צבי 19 תלא — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Adam Shuster / מתחם דפנה מגרש 503 — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Adam Shuster / סוקולוב — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Adam Shuster / ברוריה — folders: [הצעת מחיר] files: 1
+- Peretz Bh / רחובות-קריית ההגנה — folders: [—] files: 5
+- Peretz Bh / שכונת נוריות  ראשון לציון — folders: [קריית ההגנה  רחובות] files: 3
+- Peretz Bh / פרויקט הרובע הבינלאומי לוד — folders: [—] files: 5
+- Shai - Hai Entrepreneurship and Investments Ltd / נוף הגליל — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Shai - Hai Entrepreneurship and Investments Ltd / שכונת נווה שמיר — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Selabinui / פרויקט 5-6 — folders: [ביטוחים וחוזה, הצעת מחיר, חומר שיתקבל מהזמין] files: 0
+- Selabinui / מתחם גניש אור יהודה — folders: [—] files: 7
+- Selabinui / אפטאון — folders: [ביטוחים] files: 5
+- IAI / מטבח אלתא — folders: [הזמנה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- IAI / מבנה אינטגרציה מידול אינסטלציה — folders: [הצעת חתתומה, חומר שיתקבל מהמזמין, הצעה מחיר] files: 0
+- IAI / תנאים כללים להתקשרות עם מתכנן — folders: [—] files: 3
+- IAI / מבנה אינטגרציה — folders: [הזמנה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- IAI / מתחם רקפת — folders: [הזמנה, חומר שיתקבל מהמזין, הצעת מחיר] files: 0
+- IAI / מגדל -שער גילה — folders: [הזמנה, חומר שיתקבל מהמזין, הצעת מחיר] files: 0
+- IAI / בית לקוחות + מתחם תערוכות קבע — folders: [הזמנה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- IAI / מבנה פיתוח — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- IAI / פרויקט 923 במלמ תעא — folders: [הזמנה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- IAI / מרלוג תעא — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- IAI / מבנה אנרגיה יהוד — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- IAI / כל האישורים לפתתיחת ספק — folders: [—] files: 15
+- IAI / שטח נקי — folders: [הזמנה, הצעת מחיר, חומר שיתקבל מהזמין] files: 1
+- IAI / האנגר — folders: [הזמנה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- IAI / מבנה הדר הרחבה — folders: [הזמנה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Tophouse / הצעת מחיר — folders: [—] files: 2
+- Tophouse / חומרים שיתקבלו מהמזמין — folders: [—] files: 2
+- Bank of Israel / מכרז לבניית בסיס נתונים BIM — folders: [—] files: 1
+- Bank of Israel / חוות דעת מקצועית — folders: [—] files: 2
+- Mesilati Arc / ליווי בים משרדי — folders: [—] files: 3
+- shalev mor yosef / קדושי מצרי יהוד — folders: [חומר שיתקל מהזמין, הצעת מחיר] files: 0
+- shalev mor yosef / מגרש 403 — folders: [—] files: 4
+- Rasco / חוזה וביטוח — folders: [—] files: 7
+- Rasco / חומר שיתקבל מהמזמין — folders: [—] files: 1
+- Rasco / הצעת מחיר — folders: [—] files: 4
+- BKBR / מבנה משרדים איילה — folders: [הצעת מחיר] files: 1
+- Indan / Mazor-Firsht — folders: [—] files: 8
+- NATI / כביש 375 — folders: [—] files: 5
+- Masad-Oz / דרך השלום 105-117 תל אביב — folders: [הסכם, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Wanstein Vaadia / תלפיות ירושלים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Wanstein Vaadia / יוספטל אילת — folders: [הצעה חתומה, הצעת מחיר] files: 0
+- Wanstein Vaadia / Kalia — folders: [—] files: 2
+- Wanstein Vaadia / Wainberg — folders: [—] files: 4
+- חברת הפארק לחדשנות / הצעת מחיר — folders: [—] files: 4
+- חברת הפארק לחדשנות / חומר שיתקבל מהלקוח — folders: [—] files: 3
+- י.א ניהול פרויקטים / זנגביל 16-18 תא — folders: [—] files: 2
+- Solel Bone_Shikun binui / קמפוס — folders: [—] files: 3
+- Solel Bone_Shikun binui / מכרז DC חיפה — folders: [—] files: 6
+- Azrieli / גליל ים הרצליה — folders: [—] files: 5
+- Ayalon / נתצים בית שמש — folders: [הצעת מחיר עבור תכנון מפורט+השלמות עבור תכנון סופי, ניהול מודל, מידול תשתיות] files: 4
+- Yakobi Universal / monday_attacdhments — folders: [—] files: 6
+- Yakobi Universal / monday_attachments — folders: [—] files: 2
+- Nitzan Inbar / פארק קיסריה ומלון — folders: [חומר שיתקבל מהלקוח, הסכם סודיות, מבנה מגורים, הצעת מחיר] files: 2
+- Nitzan Inbar / שיבא — folders: [חומר שיתקבל מהמזמין, חוזה וביטוחים, הצעת  מחיר, הגדלת שכ"ט] files: 0
+- A Sade / jm_aWp8QWKOiUioTUp — folders: [חשמל, אינסטלציה, jm_9woP8GZiWkKF1yv] files: 0
+- Noam Harari / משטרת ראש העין — folders: [תחנת ראש העין] files: 2
+- Noam Harari / משטרת חריש — folders: [—] files: 11
+- Noam Harari / משטרת בש — folders: [—] files: 12
+- Dan Eng / מולטיפארק אשקלון — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Dan Eng / פארק תעסוקה בית לחם הגלילית מבנה B — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Dan Eng / אמניר חדרה — folders: [—] files: 5
+- Dan Eng / מתחם ציפורית — folders: [—] files: 2
+- Dan Eng / אלי כהן 12 — folders: [—] files: 2
+- Dan Eng / וייצמן 14 רמהש — folders: [—] files: 4
+- Dan Eng / פרויקט יובל גד — folders: [—] files: 8
+- Ludan / פרויקטים בעבודה  מ 04.2026 — folders: [מיכאל וחנה לוין ראשון לציון, אמות אזור, אמות שאול, אשדוד א', מגדלי הצעירים בלוד, עכו מזרח מגרש 539, עכו מזרח מגרש 539, ים המלח מגרש 134, אמות משפט, חיבת אליהו גבעת שמואל, מגרש 19 פתח תקווה שכונת צרות סירקין, מלון השרון בהרצליה, סבחה - אילת, קרדן - מתחם בן צבי הכרמל, פארק היין זכרון יעקב, אקמאי‏‏, פרויקט בית המגן, Cisco, מבנה 260 ( א.נ.ש.י.ם ), באר יעקב 108_, כוכב נהריה, דהומי 6 ירושלים, מגדלי מסגר בת ים, יבנה מזרח-שורק 153, 225, 268, תאומי רובינשטיין, מעלות הנחל מגרש 1032 - נתיבות, בית שמש רמה ד - מגרש 600] files: 0
+- Ludan / פרויקטים בעבודה או לא התקבלו — folders: [מגרשים בגין  החשמל, מתחם התפוז כפר סבא - אקרו, בית אלאפא - הקמת מפעל קרח, CBRE, פרויקט סיפולוקס, תכנון מטבח, מתחם כלמוביל ראש העין, אקרו- מתחם 19, הברושים 13 תל אביב, הרצוג, ביח רעות - שדה דב, שדה דב מלירסון, קמפוס אמישראגז הרצליה, מתחם הבלוק, מלון - קרתא צפת, חולון -מתחם קוגל-מקווה ישראל, מחלבת דשן, פרויקט  סן מרטין ירושלים, יוסי אברהמי בשדה דב, תל-אביב, פרויקט פארק הירדן, מלון דן קיסריה, מלון באר שבע, שדה דב 3210, פרויקט מבואות גילה, קינג וייויד שיפץ מלון, שדה דב 305, מתחם אמות צריפין, עידן הנגב, שדה דב 3101, משה יתום - אביליה, אפלייד, עזריאלי פאלאס - שדה דב, שדה דב 2270, Google, נחלת עילית ראשון לציון, משחטה במישור אדומים – מגרש 206, לודן דרום ליווי משרדי, מנדיי אקו, עומרים- אופקים, דובנוב 24, פרויקט התחיה הוד השרון יובלים, מתחם פוגל, פת, התותחנים 1-7 חולון, קן התור, קמפוס גליל ים, יצחק שדה פתח תקוה, ליווי בים משרדי, מתחם בינימני בת-ים] files: 0
+- Ludan / פרויקטים שהתקבלו — folders: [מבנה 260 ( א.נ.ש.י.ם ), מתחם 3208 שדה דב, נס ציונה, צפון-מזרח. מגרש 107, אס גי אס גיתם-רמת השרון, אחוזת הרצליה] files: 2
+- Rami-Shviro / Beit Milman — folders: [email_area_calc_23598] files: 4
+- Mahod / ביטוחים — folders: [—] files: 3
+- Mahod / מסמכים אדמין מהוד — folders: [גל שם טוב] files: 7
+- Mahod / גשר יהודי פקיעין — folders: [הצעת מחיר] files: 0
+- Mahod / 3 מסילות — folders: [הצעת מחיר, מסילת פלשת שורק, מסילה לאילת מקטע דימונה ספיר] files: 0
+- Mahod / מסילת באר שבע דימונה — folders: [חוזה וביטוחים] files: 3
+- Mahod / Metro — folders: [—] files: 6
+- Mahod / אדריכל — folders: [2022-11-12-op3, OneDrive_1_6.10.2022] files: 7
+- Barel Group / בראל א.ב הנדסה ובניו בעמ — folders: [—] files: 9
+- Barel Group / בראל א. ב הנדסה — folders: [ביטוחים] files: 0
+- Barel Group / אופקים — folders: [הצעת מחיר, התקבל מהמזמין] files: 0
+- Barel Group / 5 מגרשים חיפה — folders: [—] files: 6
+- Barel Group / מגרש 22-23 — folders: [הגדלת שכר טרחה] files: 6
+- Barel Group / מגרש 20 — folders: [—] files: 3
+- Barel Group / ליווי בים פנימי — folders: [—] files: 3
+- Barel Group / אפקה 61 — folders: [היעדר תביעות, ביטוח וחוזה, חומר שיתקבל מהמזמין, הצעת מחיר, הגדלת שכט] files: 1
+- Barel Group / פרויקט מול תבור- נוף הגליל — folders: [ביטוחים וחוזה, הצעת מחיר, חומר שיתקבל מהמזמין, מידול פיתוח, jm_JeBcTyM-P0OwBDN] files: 1
+- PCR / מורדות ארנונה — folders: [—] files: 1
+- PCR / דירות להשכרה בנוף הגליל — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Katz / צנרת — folders: [—] files: 12
+- Katz / כמויות — folders: [—] files: 2
+- Katz / Steel — folders: [—] files: 2
+- Danya Cibus / פרויקט נתיבים מהירים כביש 5 — folders: [הצעת מחיר, חומר שיתקבל מהזמזמין] files: 0
+- Danya Cibus / אסותא ראשון — folders: [—] files: 2
+- Danya Cibus / מחנה חצרים — folders: [—] files: 5
+- Danya Cibus / אלוני ים הרצליה — folders: [—] files: 2
+- Danya Cibus / מגדל אחדות — folders: [חשבון הגדלת סהט, מגדל אחדות  שכט] files: 13
+- Danya Cibus / תוהא 2 — folders: [—] files: 2
+- Danya Cibus / אסותא באר שבע — folders: [—] files: 4
+- Inprojects / חירייה — folders: [הצעה חתומה, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Inprojects / לווי BIM משרדי — folders: [—] files: 2
+- Inprojects / מנהרת תשתיות ציר הנופש — folders: [חוזה, הזמנה מאושרת, חומר שיתקבל מהמזמין, הצעת מחיר] files: 2
+- Inprojects / מכרז  משרדים ומעבדות אופקים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Inprojects / היכל הטניס ירושלים — folders: [—] files: 4
+- Inprojects / Arena — folders: [מידול תאורה, מידול ותאום תשתיות, חומר שיתקבל מהמזמין, חוזה וביטוחים] files: 0
+- Epstein / פארק עתידים — folders: [—] files: 3
+- Epstein / מתחם העירייה קריית ים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Epstein / ראם אור אדומים — folders: [הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Epstein / Laguna — folders: [הצעת מחיר] files: 1
+- Dimenssions PM / מפעל גרין פרוסט — folders: [—] files: 7
+- Dimenssions PM / יקב ברקן — folders: [—] files: 8
+- Aura / פתיחת ספק אאורה — folders: [—] files: 3
+- Aura / מתחם חצב -  תותחנים — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Aura / מתחם יוספטל קרית ים — folders: [הצעתה חתומה - הזמנה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Aura / הרואה רמת גן — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Sapir / כביש 6 — folders: [—] files: 0
+- Ashdar / פרויקט הקוצר רמהש — folders: [הצעת חתומה וחוזה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 1
+- Ashdar / העלייה השנייה 51-53 הרצליה — folders: [הסכם והצעה חתומה, חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Ashdar / בורוכוב 24 — folders: [חוזה וביטוח, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Ashdar / בורוכוב 14 — folders: [חוזה וביטוח, הצעת מחיר, חומר שיתקבל מהמזמין] files: 0
+- Ashdar / פוריקט קרקע מלמיה, צומת סביון — folders: [—] files: 3
+- Ashdar / שדרות ירושלים 153 תא — folders: [תיאום מערכות-שדרות ירושלים 153 תא] files: 4
+- Ashdar / מתחם בן גוריון הוד השרון — folders: [הגדלת סכט, חוזה + ביטוח, חומר שיתקבל מהמזין, הצעת מחיר] files: 2
+- Ashdar / כפר סבא סוקולוב — folders: [—] files: 4
+- Ashdar / רחבת השקד — folders: [—] files: 5
+- Ashdar / אלתרמן 2-4 — folders: [28.09.2023] files: 7
+- Ashdar / מניה וישראל שוחט 5 — folders: [—] files: 4
+- Ashdar / בורלא 5-7 — folders: [—] files: 3
+- Ashdar / פנקס 32-40 — folders: [—] files: 4
+- Ashdar / מתחם בילו — folders: [—] files: 4
+- Ashdar / בן שלום עובדיה נתניה — folders: [תשתיות, ביטוחים, üÅ Öîàì Æàüâëä - ÉÜäëä] files: 12
+- Africa - Israel / NES-A-Site[1] — folders: [Revit_temp, NES-A-Site_detached_backup] files: 8
+- Shafir / מרהס דרום — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Shafir / מתחם הבננה נתניה — folders: [חומר שיתקבל מהמזמין, הצעת מחיר] files: 0
+- Shelian / שיקון פועלי הנמל אבן גבירול — folders: [—] files: 4
+- Shelian / משולש אלחנן בתל אביב — folders: [—] files: 3
+- Shelian / מלון השקם — folders: [—] files: 2
+- Shelian / לאה-גולדברג לוד — folders: [—] files: 4
+- Shelian / מגדל פרדס — folders: [—] files: 3
+- Shelian / לייף-פלאזה — folders: [—] files: 3
+- Shelian / דובנוב — folders: [2022.12.14, אנשי קשר פרויקטים לדוגמא] files: 9
+- AS Barzel / Change order — folders: [2024.06.08, 2024.04.22, הגדלת שכט 29.05.2023, הגדלת שכט 03.05.2023, הגדלת שכט 02-03.2023] files: 2
+- AS Barzel / UPN253 Extensions  — folders: [—] files: 9
+- AS Barzel / FAB2 — folders: [Waste] files: 4
+- AS Barzel / CUB2 — folders: [הזמנות עבודה, Outsourcing, P&ID's, jm_teYlC09ve0KrL51] files: 19
+- Bar-Akiva / Bar-Akiva שנת  2025 — folders: [הצעת מחיר] files: 0
+- Bar-Akiva / חשבון יוני 2022 — folders: [—] files: 2
+- Bar-Akiva / Price Quotes — folders: [—] files: 4
+- ADV / תקשוב בש — folders: [—] files: 1
+- ADV / קנדה ישראל-האוזנר — folders: [—] files: 1
+- ADV / הצורפים — folders: [—] files: 1
+- ADV / קורס — folders: [—] files: 4
+- ADV / אפקה סנטר — folders: [—] files: 10
+- ADV / יוספטל — folders: [Finance] files: 1
+- Mossesco / פרויקט גשר הרקל — folders: [HARKAL BRIDGE - STR PLANS] files: 5
+- Mossesco / Wingait — folders: [files_3d9773021e794df38b4bb3799420536d] files: 2
+- Mossesco / Stractural Modelling — folders: [01.02.23_-_סט_קונסטרוציה_לאישור] files: 2
+- EET / Rephael — folders: [5313-AS-001-CL-00 - Standard, 5313-AS-001-PL-03 - Standard] files: 2
+- EET / חשבוניות מס — folders: [—] files: 5
+- EET / דיפו — folders: [—] files: 2
+- EET / מגדלי קירור — folders: [—] files: 6
+- EET / ברקאי — folders: [—] files: 6
+- EET / פיתוח סטנדרט ואוטומציה — folders: [—] files: 15
+
+
+## Top-level folders that look like PROJECTS, not clients — needs your rule (9)
+
+- Megido
+- רחוב ישעיהו רחובות
+- 534 כפר סבא רעננה
+- חדר אוכל מטבח והרחבת בית מדרש בישיבת שדרות
+- Almog
+- 00.Template Folder
+- HQ
+- Armon-Arch
+- Frenkel

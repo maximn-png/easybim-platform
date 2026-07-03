@@ -31,11 +31,28 @@ export async function mondayApi<T = unknown>(
   return json.data as T
 }
 
+export interface MondayColumnValue {
+  id: string
+  text: string | null
+  value: string | null
+  /** Present for mirror / formula / board-relation columns (their computed label). */
+  display_value?: string | null
+}
+
 export interface MondayItem {
   id: string
   name: string
-  column_values: { id: string; text: string | null; value: string | null }[]
+  column_values: MondayColumnValue[]
 }
+
+// Shared column_values selection: includes display_value for the column types whose
+// computed label is NOT exposed via `text` (mirror / formula / board-relation).
+const COLUMN_VALUES = `column_values(ids: $columnIds) {
+  id text value
+  ... on MirrorValue { display_value }
+  ... on FormulaValue { display_value }
+  ... on BoardRelationValue { display_value }
+}`
 
 /** Items in a board filtered to a set of status label IDs (e.g. [7,9] = Idea,Drafting). */
 export async function getItemsByStatusLabelIds(
@@ -54,7 +71,7 @@ export async function getItemsByStatusLabelIds(
           limit: 100,
           query_params: { rules: [{ column_id: $statusColumnId, compare_value: $labelIds, operator: any_of }] }
         ) {
-          items { id name column_values(ids: $columnIds) { id text value } }
+          items { id name ${COLUMN_VALUES} }
         }
       }
     }`
@@ -67,11 +84,53 @@ export async function getItemsByStatusLabelIds(
   return data.boards?.[0]?.items_page?.items ?? []
 }
 
+/** All items on a board (paginated via items_page + next_items_page), with chosen columns. */
+export async function getAllItems(
+  boardId: string,
+  columnIds: string[],
+  pageLimit = 100
+): Promise<MondayItem[]> {
+  const firstQ = `
+    query ($boardId: ID!, $columnIds: [String!], $limit: Int!) {
+      boards(ids: [$boardId]) {
+        items_page(limit: $limit) {
+          cursor
+          items { id name ${COLUMN_VALUES} }
+        }
+      }
+    }`
+  const nextQ = `
+    query ($cursor: String!, $columnIds: [String!], $limit: Int!) {
+      next_items_page(cursor: $cursor, limit: $limit) {
+        cursor
+        items { id name ${COLUMN_VALUES} }
+      }
+    }`
+
+  const out: MondayItem[] = []
+  const first = await mondayApi<{ boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] }>(
+    firstQ,
+    { boardId, columnIds, limit: pageLimit }
+  )
+  let page = first.boards?.[0]?.items_page ?? null
+  while (page) {
+    out.push(...(page.items ?? []))
+    if (!page.cursor) break
+    const next = await mondayApi<{ next_items_page: { cursor: string | null; items: MondayItem[] } }>(nextQ, {
+      cursor: page.cursor,
+      columnIds,
+      limit: pageLimit,
+    })
+    page = next.next_items_page ?? null
+  }
+  return out
+}
+
 /** Fetch specific items by id (with chosen columns). */
 export async function getItems(itemIds: string[], columnIds: string[]): Promise<MondayItem[]> {
   const query = `
     query ($itemIds: [ID!]!, $columnIds: [String!]) {
-      items(ids: $itemIds) { id name column_values(ids: $columnIds) { id text value } }
+      items(ids: $itemIds) { id name ${COLUMN_VALUES} }
     }`
   const data = await mondayApi<{ items: MondayItem[] }>(query, { itemIds, columnIds })
   return data.items ?? []
@@ -174,6 +233,53 @@ export async function getUpdates(itemId: string, limit = 25): Promise<MondayUpda
     }`
   const data = await mondayApi<{ items: { updates: MondayUpdate[] }[] }>(query, { itemId, limit })
   return data.items?.[0]?.updates ?? []
+}
+
+export interface MondayAsset {
+  id: string
+  name: string
+  file_extension: string | null
+  public_url: string | null
+  url: string | null
+}
+
+/** All file assets attached to an item's Updates (comments). */
+export async function getUpdateAssets(itemId: string): Promise<MondayAsset[]> {
+  const query = `
+    query ($itemId: ID!) {
+      items(ids: [$itemId]) {
+        updates { assets { id name file_extension public_url url } }
+      }
+    }`
+  const data = await mondayApi<{ items: { updates: { assets: MondayAsset[] }[] }[] }>(query, { itemId })
+  const assets: MondayAsset[] = []
+  for (const u of data.items?.[0]?.updates ?? []) assets.push(...(u.assets ?? []))
+  return assets
+}
+
+/** Search a board's items by name (contains), returning chosen columns. */
+export async function searchItemsByName(
+  boardId: string,
+  term: string,
+  columnIds: string[]
+): Promise<MondayItem[]> {
+  const query = `
+    query ($boardId: ID!, $term: CompareValue!, $columnIds: [String!]) {
+      boards(ids: [$boardId]) {
+        items_page(
+          limit: 25,
+          query_params: { rules: [{ column_id: "name", compare_value: $term, operator: contains_text }] }
+        ) {
+          items { id name ${COLUMN_VALUES} }
+        }
+      }
+    }`
+  const data = await mondayApi<{ boards: { items_page: { items: MondayItem[] } }[] }>(query, {
+    boardId,
+    term,
+    columnIds,
+  })
+  return data.boards?.[0]?.items_page?.items ?? []
 }
 
 /** Bell + email notification. targetType "Project" for an item, "Post" for an update. */

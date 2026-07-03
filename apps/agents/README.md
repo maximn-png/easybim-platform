@@ -4,6 +4,13 @@ Multi-agent app. Vision: see [agent-kingdom.md](./agent-kingdom.md) — ten anim
 
 **First agent built: 🦚 Peacock** — the EasyBIM LinkedIn / content agent. Plans, drafts, and routes weekly LinkedIn posts through a Monday board, with human approval.
 
+**Second agent: 🐿️ Squirrel** — the price-quote management agent (`lib/agents/squirrel/`). On a Monday webhook for a new **Type-C** item on **MA-001-Price Quotes** (`6105725242`) **with a `מספר הצעה` (quote number) set**, it does the unattended plumbing that the old local Python automation did: build `Clients/<Client>/<מספר הצעה> - <item name>/{הצעות מחיר, חוזה, חומר שהתקבל מהמזמין}`, copy the Type-C Sheets template **via the SheetCopier.gs web app** (so the bound `📄 הצעת מחיר` menu keeps working), write the hidden `_meta` sheet, download the Monday attachments, and write the Sheets + GDrive links back to Monday. Then it reads the received materials and **proposes** a work-scope as a Monday update (it never fills `ToQuote` directly). The two in-document Apps Script menus (`📄 הצעת מחיר`, `📧 שליחה`) are unchanged — Squirrel reproduces the exact folder layout + `_meta` they depend on. New Google Drive/Sheets integration lives in `lib/integrations/google/client.ts` (service-account auth). Dashboard chat + how-it-works are now presentation-driven (`lib/agents/presentation.ts`), so both animals render the same UI. Monday automation to wire: *"When `מספר הצעה` changes (and `סוג פרויקט` is C) → POST `/api/webhooks/squirrel/monday?token=<MONDAY_WEBHOOK_SECRET>`"* — the handler re-validates both conditions and is idempotent.
+
+**Squirrel quote index + analytics.** Squirrel also maintains a `QuoteRecord` Mongo index (one doc per board item) so the chat can filter/aggregate/compare quotes fast. `lib/agents/squirrel/quoteIndex.ts` `syncFromMonday()` bulk-upserts every item's columns; `backfillAreas()` reads each linked work-plan sheet and extracts the project area (anchored on the "שטח" label in the `ToQuote`/`WorkingSheet` tabs). Chat tools in `lib/agents/squirrel/analytics.ts`: `query_quotes`, `aggregate_quotes`, `get_quote`, `sync_index`. A **daily cron** `/api/cron/squirrel/sync` (in `vercel.json`, 05:00) keeps it fresh + backfills a batch of areas; "רענן את האינדקס" in chat triggers `sync_index` on demand.
+- **Six contact parties** (all mirror/board-relation columns → MA-006-Contacts `8161875627`) are indexed & queryable/groupable: `developer` (יזם ראשי, also the primary `client`), `developerContact` (איש קשר מטעם היזם), `projectManagement` (ניהול הפרויקט), `projectManagerContact` (איש קשר מטעם מנהל פרויקט), `workOrderer` (מזמין העבודה), `workOrdererContact` (איש קשר טעם מזמין העבודה).
+- ⚠️ **Monday gotcha (verified 2026-07-03):** the client/מזמין is NOT `formula_mkzmngff` — that formula column returns the literal string `"null"` over the API. The six parties above come from their mirror/relation columns via `display_value`. Mirror/formula/board-relation columns need the typed GraphQL fragments (`... on MirrorValue { display_value }` etc.) — see `COLUMN_VALUES` in `lib/integrations/monday/client.ts` and `disp()` in `squirrel/board.ts`.
+- ⚠️ **Dev gotcha:** after changing `QuoteRecord`'s schema, **restart** the dev server — Mongoose caches the compiled model and (strict mode) silently strips fields the cached schema doesn't know, so new columns won't persist until a fresh process re-registers the schema.
+
 > Source-of-truth design + the proven prototype live on the shared drive:
 > `G:\Shared drives\Marketing\Claude-Marketing-Skills\` — `easybim-agent-platform-architecture.md`, `easybim-brand guidline/`, `easybim-monday-orchestrator/SKILL.md` + `posttype-playbook.md`, `easybim-post-writer/`, `easybim-linkedin-package/`, `nanobana-picgenerator/`.
 
@@ -63,6 +70,14 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 NEXT_PUBLIC_PORTAL_URL=http://localhost:3000
 # GEMINI_API_KEY (Phase 3 branded image — use a FRESH key)
+# 🐿️ Squirrel (price quotes) — Google Drive/Sheets + SheetCopier:
+GOOGLE_SERVICE_ACCOUNT_JSON=   # base64 (or raw JSON) of the Finance service_account.json
+SHEET_COPIER_URL=              # SheetCopier.gs /exec web-app URL (from the PriceQuotes config.json)
+SHEET_COPIER_SECRET=           # matching SheetCopier secret
+PQ_TEMPLATE_SHEET_ID=1aKTp7HN1Y5plb6LBPdXEm16WV0Xt0-WNW7HWYPrlXXM
+PQ_DRIVE_NAME=Finance
+PQ_CLIENTS_ROOT=Clients
+# MONDAY_API_TOKEN (write scope) is reused for the board writes AND written into each project's _meta sheet.
 ```
 
 ---

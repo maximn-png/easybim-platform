@@ -60,11 +60,11 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
           </div>
         )}
 
-        <HowItWorks accent={p.accent} />
+        <HowItWorks accent={p.accent} data={p.howItWorks} />
 
-        {agentKey === 'peacock' && (
+        {p.hasChat && p.chat && (
           <div className="mb-8">
-            <Chat agentKey={agentKey} accent={p.accent} emoji={p.emoji} />
+            <Chat agentKey={agentKey} accent={p.accent} emoji={p.emoji} copy={p.chat} />
           </div>
         )}
 
