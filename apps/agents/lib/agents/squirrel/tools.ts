@@ -53,55 +53,44 @@ export const findQuote = betaZodTool({
 export const setupProject = betaZodTool({
   name: 'setup_project',
   description:
-    'Run the full setup for a Type-C quote item in ONE call. It resolves the client folder ITSELF from the item (יזם ראשי, else מזמין העבודה) or an explicit clientOverride, then creates "<מספר הצעה> - <name>" directly inside that client folder (subfolders + Type-C template + _meta + attachments), writes the Sheets/GDrive links back, notifies Maxim, and indexes it. Refuses and creates NOTHING if the item is not Type-C with a quote number, or if no client can be determined — it will NEVER invent a client from the item name. Idempotent.',
+    'Run the full setup for a Type-C quote item in ONE call. FLAT layout: creates "<מספר הצעה> - <clean name>" DIRECTLY under the Price Quotes root (no client layer), with the 3 subfolders + the TYPE C - תכנון עבודה template + _meta + Monday attachments, writes the Sheets/GDrive links back, notifies Maxim, and indexes it. Refuses and creates NOTHING if the item is not Type-C with a quote number. Idempotent.',
   inputSchema: z.object({
     itemId: z.string(),
-    clientOverride: z
-      .string()
-      .optional()
-      .describe('ONLY when Maxim explicitly names the client; otherwise omit — the client is taken from the item'),
   }),
-  run: async ({ itemId, clientOverride }) => {
+  run: async ({ itemId }) => {
     const it = await board.readQuoteItem(itemId)
     if (!it) return 'NOT_FOUND'
     if (!board.isReadyForSetup(it))
       return 'SKIP: item is not Type-C (סוג פרויקט=C) with a quote number (מספר הצעה) set — nothing created.'
     if (board.isAlreadySetUp(it)) return 'ALREADY_SET_UP: this item already has GDrive/sheet links — nothing created.'
 
-    // Client comes ONLY from an explicit override or the item's real client fields — never the item name.
-    const client = clientOverride?.trim() || it.client || it.workOrderer
-    if (!client)
-      return 'NO_CLIENT: the item has no client (יזם ראשי / מזמין העבודה are empty). Set the client on Monday, or pass clientOverride. Will NOT create a folder from the item name.'
-
-    const cf = await drive.ensureClientFolder(client)
     const projectFolderName = board.folderName(it)
     const assets = await board.getMaterialAssets(itemId)
     const result = await drive.setupProject({
-      clientFolderId: cf.id,
       projectFolderName,
+      projectType: it.projectType,
       itemId,
       assets,
       mondayToken: mondayToken(),
     })
 
     if (result.alreadyExisted) {
-      return JSON.stringify({ alreadyExisted: true, client: cf.name, folderUrl: result.folderUrl })
+      return JSON.stringify({ alreadyExisted: true, folderUrl: result.folderUrl })
     }
 
     if (result.sheetUrl) {
-      await board.setLink(itemId, board.COL.sheetLink, result.sheetUrl, `${projectFolderName} - תכנון עבודה`)
+      await board.setLink(itemId, board.COL.sheetLink, result.sheetUrl, `TYPE C - תכנון עבודה - ${projectFolderName}`)
     }
     await board.setLink(itemId, board.COL.gdriveLink, result.folderUrl, projectFolderName)
 
     const summary =
-      `<div dir="rtl">🐿️ הוקם פרויקט: <b>${projectFolderName}</b> תחת הלקוח <b>${cf.name}</b>` +
-      (cf.created ? ' (תיקיית לקוח חדשה נוצרה)' : '') +
-      `.<br>נוצרו 3 תיקיות, הועתקה תבנית ההצעה, ונאספו ${result.downloaded} קבצים מ-Monday.<br>` +
+      `<div dir="rtl">🐿️ הוקם פרויקט: <b>${projectFolderName}</b>.<br>` +
+      `נוצרו 3 תיקיות, הועתקה תבנית ההצעה, ונאספו ${result.downloaded} קבצים מ-Monday.<br>` +
       `<a href="${result.folderUrl}">תיקיית הפרויקט</a>` +
       (result.sheetUrl ? ` · <a href="${result.sheetUrl}">גיליון תכנון עבודה</a>` : '') +
       `</div>`
     await board.postUpdate(itemId, summary)
-    await board.notifyMaxim(itemId, `🐿️ הוקם "${projectFolderName}" תחת ${cf.name} (${result.downloaded} קבצים).`)
+    await board.notifyMaxim(itemId, `🐿️ הוקם "${projectFolderName}" (${result.downloaded} קבצים).`)
 
     try {
       await upsertOne(itemId)
@@ -113,8 +102,6 @@ export const setupProject = betaZodTool({
     const verify = await board.readQuoteItem(itemId)
     return JSON.stringify({
       status: 'CREATED',
-      client: cf.name,
-      clientCreated: cf.created,
       folderUrl: result.folderUrl,
       sheetUrl: result.sheetUrl,
       downloaded: result.downloaded,

@@ -195,18 +195,25 @@ export async function copySheetTemplate(
   const secret = (process.env.SHEET_COPIER_SECRET ?? '').trim()
 
   if (url && secret) {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret, templateId, destFolderId, newName }),
-    })
-    const result = (await resp.json()) as { error?: string; fileId?: string; webViewLink?: string }
-    if (result.error) throw new Error(`SheetCopier error: ${result.error}`)
-    const fileId = result.fileId ?? ''
-    const link =
-      result.webViewLink ??
-      (fileId ? `https://docs.google.com/spreadsheets/d/${fileId}/edit` : '')
-    return { fileId, link }
+    // SheetCopier can fail (HTML error page, auth hiccup, template not shared with
+    // the script user). Fall through to a Drive-API copy instead of failing the
+    // whole setup — the copy then just won't carry a bound Apps Script.
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret, templateId, destFolderId, newName }),
+      })
+      const result = (await resp.json()) as { error?: string; fileId?: string; webViewLink?: string }
+      if (result.error) throw new Error(`SheetCopier error: ${result.error}`)
+      const fileId = result.fileId ?? ''
+      const link =
+        result.webViewLink ??
+        (fileId ? `https://docs.google.com/spreadsheets/d/${fileId}/edit` : '')
+      return { fileId, link }
+    } catch (e) {
+      console.error('[google] SheetCopier failed, falling back to Drive copy:', (e as Error).message)
+    }
   }
 
   const res = await drive().files.copy({

@@ -10,68 +10,27 @@ export const QUOTES_SUBFOLDER = 'הצעות מחיר'
 export const MATERIALS_SUBFOLDER = 'חומר שהתקבל מהמזמין'
 
 const DRIVE_NAME = process.env.PQ_DRIVE_NAME || 'Finance'
-const CLIENTS_ROOT = process.env.PQ_CLIENTS_ROOT || 'Clients'
-const TEMPLATE_ID = process.env.PQ_TEMPLATE_SHEET_ID || '1aKTp7HN1Y5plb6LBPdXEm16WV0Xt0-WNW7HWYPrlXXM'
+// FLAT layout (2026-07-04 reorg): every project folder ("<מספר הצעה> - <name>")
+// sits DIRECTLY under the "Price Quotes" root — there is no client layer anymore.
+// Keyed by folder id so display renames (Clients → Price Quotes) never break it.
+export const ROOT_FOLDER_ID = process.env.PQ_ROOT_FOLDER_ID || '10Mf8vlNrOdBvi1WN9SpSpL5Wx_0-YpQy'
 
-export interface ClientFolder {
-  id: string
-  name: string
+// Work-plan sheet templates per סוג פרויקט. Types without a template get folders only.
+const TEMPLATE_C_ID = process.env.PQ_TEMPLATE_SHEET_ID || '1aKTp7HN1Y5plb6LBPdXEm16WV0Xt0-WNW7HWYPrlXXM'
+const TEMPLATE_A_ID = process.env.PQ_TEMPLATE_SHEET_A_ID || '1sJZNxFu9d9hDignfgMs-1_TKZQtD4pVvpXepionpnlU'
+
+export interface SheetTemplate {
+  templateId: string
+  /** Copy name = `${prefix} - ${projectFolderName}` */
+  prefix: string
 }
 
-export interface ClientResolution {
-  driveId: string
-  clientsRootId: string
-  match: ClientFolder | null
-  candidates: ClientFolder[]
-}
-
-const norm = (s: string) =>
-  s
-    .replace(/["']/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
-
-/**
- * Resolve the client folder under Clients/ by (fuzzy) name match against the
- * Monday client name. Returns the match (if any) plus all candidates so the
- * agent can decide / ask Maxim when there is no confident match.
- */
-export async function resolveClientFolder(clientName: string): Promise<ClientResolution> {
-  const driveId = await g.getSharedDriveId(DRIVE_NAME)
-  const clientsRootId = await g.findChildFolder(driveId, CLIENTS_ROOT, driveId)
-  if (!clientsRootId) {
-    throw new Error(`Clients root '${CLIENTS_ROOT}' not found under Shared Drive '${DRIVE_NAME}'`)
-  }
-  const folders = await g.listChildFolders(clientsRootId, driveId)
-  const target = norm(clientName)
-  let match: g.DriveFile | undefined
-  if (target) {
-    match = folders.find((f) => norm(f.name) === target)
-    if (!match) {
-      match = folders.find((f) => {
-        const n = norm(f.name)
-        return n.includes(target) || target.includes(n)
-      })
-    }
-  }
-  return {
-    driveId,
-    clientsRootId,
-    match: match ? { id: match.id, name: match.name } : null,
-    candidates: folders.map((f) => ({ id: f.id, name: f.name })),
-  }
-}
-
-/** Find the client folder under Clients/ by name, or CREATE it if missing. Never returns null. */
-export async function ensureClientFolder(
-  clientName: string
-): Promise<{ id: string; name: string; created: boolean; driveId: string }> {
-  const { driveId, clientsRootId, match } = await resolveClientFolder(clientName)
-  if (match) return { id: match.id, name: match.name, created: false, driveId }
-  const name = clientName.replace(/[\\/:*?"<>|]/g, '_').trim()
-  const id = await g.createFolder(name, clientsRootId)
-  return { id, name, created: true, driveId }
+/** Template for a סוג פרויקט label, or null when the type has no work-plan template. */
+export function templateForType(projectType: string | null | undefined): SheetTemplate | null {
+  const t = (projectType ?? '').trim()
+  if (t === 'C') return { templateId: TEMPLATE_C_ID, prefix: 'TYPE C - תכנון עבודה' }
+  if (t === 'A' || t === 'A.1') return { templateId: TEMPLATE_A_ID, prefix: 'A-PlannedWork' }
+  return null
 }
 
 export interface SetupResult {
@@ -86,33 +45,54 @@ export interface SetupResult {
 }
 
 /**
- * Full unattended plumbing for one Type-C project (idempotent). Creates
- *   <clientFolder>/<projectFolderName>/{הצעות מחיר, חוזה, חומר שהתקבל מהמזמין}
- * copies the Type-C Sheets template into הצעות מחיר (via SheetCopier so the
- * bound menu survives), writes the hidden _meta sheet, and downloads the Monday
- * attachments into חומר שהתקבל מהמזמין. Does NOT write Monday links (the caller
- * does that after, so a partial failure never leaves a dangling link).
+ * Full unattended plumbing for one project (idempotent). Creates
+ *   <Price Quotes root>/<projectFolderName>/{הצעות מחיר, חוזה, חומר שהתקבל מהמזמין}
+ * copies the type's Sheets template into הצעות מחיר (via SheetCopier so the
+ * bound menu survives; skipped for types without a template), writes the hidden
+ * _meta sheet, and downloads the Monday attachments into חומר שהתקבל מהמזמין.
+ * Does NOT write Monday links (the caller does that after, so a partial failure
+ * never leaves a dangling link).
  */
 export async function setupProject(opts: {
-  clientFolderId: string
   projectFolderName: string
+  projectType: string | null
   itemId: string
   assets: MondayAsset[]
   mondayToken: string
 }): Promise<SetupResult> {
-  const { clientFolderId, projectFolderName, itemId, assets, mondayToken } = opts
+  const { projectFolderName, projectType, itemId, assets, mondayToken } = opts
   const driveId = await g.getSharedDriveId(DRIVE_NAME)
 
-  // Idempotency guard: if the project folder already exists, do not recreate.
-  const existing = await g.findChildFolder(clientFolderId, projectFolderName, driveId)
+  // Idempotency guard: if the project folder already exists, do not recreate —
+  // but DO complete a missing work-plan template (a previous attempt may have
+  // failed between folder creation and the template copy).
+  const existing = await g.findChildFolder(ROOT_FOLDER_ID, projectFolderName, driveId)
   if (existing) {
     const quotesFolderId = (await g.findChildFolder(existing, QUOTES_SUBFOLDER, driveId)) ?? ''
     const materialsFolderId = (await g.findChildFolder(existing, MATERIALS_SUBFOLDER, driveId)) ?? ''
+    let sheetFileId = ''
+    let sheetUrl = ''
+    const tpl = templateForType(projectType)
+    if (tpl && quotesFolderId) {
+      const sheets = await g.listFilesInFolder(quotesFolderId, 'application/vnd.google-apps.spreadsheet')
+      if (sheets.length === 0) {
+        const copied = await g.copySheetTemplate(tpl.templateId, quotesFolderId, `${tpl.prefix} - ${projectFolderName}`)
+        sheetFileId = copied.fileId
+        sheetUrl = copied.link
+        if (sheetFileId) {
+          try {
+            await g.writeMetaSheet(sheetFileId, itemId, BOARD_ID, mondayToken)
+          } catch (e) {
+            console.error('[squirrel] could not write _meta sheet:', e)
+          }
+        }
+      }
+    }
     return {
       projectFolderId: existing,
       folderUrl: g.folderUrl(existing),
-      sheetFileId: '',
-      sheetUrl: '',
+      sheetFileId,
+      sheetUrl,
       quotesFolderId,
       materialsFolderId,
       downloaded: 0,
@@ -120,22 +100,25 @@ export async function setupProject(opts: {
     }
   }
 
-  const projectFolderId = await g.createFolder(projectFolderName, clientFolderId)
+  const projectFolderId = await g.createFolder(projectFolderName, ROOT_FOLDER_ID)
   const subIds: Record<string, string> = {}
   for (const sub of SUBFOLDERS) subIds[sub] = await g.createFolder(sub, projectFolderId)
 
-  // Copy the Type-C template into הצעות מחיר and register Monday meta for the bound script.
-  const sheetName = `${projectFolderName} - תכנון עבודה`
-  const { fileId: sheetFileId, link: sheetUrl } = await g.copySheetTemplate(
-    TEMPLATE_ID,
-    subIds[QUOTES_SUBFOLDER],
-    sheetName
-  )
-  if (sheetFileId) {
-    try {
-      await g.writeMetaSheet(sheetFileId, itemId, BOARD_ID, mondayToken)
-    } catch (e) {
-      console.error('[squirrel] could not write _meta sheet:', e)
+  // Copy the type's template into הצעות מחיר and register Monday meta for the bound script.
+  const tpl = templateForType(projectType)
+  let sheetFileId = ''
+  let sheetUrl = ''
+  if (tpl) {
+    const sheetName = `${tpl.prefix} - ${projectFolderName}`
+    const copied = await g.copySheetTemplate(tpl.templateId, subIds[QUOTES_SUBFOLDER], sheetName)
+    sheetFileId = copied.fileId
+    sheetUrl = copied.link
+    if (sheetFileId) {
+      try {
+        await g.writeMetaSheet(sheetFileId, itemId, BOARD_ID, mondayToken)
+      } catch (e) {
+        console.error('[squirrel] could not write _meta sheet:', e)
+      }
     }
   }
 

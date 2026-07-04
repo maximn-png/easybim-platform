@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { connectDB } from '@/lib/db/mongoose'
 import AgentRun from '@/lib/models/AgentRun'
 import { syncFromMonday, backfillAreas } from '@/lib/agents/squirrel/quoteIndex'
+import { reconcileFolders } from '@/lib/agents/squirrel/sync'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -34,14 +35,18 @@ export async function GET(req: NextRequest) {
   try {
     const sync = await syncFromMonday()
     const areas = await backfillAreas(AREA_BATCH)
-    const summary = `index sync: ${sync.total} quotes upserted; areas +${areas.updated}/${areas.scanned} scanned`
+    // Monday↔Drive folder-name reconcile (logs its own AgentRun with details).
+    const reconcile = await reconcileFolders()
+    const summary =
+      `index sync: ${sync.total} quotes upserted; areas +${areas.updated}/${areas.scanned} scanned; ` +
+      `reconcile: ${reconcile.renamed}/${reconcile.scanned} folders fixed`
 
     run.status = 'done'
     run.summary = summary
     run.finishedAt = new Date()
     await run.save()
 
-    return NextResponse.json({ ok: true, runId: String(run._id), ...sync, areas })
+    return NextResponse.json({ ok: true, runId: String(run._id), ...sync, areas, reconcile })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'sync failed'
     run.status = 'error'

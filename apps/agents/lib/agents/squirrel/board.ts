@@ -4,6 +4,7 @@ import {
   changeColumnValues,
   createNotification,
   createUpdate,
+  getAllItems,
   getItems,
   getUpdateAssets,
   searchItemsByName,
@@ -120,12 +121,59 @@ export async function searchQuoteItems(term: string): Promise<QuoteItem[]> {
   return items.map(toQuoteItem)
 }
 
-/** Project folder name convention: "<מספר הצעה> - <item name>", e.g. "1234 - מגדל רסיטל". */
+/** Every item on the board (paginated) — used by the nightly reconcile sweep. */
+export async function readAllQuoteItems(): Promise<QuoteItem[]> {
+  const items = await getAllItems(BOARD_ID, ALL_COLS)
+  return items.map(toQuoteItem)
+}
+
+/**
+ * Clean an item name for display + folder naming: strip email prefixes
+ * (Fwd:/Re:/FW:, possibly stacked), leading punctuation, collapse whitespace.
+ * e.g. "Fwd: גורי יהודה רמת גן" → "גורי יהודה רמת גן". Idempotent (safe for
+ * webhook loops: cleaning a clean name is a no-op).
+ */
+export function cleanItemName(name: string): string {
+  let s = name
+  for (let i = 0; i < 3; i++) s = s.replace(/^\s*(fwd|fw|re)\s*:\s*/i, '')
+  return s.replace(/^[\s:־–-]+/, '').replace(/\s+/g, ' ').trim()
+}
+
+/** Project folder name convention: "<מספר הצעה> - <clean item name>", e.g. "1234 - מגדל רסיטל". */
 export function folderName(item: Pick<QuoteItem, 'quoteNumber' | 'name'>): string {
   const num = (item.quoteNumber ?? '').toString().trim()
-  const base = num ? `${num} - ${item.name}` : item.name
+  const clean = cleanItemName(item.name)
+  const base = num ? `${num} - ${clean}` : clean
   // Sanitise for a Drive folder name.
   return base.replace(/[\\/:*?"<>|]/g, '_').trim()
+}
+
+/**
+ * Next מספר הצעה = highest integer part on the board + 1 (decimals like 432.3
+ * are sub-numbers of 432, so they don't advance the sequence). Values above
+ * 9999 are ignored — they are data-entry garbage (e.g. "312313314" = three
+ * numbers concatenated), not part of the sequence.
+ */
+const MAX_PLAUSIBLE_QUOTE_NUMBER = 9999
+
+export async function nextQuoteNumber(): Promise<number> {
+  const items = await getAllItems(BOARD_ID, [COL.quoteNumber])
+  let max = 0
+  for (const it of items) {
+    const t = (it.column_values.find((c) => c.id === COL.quoteNumber)?.text ?? '').trim()
+    const n = Math.floor(Number(t))
+    if (Number.isFinite(n) && n > max && n <= MAX_PLAUSIBLE_QUOTE_NUMBER) max = n
+  }
+  return max + 1
+}
+
+export async function setQuoteNumber(itemId: string, num: number): Promise<void> {
+  await changeColumnValues(BOARD_ID, itemId, { [COL.quoteNumber]: String(num) })
+}
+
+/** Rename the Monday item itself (the "name" pseudo-column). */
+export async function renameItemOnBoard(itemId: string, newName: string): Promise<void> {
+  await changeColumnValues(BOARD_ID, itemId, { name: newName })
 }
 
 /** True only when the item is a Type-C quote WITH a quote number set (both trigger conditions). */

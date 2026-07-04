@@ -36,3 +36,5 @@ qa-*.png
 signin-page.png
 portal-sign-in*.png
 newsletter-sign-in*.png
+.vercel
+.env*
