@@ -120,7 +120,11 @@ export async function onTypeChanged(itemId: string): Promise<void> {
   if (!item) return
   const type = (item.projectType ?? '').trim()
   if (type !== 'A' && type !== 'A.1') return
-  if (!item.quoteNumber || board.isAlreadySetUp(item)) return
+  if (!item.quoteNumber) return
+  // Skip only when FULLY set up — folder AND work-plan sheet. A partial state
+  // (folder without sheet, e.g. after a failed template copy) must re-run so
+  // setupProject's idempotent completion path can finish the job.
+  if (item.gdriveLink && item.sheetLink) return
 
   const projectFolderName = board.folderName(item)
   try {
