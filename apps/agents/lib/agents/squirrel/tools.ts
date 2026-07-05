@@ -74,14 +74,23 @@ export const setupProject = betaZodTool({
       mondayToken: mondayToken(),
     })
 
-    if (result.alreadyExisted) {
-      return JSON.stringify({ alreadyExisted: true, folderUrl: result.folderUrl })
-    }
-
+    // Write the links even when the folder already existed — a previous attempt
+    // may have created the folder but died before the template copy / link write
+    // (setupProject completes the missing sheet on retry).
     if (result.sheetUrl) {
       await board.setLink(itemId, board.COL.sheetLink, result.sheetUrl, `TYPE C - תכנון עבודה - ${projectFolderName}`)
     }
     await board.setLink(itemId, board.COL.gdriveLink, result.folderUrl, projectFolderName)
+
+    if (result.alreadyExisted) {
+      const verify = await board.readQuoteItem(itemId)
+      return JSON.stringify({
+        alreadyExisted: true,
+        folderUrl: result.folderUrl,
+        sheetUrl: result.sheetUrl,
+        verifiedGdriveLinkOnMonday: verify?.gdriveLink ?? null,
+      })
+    }
 
     const summary =
       `<div dir="rtl">🐿️ הוקם פרויקט: <b>${projectFolderName}</b>.<br>` +

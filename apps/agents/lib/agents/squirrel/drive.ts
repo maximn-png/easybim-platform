@@ -86,6 +86,11 @@ export async function setupProject(opts: {
             console.error('[squirrel] could not write _meta sheet:', e)
           }
         }
+      } else {
+        // Sheet already there (copied by a previous attempt) — return ITS link so
+        // the caller can (re)write the Monday link column.
+        sheetFileId = sheets[0].id
+        sheetUrl = sheets[0].webViewLink ?? `https://docs.google.com/spreadsheets/d/${sheets[0].id}/edit`
       }
     }
     return {
