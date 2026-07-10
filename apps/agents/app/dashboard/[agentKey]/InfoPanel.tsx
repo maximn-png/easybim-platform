@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { X, Lightbulb, Info, Trash2, Loader2, History, Zap, MessageCircle } from 'lucide-react'
+import { X, Lightbulb, Info, Trash2, Loader2, History, Zap, MessageCircle, Hand } from 'lucide-react'
 import type { AgentPresentation } from '@/lib/agents/presentation'
 import HowItWorks from './HowItWorks'
 import RunHistory from './RunHistory'
@@ -134,6 +134,14 @@ function AboutTab({
         <div dir="rtl" className="flex flex-col gap-4 text-right">
           <p className="text-[13px] leading-relaxed" style={{ color: '#4b5563' }}>{p.about.intro}</p>
 
+          <p
+            className="text-xs leading-relaxed rounded-xl px-3.5 py-3"
+            style={{ background: `${p.accent}0d`, borderRight: `3px solid ${p.accent}`, color: '#4b5563' }}
+          >
+            <span className="font-semibold" style={{ color: p.accent }}>למה {p.emoji}? </span>
+            {p.about.why}
+          </p>
+
           <HowItWorks accent={p.accent} data={p.howItWorks} />
 
           <AboutSection
@@ -144,11 +152,18 @@ function AboutTab({
             background={`${p.accent}0d`}
           />
           <AboutSection
-            icon={<MessageCircle size={14} style={{ color: '#0e7490' }} />}
-            title={p.about.chatTitle}
-            items={p.about.chatItems}
+            icon={<Hand size={14} style={{ color: '#0e7490' }} />}
+            title={p.about.userTitle}
+            items={p.about.userItems}
             accent="#0e7490"
             background="rgba(68,184,211,0.08)"
+          />
+          <AboutSection
+            icon={<MessageCircle size={14} style={{ color: '#7c3aed' }} />}
+            title={p.about.chatTitle}
+            items={p.about.chatItems}
+            accent="#7c3aed"
+            background="rgba(124,58,237,0.06)"
           />
         </div>
       ) : (
