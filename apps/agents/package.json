@@ -12,6 +12,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.69.0",
     "@clerk/nextjs": "^7.2.3",
+    "@easybim/auth": "*",
     "@google/genai": "^1.50.1",
     "date-fns": "^4.1.0",
     "googleapis": "^144.0.0",

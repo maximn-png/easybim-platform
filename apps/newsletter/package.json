@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.2.3",
+    "@easybim/auth": "*",
     "@google/genai": "^1.50.1",
     "cheerio": "^1.2.0",
     "date-fns": "^4.1.0",
