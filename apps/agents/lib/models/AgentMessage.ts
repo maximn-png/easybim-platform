@@ -8,6 +8,8 @@ export type AgentMessageRole = 'user' | 'assistant' | 'system' | 'tool'
 export interface IAgentMessage extends Document {
   agentKey: string
   runId?: mongoose.Types.ObjectId
+  // chat messages belong to a conversation (per-user thread); run messages don't
+  conversationId?: mongoose.Types.ObjectId
   role: AgentMessageRole
   content: string
   // for agent-to-agent: which agent authored this (defaults to agentKey)
@@ -22,6 +24,7 @@ const AgentMessageSchema = new Schema<IAgentMessage>(
   {
     agentKey: { type: String, required: true },
     runId: { type: Schema.Types.ObjectId, ref: 'AgentRun' },
+    conversationId: { type: Schema.Types.ObjectId, ref: 'AgentConversation' },
     role: { type: String, enum: ['user', 'assistant', 'system', 'tool'], required: true },
     content: { type: String, default: '' },
     fromAgentKey: String,
@@ -34,6 +37,7 @@ const AgentMessageSchema = new Schema<IAgentMessage>(
 
 AgentMessageSchema.index({ agentKey: 1, createdAt: -1 })
 AgentMessageSchema.index({ runId: 1, createdAt: 1 })
+AgentMessageSchema.index({ conversationId: 1, createdAt: 1 })
 
 const AgentMessage: Model<IAgentMessage> =
   mongoose.models.AgentMessage ?? mongoose.model<IAgentMessage>('AgentMessage', AgentMessageSchema)

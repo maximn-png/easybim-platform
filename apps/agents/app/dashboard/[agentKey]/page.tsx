@@ -5,7 +5,7 @@ import { getAgent } from '@/lib/core/registry'
 import { getPresentation } from '@/lib/agents/presentation'
 import RunHistory from './RunHistory'
 import HowItWorks from './HowItWorks'
-import Chat from './Chat'
+import ChatShell from './ChatShell'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,6 +15,13 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
   if (!agent) notFound()
   const p = getPresentation(agentKey)
 
+  // Chat-enabled agents get the full-page chat workspace (chat is the hero;
+  // about / improvements live in the collapsible right panel).
+  if (p.hasChat && p.chat) {
+    return <ChatShell agentKey={agentKey} agentName={agent.name} description={agent.description} presentation={p} />
+  }
+
+  // Agents without chat keep the classic info page.
   return (
     <div
       className="min-h-screen overflow-x-hidden"
@@ -34,7 +41,6 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
           <ArrowLeft size={13} /> Agent Kingdom
         </Link>
 
-        {/* agent header */}
         <div className="flex items-start gap-4 mb-8">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0" style={{ background: `${p.accent}18` }}>
             {p.emoji}
@@ -61,12 +67,6 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
         )}
 
         <HowItWorks accent={p.accent} data={p.howItWorks} />
-
-        {p.hasChat && p.chat && (
-          <div className="mb-8">
-            <Chat agentKey={agentKey} accent={p.accent} emoji={p.emoji} copy={p.chat} />
-          </div>
-        )}
 
         <h2 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#9ca3af' }}>Run history</h2>
         <RunHistory agentKey={agentKey} accent={p.accent} />
