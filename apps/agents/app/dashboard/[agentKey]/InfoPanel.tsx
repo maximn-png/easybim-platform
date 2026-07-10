@@ -1,12 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { X, Lightbulb, Info, Trash2, Loader2 } from 'lucide-react'
+import { X, Lightbulb, Info, Trash2, Loader2, History, Zap, MessageCircle } from 'lucide-react'
 import type { AgentPresentation } from '@/lib/agents/presentation'
 import HowItWorks from './HowItWorks'
 import RunHistory from './RunHistory'
 
-export type PanelTab = 'about' | 'improvements'
+export type PanelTab = 'about' | 'improvements' | 'history'
 
 interface GuidanceItem {
   id: string
@@ -55,6 +55,13 @@ export default function InfoPanel({
           label="Improvements"
           onClick={() => onTabChange('improvements')}
         />
+        <TabButton
+          active={tab === 'history'}
+          accent={p.accent}
+          icon={<History size={13} />}
+          label="History"
+          onClick={() => onTabChange('history')}
+        />
         <button
           onClick={onClose}
           aria-label="Close panel"
@@ -65,11 +72,9 @@ export default function InfoPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        {tab === 'about' ? (
-          <AboutTab agentKey={agentKey} agentName={agentName} description={description} p={p} />
-        ) : (
-          <ImprovementsTab agentKey={agentKey} accent={p.accent} emoji={p.emoji} />
-        )}
+        {tab === 'about' && <AboutTab agentName={agentName} description={description} p={p} />}
+        {tab === 'improvements' && <ImprovementsTab agentKey={agentKey} accent={p.accent} emoji={p.emoji} />}
+        {tab === 'history' && <HistoryTab agentKey={agentKey} accent={p.accent} />}
       </div>
     </div>
   )
@@ -102,47 +107,99 @@ function TabButton({
   )
 }
 
-// ————— About: description, why, how-it-works, run history —————
+// ————— About: short Hebrew intro + how-it-works + auto/chat explainer —————
 
 function AboutTab({
-  agentKey,
   agentName,
   description,
   p,
 }: {
-  agentKey: string
   agentName: string
   description: string
   p: AgentPresentation
 }) {
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3">
         <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0" style={{ background: `${p.accent}18` }}>
           {p.emoji}
         </div>
         <div>
           <p className="font-black text-lg leading-tight" style={{ color: '#1e248c' }}>{agentName}</p>
-          <p className="text-xs mt-0.5" style={{ color: '#6b7280' }}>{description}</p>
+          <p className="text-[11px] mt-0.5 font-semibold" style={{ color: p.accent }}>{p.tagline}</p>
         </div>
       </div>
 
-      {p.why && (
-        <div
-          className="rounded-xl px-3.5 py-3 text-xs leading-relaxed"
-          style={{ background: `${p.accent}0d`, borderLeft: `3px solid ${p.accent}`, color: '#4b5563' }}
-        >
-          <span className="font-semibold" style={{ color: p.accent }}>Why {agentName}? </span>
-          {p.why}
+      {p.about ? (
+        <div dir="rtl" className="flex flex-col gap-4 text-right">
+          <p className="text-[13px] leading-relaxed" style={{ color: '#4b5563' }}>{p.about.intro}</p>
+
+          <HowItWorks accent={p.accent} data={p.howItWorks} />
+
+          <AboutSection
+            icon={<Zap size={14} style={{ color: p.accent }} />}
+            title={p.about.autoTitle}
+            items={p.about.autoItems}
+            accent={p.accent}
+            background={`${p.accent}0d`}
+          />
+          <AboutSection
+            icon={<MessageCircle size={14} style={{ color: '#0e7490' }} />}
+            title={p.about.chatTitle}
+            items={p.about.chatItems}
+            accent="#0e7490"
+            background="rgba(68,184,211,0.08)"
+          />
         </div>
+      ) : (
+        <>
+          <p className="text-xs" style={{ color: '#6b7280' }}>{description}</p>
+          <HowItWorks accent={p.accent} data={p.howItWorks} />
+        </>
       )}
+    </div>
+  )
+}
 
-      <HowItWorks accent={p.accent} data={p.howItWorks} />
+function AboutSection({
+  icon,
+  title,
+  items,
+  accent,
+  background,
+}: {
+  icon: React.ReactNode
+  title: string
+  items: string[]
+  accent: string
+  background: string
+}) {
+  return (
+    <div className="rounded-xl p-4" style={{ background }}>
+      <p className="flex items-center gap-1.5 text-[13px] font-bold mb-2" style={{ color: accent }}>
+        {icon} {title}
+      </p>
+      <ul className="flex flex-col gap-1.5" style={{ paddingInlineStart: '1.1rem' }}>
+        {items.map((item) => (
+          <li key={item} className="list-disc text-[13px] leading-relaxed" style={{ color: '#374151' }}>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
-      <div>
-        <h2 className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: '#9ca3af' }}>Run history</h2>
-        <RunHistory agentKey={agentKey} accent={p.accent} />
-      </div>
+// ————— History: the agent's automatic run log —————
+
+function HistoryTab({ agentKey, accent }: { agentKey: string; accent: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p dir="rtl" className="text-xs leading-relaxed text-right" style={{ color: '#6b7280' }}>
+        תיעוד הריצות של הסוכן — כל פעולה שביצע ברקע (אוטומטית, לפי לוח זמנים או בעקבות שינוי במאנדיי). לחצו על
+        ריצה כדי לראות את הפירוט המלא.
+      </p>
+      <RunHistory agentKey={agentKey} accent={accent} />
     </div>
   )
 }

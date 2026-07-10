@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Info, Lightbulb, PanelLeft } from 'lucide-react'
+import { ArrowLeft, Info, Lightbulb, History, PanelLeft } from 'lucide-react'
 import type { AgentPresentation } from '@/lib/agents/presentation'
 import ChatArea, { CreatedConversation } from './ChatArea'
 import ConversationSidebar, { ConversationItem } from './ConversationSidebar'
@@ -125,6 +125,13 @@ export default function ChatShell({
 
         <div className="flex items-center gap-1">
           <HeaderButton
+            active={panel === 'about'}
+            accent={p.accent}
+            onClick={() => setPanel((v) => (v === 'about' ? null : 'about'))}
+            icon={<Info size={15} />}
+            label="About"
+          />
+          <HeaderButton
             active={panel === 'improvements'}
             accent={p.accent}
             onClick={() => setPanel((v) => (v === 'improvements' ? null : 'improvements'))}
@@ -132,11 +139,11 @@ export default function ChatShell({
             label="Improvements"
           />
           <HeaderButton
-            active={panel === 'about'}
+            active={panel === 'history'}
             accent={p.accent}
-            onClick={() => setPanel((v) => (v === 'about' ? null : 'about'))}
-            icon={<Info size={15} />}
-            label="About"
+            onClick={() => setPanel((v) => (v === 'history' ? null : 'history'))}
+            icon={<History size={15} />}
+            label="History"
           />
         </div>
       </header>

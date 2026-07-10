@@ -15,6 +15,17 @@ export interface HowItWorks {
   steps: HowItWorksStep[]
   roleNote?: string
   teachNote?: string
+  /** render the strip right-to-left (Hebrew) */
+  rtl?: boolean
+}
+
+/** Hebrew About-tab content: short intro + what runs automatically vs. what chat can do. */
+export interface AgentAbout {
+  intro: string
+  autoTitle: string
+  autoItems: string[]
+  chatTitle: string
+  chatItems: string[]
 }
 
 export interface ChatCopy {
@@ -36,6 +47,7 @@ export interface AgentPresentation {
   hasChat?: boolean
   howItWorks?: HowItWorks
   chat?: ChatCopy
+  about?: AgentAbout
 }
 
 const MAP: Record<string, AgentPresentation> = {
@@ -46,18 +58,32 @@ const MAP: Record<string, AgentPresentation> = {
     why: "Core trait: presence & shine. A peacock knows how to show up, stand out, and draw the eye — exactly the marketing brief: make EasyBIM impossible to scroll past, and turn every post into an event.",
     hasChat: true,
     howItWorks: {
-      title: 'How Peacock works',
+      title: 'איך טווס עובד',
+      rtl: true,
       steps: [
-        { icon: 'PenLine', label: 'Peacock drafts', sub: '2 posts / week', who: 'agent' },
-        { icon: 'Bell', label: 'Pending Approval', sub: 'tagged to you', who: 'agent' },
-        { icon: 'Hand', label: 'You decide', sub: 'approve or revise', who: 'you' },
-        { icon: 'ImageIcon', label: 'Branded image', sub: 'on approval', who: 'agent' },
-        { icon: 'CheckCircle2', label: 'Ready to Publish', sub: 'finished package', who: 'agent' },
+        { icon: 'PenLine', label: 'כותב טיוטה', sub: '2 פוסטים בשבוע', who: 'agent' },
+        { icon: 'Bell', label: 'ממתין לאישור', sub: 'מתייג אתכם במאנדיי', who: 'agent' },
+        { icon: 'Hand', label: 'אתם מחליטים', sub: 'לאשר או לבקש שינוי', who: 'you' },
+        { icon: 'ImageIcon', label: 'תמונה ממותגת', sub: 'אחרי האישור', who: 'agent' },
+        { icon: 'CheckCircle2', label: 'מוכן לפרסום', sub: 'חבילה מלאה', who: 'agent' },
       ],
-      roleNote:
-        'Your role: approve a draft you like, or reply on its Monday update with feedback and set it to Revise — Peacock rewrites it.',
-      teachNote:
-        'Teach it: tell Peacock your preferences in the chat below (e.g. “keep posts shorter”) and it remembers them for future posts.',
+    },
+    about: {
+      intro:
+        'טווס הוא סוכן השיווק של EasyBIM — כותב טיוטות פוסטים ללינקדאין, מעביר אותן לאישורכם במאנדיי, ומכין תמונה ממותגת לכל פוסט שאושר.',
+      autoTitle: 'מה טווס עושה אוטומטית',
+      autoItems: [
+        'כותב שתי טיוטות פוסטים בשבוע ומעלה אותן ללוח התוכן במאנדיי בסטטוס Pending Approval.',
+        'מתייג אתכם על כל טיוטה חדשה כדי שתאשרו או תבקשו שינוי.',
+        'כשמאשרים טיוטה — מייצר לה תמונה ממותגת ומעביר את הפוסט ל-Ready to Publish.',
+        'כשמסמנים Revise עם הערות — כותב את הטיוטה מחדש לפי הפידבק.',
+      ],
+      chatTitle: 'מה אפשר לעשות בצ׳אט',
+      chatItems: [
+        'לבקש ממנו לכתוב עכשיו טיוטה לרעיון שהוספתם ללוח.',
+        'לשאול מה הוא עשה בריצות האחרונות.',
+        'לתת לו העדפות קבועות (למשל "פוסטים קצרים יותר") — הוא זוכר אותן לפוסטים הבאים, ואפשר לראות אותן בלשונית Improvements.',
+      ],
     },
     chat: {
       title: 'Chat with Peacock',
@@ -77,19 +103,35 @@ const MAP: Record<string, AgentPresentation> = {
     why: 'Core trait: finding & collecting. A squirrel is always finding nuts and stashing them in the right spot — Squirrel spots every new price-quote request and collects the whole package (folders, template, client materials, links) in one place, ready to work.',
     hasChat: true,
     howItWorks: {
-      title: 'How Squirrel works',
+      title: 'איך סנאי עובד',
+      rtl: true,
       steps: [
-        { icon: 'Search', label: 'New Type-C item', sub: 'סוג פרויקט C + מספר הצעה', who: 'agent' },
-        { icon: 'FolderPlus', label: 'Builds folders', sub: 'client / quote-project', who: 'agent' },
-        { icon: 'FileSpreadsheet', label: 'Copies template', sub: '📄 menu ready', who: 'agent' },
-        { icon: 'Download', label: 'Collects materials', sub: 'from Monday', who: 'agent' },
-        { icon: 'ListChecks', label: 'Proposes scope', sub: 'for your review', who: 'agent' },
-        { icon: 'Hand', label: 'You finish & send', sub: '📄 / 📧 menus', who: 'you' },
+        { icon: 'Search', label: 'פריט חדש במאנדיי', sub: 'סוג C + מספר הצעה', who: 'agent' },
+        { icon: 'FolderPlus', label: 'מקים תיקיות בדרייב', sub: 'לקוח ← הצעה', who: 'agent' },
+        { icon: 'FileSpreadsheet', label: 'מעתיק את התבנית', sub: 'גיליון הצעה מוכן', who: 'agent' },
+        { icon: 'Download', label: 'אוסף חומרים', sub: 'מהעדכונים במאנדיי', who: 'agent' },
+        { icon: 'ListChecks', label: 'מציע היקף עבודה', sub: 'לבדיקה שלכם', who: 'agent' },
+        { icon: 'Hand', label: 'אתם מסיימים ושולחים', sub: 'תפריטי 📄 / 📧 במסמך', who: 'you' },
       ],
-      roleNote:
-        'Your role: review the proposed scope, fill/adjust the ToQuote sheet, then build the quote doc and send it with the in-document 📄 / 📧 menus.',
-      teachNote:
-        'Teach it: tell Squirrel preferences in the chat below (e.g. which folder a client lives under) and it remembers them.',
+    },
+    about: {
+      intro:
+        'סנאי הוא הסוכן של הצעות המחיר — ברגע שנפתחת בקשה חדשה במאנדיי הוא מכין לבד את כל התשתית לעבודה, ועוקב אחרי כל ההצעות במקום אחד.',
+      autoTitle: 'מה סנאי עושה אוטומטית',
+      autoItems: [
+        'מזהה כל פריט חדש מסוג C (עם מספר הצעה) בלוח הצעות המחיר במאנדיי.',
+        'מקים בדרייב את תיקיית הלקוח ותיקיית ההצעה, ומעתיק לתוכה את תבנית ההצעה.',
+        'אוסף את החומרים שהתקבלו מהלקוח ומרכז אותם בתיקיית הפרויקט.',
+        'כותב את כל הקישורים חזרה לפריט במאנדיי ומציע היקף עבודה ראשוני.',
+        'מתחזק אינדקס מעודכן של כל ההצעות — לקוח, מחיר, שטח, סטטוס ותאריכים — לשאלות והשוואות.',
+      ],
+      chatTitle: 'מה אפשר לעשות בצ׳אט',
+      chatItems: [
+        'לשאול איפה עומדת הצעה: "מה קורה עם ההצעה של…?"',
+        'להשוות ולנתח הצעות — מחירים, שטחים, מחיר למ"ר — לפי לקוח, סוג שימוש או תקופה.',
+        'לבקש הקמת פרויקט ידנית לפריט מסוים.',
+        'ללמד אותו הנחיות קבועות (למשל "לקוח X יושב בתיקייה Y") — הוא זוכר אותן, והן מופיעות בלשונית Improvements.',
+      ],
     },
     chat: {
       title: 'Chat with Squirrel',

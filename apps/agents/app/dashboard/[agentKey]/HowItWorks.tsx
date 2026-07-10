@@ -4,6 +4,7 @@ import {
   ImageIcon,
   RefreshCw,
   ArrowRight,
+  ArrowLeft,
   CheckCircle2,
   Hand,
   Search,
@@ -34,10 +35,14 @@ const ICONS: Record<string, LucideIcon> = {
 // Visual, low-text explainer of an agent's lifecycle + the user's role.
 export default function HowItWorks({ accent, data }: { accent: string; data?: HowItWorksData }) {
   if (!data) return null
+  const Arrow = data.rtl ? ArrowLeft : ArrowRight
 
   return (
-    <section className="mb-8 rounded-2xl p-5 bg-white/55 backdrop-blur-sm border border-white/90 shadow-sm">
-      <h2 className="text-[11px] font-bold uppercase tracking-wide mb-4" style={{ color: '#9ca3af' }}>
+    <section
+      className="mb-8 rounded-2xl p-5 bg-white/55 backdrop-blur-sm border border-white/90 shadow-sm"
+      dir={data.rtl ? 'rtl' : undefined}
+    >
+      <h2 className="text-[11px] font-bold tracking-wide mb-4" style={{ color: '#9ca3af' }}>
         {data.title}
       </h2>
 
@@ -64,7 +69,7 @@ export default function HowItWorks({ accent, data }: { accent: string; data?: Ho
                 </span>
               </div>
               {i < data.steps.length - 1 && (
-                <ArrowRight size={14} className="mx-0.5 shrink-0" style={{ color: '#d1d5db' }} />
+                <Arrow size={14} className="mx-0.5 shrink-0" style={{ color: '#d1d5db' }} />
               )}
             </div>
           )
