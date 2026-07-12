@@ -25,7 +25,8 @@ export interface ExternalIds {
   accProjectUrl?: string          // Full ACC project URL
   accLinkSource?: 'auto' | 'manual' | 'ma003' // 'auto' = matched by projectNumber; 'manual' = user-selected (sticky); 'ma003' = parsed from the Monday MA-003 ACC link (typically a client hub)
   accExternalHub?: boolean        // true = linked ACC project lives OUTSIDE the EasyBIM account (client hub)
-  accHubId?:      string
+  accHubId?:      string          // owning ACC account GUID — set when the project belongs to a configured partner hub (see apsHubs.ts)
+  accHubName?:    string          // partner hub display name (e.g. 'ANA')
 }
 
 export type ProjectStatus = 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck'
@@ -117,6 +118,7 @@ const ExternalIdsSchema = new Schema<ExternalIds>(
     accLinkSource:  { type: String, enum: ['auto', 'manual', 'ma003'] },
     accExternalHub: Boolean,
     accHubId:       String,
+    accHubName:     String,
   },
   { _id: false }
 )

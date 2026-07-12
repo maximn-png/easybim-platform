@@ -49,6 +49,12 @@ export interface ProjectRow {
   accProjectId?: string
   accLinkSource?: AccLinkSource
   accExternalHub?: boolean
+  // Partner-hub name (e.g. 'ANA') when the external hub is a configured client
+  // account we can reach live — such projects behave like EasyBIM-hub ones.
+  accHubName?: string
+  // Partner-hub registry key (e.g. 'ana') — passed as ?hub= to the Autodesk
+  // OAuth + project-list routes so they use the partner app's credentials.
+  accHubKey?: string
   status: 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck' | null
   milestoneProgress: number | null
   milestoneDisciplines?: MilestoneDiscipline[]
@@ -75,6 +81,7 @@ export interface ReportListItem {
   issueCount?: number
   createdByName?: string
   createdAt: string | null
+  hasSnapshot?: boolean   // has issuesSnapshot → usable in the Progress comparison
 }
 
 export interface ProjectsApiResponse {

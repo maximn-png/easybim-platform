@@ -4,6 +4,7 @@ import type { ProjectRow, ProjectsApiResponse } from '@/lib/types'
 import type { ExternalIds } from '@/app/models/Project'
 import { mockProjects } from '@/lib/mockProjects'
 import { resolveAccUrl } from '@/lib/services/apsService'
+import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 
 function isAdmin(userId: string): boolean {
   const adminIds = (process.env.ADMIN_USER_IDS ?? '').split(',').map(s => s.trim()).filter(Boolean)
@@ -39,6 +40,7 @@ function toProjectRow(doc: Record<string, unknown>): ProjectRow {
     accProjectId: ext.accProjectId as string | undefined,
     accLinkSource: ext.accLinkSource as ProjectRow['accLinkSource'],
     accExternalHub: ext.accExternalHub as boolean | undefined,
+    accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
     status: (snap.status as ProjectRow['status']) ?? null,
     milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
     milestoneDisciplines: (snap.milestoneDisciplines as ProjectRow['milestoneDisciplines']) ?? undefined,

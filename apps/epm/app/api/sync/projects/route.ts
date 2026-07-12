@@ -8,6 +8,7 @@ import {
   getApsToken,
   type AccProjectSummary,
 } from '@/lib/services/apsService'
+import { getPartnerHubs, type ApsHub } from '@/lib/services/apsHubs'
 
 const MA004_BOARD_ID  = '7321609006'
 const MA004_BOARD_URL = 'https://easybim-company.monday.com/boards/7321609006'
@@ -57,11 +58,19 @@ export async function POST(req: NextRequest) {
     const Project = ProjectModule.default
     await connectDB()
 
-    // 1. Fetch MA-004 active projects + existing MongoDB ma003ItemIds in parallel
-    const [ma004Projects, existingDocs] = await Promise.all([
+    // 1. Fetch MA-004 projects + existing MongoDB ma003ItemIds in parallel
+    const [allMa004Projects, existingDocs] = await Promise.all([
       fetchActiveMA004Projects(),
       Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
     ])
+
+    // Done projects only get a status refresh on their existing docs (below) —
+    // they're excluded from the heavy per-project lookups, and long-finished
+    // projects that were never in EPM are not created.
+    const ma004Projects = allMa004Projects.filter(p => p.status !== 'Done')
+    const doneNumbers = allMa004Projects
+      .filter(p => p.status === 'Done' && p.projectNumber)
+      .map(p => p.projectNumber)
 
     // Map projectNumber → stored ma003ItemId as fallback when board_relation is empty
     const storedMa003Map = new Map(
@@ -88,6 +97,34 @@ export async function POST(req: NextRequest) {
     const accListOk = accProjects.length > 0
     const easybimIdSet = new Set(accProjects.map(p => p.id))
     const isExternalHub = (id?: string) => !!id && !easybimIdSet.has(id)
+
+    // 1b². Partner hubs (client ACC accounts that provisioned our integration,
+    // e.g. ANA): map each hub's project GUIDs so their projects get stamped with
+    // the owning hub and served live instead of via Excel import. Best-effort.
+    const partnerHubByProjectId = new Map<string, ApsHub>()
+    const partnerHubLists: Array<{ hub: ApsHub; list: AccProjectSummary[] }> = []
+    for (const hub of getPartnerHubs()) {
+      try {
+        const list = await fetchAllAccProjects(await getApsToken(hub), hub.accountId)
+        list.forEach(p => partnerHubByProjectId.set(p.id, hub))
+        partnerHubLists.push({ hub, list })
+      } catch (err) {
+        errors.push(`ACC ${hub.name} hub: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    // Hub-membership fields for an ACC link: identifies the partner hub that owns
+    // the project (null clears a stale stamp when the link changed hubs). When any
+    // configured hub failed to load, leave existing stamps untouched — a transient
+    // API failure must not demote its projects back to the Excel-import path.
+    const partnerListsOk = getPartnerHubs().length === partnerHubLists.length
+    const hubFields = (accProjectGid?: string | null): Record<string, unknown> => {
+      if (!partnerListsOk) return {}
+      const hub = accProjectGid ? partnerHubByProjectId.get(accProjectGid) : undefined
+      return {
+        'externalIds.accHubId':   hub?.accountId ?? null,
+        'externalIds.accHubName': hub?.name ?? null,
+      }
+    }
 
     const projectNumbers = ma004Projects.map(p => p.projectNumber).filter(Boolean)
 
@@ -163,25 +200,38 @@ export async function POST(req: NextRequest) {
 
         // ACC link resolution. Only act when the ACC account list loaded — see
         // accListOk note above. Priority:
-        //   1. manual (sticky) — never overwritten; only refresh the external flag
+        //   1. manual (sticky) — never overwritten; only refresh the hub flags
         //   2. auto-match by projectNumber → ACC jobNumber (EasyBIM hub)
-        //   3. fall back to the Monday MA-003 ACC link (often a client/external hub)
-        //   4. otherwise preserve any existing link, refreshing its external flag
+        //   3. auto-match by projectNumber in a partner hub (e.g. ANA)
+        //   4. fall back to the Monday MA-003 ACC link (often a client/external hub)
+        //   5. otherwise preserve any existing link, refreshing its hub flags
         const accFields: Record<string, unknown> = {}
         const existingExt = existingExtMap.get(p.projectNumber) ?? {}
         if (accListOk) {
           if (existingExt.accLinkSource === 'manual') {
             if (existingExt.accProjectId) {
               accFields['externalIds.accExternalHub'] = isExternalHub(existingExt.accProjectId)
+              Object.assign(accFields, hubFields(existingExt.accProjectId))
             }
           } else {
             const match = matchAccProjectByNumber(accProjects, p.projectNumber)
+            const partnerMatch = partnerHubLists
+              .map(({ hub, list }) => ({ hub, project: matchAccProjectByNumber(list, p.projectNumber) }))
+              .find(m => m.project)
             const ma003Gid = ma003?.accUrl ? parseAccProjectId(ma003.accUrl) : null
             if (match) {
               accFields['externalIds.accProjectId']   = match.id
               accFields['externalIds.accProjectUrl']  = accProjectUrl(match.id)
               accFields['externalIds.accLinkSource']  = 'auto'
               accFields['externalIds.accExternalHub'] = false
+              Object.assign(accFields, hubFields(null))
+              accFields['snapshot.accLastSyncedAt']   = new Date()
+            } else if (partnerMatch?.project) {
+              accFields['externalIds.accProjectId']   = partnerMatch.project.id
+              accFields['externalIds.accProjectUrl']  = accProjectUrl(partnerMatch.project.id)
+              accFields['externalIds.accLinkSource']  = 'auto'
+              accFields['externalIds.accExternalHub'] = true
+              Object.assign(accFields, hubFields(partnerMatch.project.id))
               accFields['snapshot.accLastSyncedAt']   = new Date()
             } else if (ma003Gid) {
               // Keep the original MA-003 URL so the link opens the real (possibly
@@ -190,9 +240,11 @@ export async function POST(req: NextRequest) {
               accFields['externalIds.accProjectUrl']  = ma003!.accUrl
               accFields['externalIds.accLinkSource']  = 'ma003'
               accFields['externalIds.accExternalHub'] = isExternalHub(ma003Gid)
+              Object.assign(accFields, hubFields(ma003Gid))
               accFields['snapshot.accLastSyncedAt']   = new Date()
             } else if (existingExt.accProjectId) {
               accFields['externalIds.accExternalHub'] = isExternalHub(existingExt.accProjectId)
+              Object.assign(accFields, hubFields(existingExt.accProjectId))
             }
           }
         }
@@ -250,7 +302,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ synced, errors, durationMs: Date.now() - start })
+    // 6. Refresh status on projects finished in Monday since the last sync.
+    let markedDone = 0
+    if (doneNumbers.length > 0) {
+      try {
+        const res = await Project.updateMany(
+          { projectNumber: { $in: doneNumbers }, 'snapshot.status': { $ne: 'Done' } },
+          {
+            $set: {
+              'snapshot.status':             'Done',
+              'snapshot.lastSyncedAt':       new Date(),
+              'snapshot.mondayLastSyncedAt': new Date(),
+              'snapshot.syncStatus':         'ok',
+            },
+          }
+        )
+        markedDone = res.modifiedCount
+      } catch (err) {
+        errors.push(`Mark done: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    return NextResponse.json({ synced, markedDone, errors, durationMs: Date.now() - start })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err), synced, errors },

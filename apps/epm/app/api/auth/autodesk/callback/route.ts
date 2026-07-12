@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { getPartnerHubs } from '@/lib/services/apsHubs'
+import { apsCookieNames } from '@/lib/services/apsUserToken'
 
 const APS_TOKEN_URL = 'https://developer.api.autodesk.com/authentication/v2/token'
 
@@ -18,18 +20,26 @@ export async function GET(req: NextRequest) {
   if (!stored) return NextResponse.json({ error: 'Missing OAuth state cookie' }, { status: 400 })
 
   let returnTo = '/dashboard'
+  let hubKey: string | undefined
   try {
-    const parsed = JSON.parse(stored) as { state: string; returnTo: string }
+    const parsed = JSON.parse(stored) as { state: string; returnTo: string; hub?: string }
     if (parsed.state !== state) {
       return NextResponse.json({ error: 'Invalid OAuth state' }, { status: 400 })
     }
     returnTo = parsed.returnTo
+    hubKey = parsed.hub
   } catch {
     return NextResponse.json({ error: 'Corrupt OAuth state cookie' }, { status: 400 })
   }
 
-  const clientId     = process.env.APS_CLIENT_ID
-  const clientSecret = process.env.APS_CLIENT_SECRET
+  // The flow that started with ?hub=<key> must finish with that app's credentials.
+  const hub = hubKey ? getPartnerHubs().find(h => h.key === hubKey) ?? null : null
+  if (hubKey && !hub) {
+    return NextResponse.json({ error: `Unknown or unconfigured hub: ${hubKey}` }, { status: 400 })
+  }
+
+  const clientId     = hub?.clientId     ?? process.env.APS_CLIENT_ID
+  const clientSecret = hub?.clientSecret ?? process.env.APS_CLIENT_SECRET
   const callbackUrl  = process.env.APS_CALLBACK_URL
 
   if (!clientId || !clientSecret || !callbackUrl) {
@@ -62,11 +72,12 @@ export async function GET(req: NextRequest) {
     expires_in:    number
   }
 
-  // Clear the state cookie and store tokens
+  // Clear the state cookie and store tokens (per-hub cookie names)
+  const names = apsCookieNames(hub)
   const secure = process.env.NODE_ENV === 'production'
   jar.delete('aps_oauth_state')
 
-  jar.set('aps_access_token', data.access_token, {
+  jar.set(names.access, data.access_token, {
     httpOnly: true,
     secure,
     sameSite: 'lax',
@@ -75,7 +86,7 @@ export async function GET(req: NextRequest) {
   })
 
   if (data.refresh_token) {
-    jar.set('aps_refresh_token', data.refresh_token, {
+    jar.set(names.refresh, data.refresh_token, {
       httpOnly: true,
       secure,
       sameSite: 'lax',

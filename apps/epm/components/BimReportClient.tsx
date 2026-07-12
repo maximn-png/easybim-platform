@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import {
   ChevronRight, Filter, X, FileDown, AlertCircle, Loader2,
-  ArrowUp, ArrowDown, ArrowUpDown, Cloud,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue } from '@/lib/services/apsService'
@@ -20,6 +20,7 @@ const DISCIPLINE_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסצי�
 import IssuesByMonthChart from './IssuesByMonthChart'
 import MultiSelect from './MultiSelect'
 import ExportReportModal from './ExportReportModal'
+import ProjectLinksBar from './ProjectLinksBar'
 
 // Readable pill text colour: light pastels get a dark gray, saturated colours keep their hue.
 function badgeTextColor(s: string) {
@@ -144,7 +145,9 @@ function GroupBar({
 // ── Main component ────────────────────────────────────────────────────────
 
 export default function BimReportClient({ project }: { project: ProjectRow }) {
-  const isExternal = !!project.accExternalHub
+  // Partner-hub projects (accHubName set, e.g. ANA) use the live API like
+  // EasyBIM-hub ones — only unreachable external hubs are import-based.
+  const isExternal = !!project.accExternalHub && !project.accHubName
   const [issues, setIssues] = useState<AccIssue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -365,25 +368,15 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
                 #{project.projectNumber}
               </span>
             </div>
-            <div className="flex items-center gap-3 mt-1 flex-wrap">
-              <p className="text-sm text-gray-500">Project Status Update · Generated {today}</p>
-              {project.links.acc && (
-                <a
-                  href={project.links.acc}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={project.accExternalHub ? 'Open in ACC (external / client hub)' : 'Open the project in Autodesk ACC'}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-[#1e248c] hover:text-[#44b8d3] transition-colors"
-                >
-                  <Cloud size={13} /> Open in ACC
-                </a>
-              )}
+            <p className="text-sm text-gray-500 mt-1">Project Status Update · Generated {today}</p>
+            <div className="mt-3">
+              <ProjectLinksBar project={project} />
             </div>
           </div>
           <div className="flex items-center gap-3 self-start flex-wrap">
             {!isExternal && (
               <a
-                href={`/api/auth/autodesk/disconnect?returnTo=/dashboard/${project._id}/reports`}
+                href={`/api/auth/autodesk/disconnect?returnTo=/dashboard/${project._id}/reports${project.accHubKey ? `&hub=${project.accHubKey}` : ''}`}
                 className="text-xs text-gray-400 hover:text-[#1e248c] underline underline-offset-2 transition-colors"
                 title="Clear token and re-authenticate with Autodesk"
               >
@@ -470,11 +463,11 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
             <div>
               <p className="font-bold text-[#1e248c] text-lg">Connect your Autodesk Account</p>
               <p className="text-sm text-gray-500 mt-1 max-w-sm">
-                To view ACC issues, authenticate with your personal Autodesk account. This is a one-time step.
+                To view ACC issues{project.accHubName ? ` from the ${project.accHubName} hub` : ''}, authenticate with your personal Autodesk account. This is a one-time step.
               </p>
             </div>
             <a
-              href={`/api/auth/autodesk?returnTo=/dashboard/${project._id}/reports`}
+              href={`/api/auth/autodesk?returnTo=/dashboard/${project._id}/reports${project.accHubKey ? `&hub=${project.accHubKey}` : ''}`}
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#1e248c] text-white rounded-xl text-sm font-semibold hover:bg-[#44b8d3] transition-colors shadow-md"
             >
               Sign in with Autodesk

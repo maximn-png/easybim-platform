@@ -4,6 +4,16 @@ import mongoose, { Document, Schema, Types } from 'mongoose'
 // We snapshot the rendered email (self-contained HTML with inline images) and the
 // generated PDF at creation time, so history stays faithful even as issues change.
 
+// Compact per-issue snapshot used by the Progress comparison (status flow between
+// two reports). Issues match across reports by displayId (ACC issue number),
+// falling back to id.
+export interface ReportIssueSnapshot {
+  id:         string
+  displayId?: string
+  status:     string   // canonical key (normalizeStatus)
+  discipline?: string
+}
+
 export interface IReport extends Document {
   projectId:       Types.ObjectId
   title:           string          // resolved template/variant title
@@ -19,6 +29,7 @@ export interface IReport extends Document {
   draftId?:        string          // Gmail draft id
   gmailUrl?:       string          // link to open the Gmail draft
   issueCount?:     number
+  issuesSnapshot?: ReportIssueSnapshot[]
   filtersSummary?: string
   groupBy?:        string
   createdByUserId: string          // Clerk user id
@@ -26,6 +37,16 @@ export interface IReport extends Document {
   createdAt:       Date
   updatedAt:       Date
 }
+
+const ReportIssueSnapshotSchema = new Schema<ReportIssueSnapshot>(
+  {
+    id:         { type: String, required: true },
+    displayId:  String,
+    status:     { type: String, required: true },
+    discipline: String,
+  },
+  { _id: false }
+)
 
 const ReportSchema = new Schema<IReport>(
   {
@@ -43,6 +64,7 @@ const ReportSchema = new Schema<IReport>(
     draftId:         String,
     gmailUrl:        String,
     issueCount:      Number,
+    issuesSnapshot:  { type: [ReportIssueSnapshotSchema], default: undefined },
     filtersSummary:  String,
     groupBy:         String,
     createdByUserId: { type: String, required: true },

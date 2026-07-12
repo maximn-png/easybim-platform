@@ -28,7 +28,7 @@ const STATUS_MAP: Record<number, 'Working on it' | 'On Hold' | 'Not Started' | '
   3: 'Not Started',
   2: 'Stuck',
 }
-const DONE_STATUS_IDS = new Set([1, 9]) // "Finished", "DONE" → exclude from active
+const DONE_STATUS_IDS = new Set([1, 9]) // "Finished", "DONE" → mapped to 'Done'
 
 // ── GraphQL helper ─────────────────────────────────────────────────────────
 
@@ -58,7 +58,7 @@ export interface MA004Project {
   itemId:        string
   projectName:   string
   projectNumber: string
-  status:        'Working on it' | 'On Hold' | 'Not Started' | 'Stuck' | null
+  status:        'Working on it' | 'On Hold' | 'Not Started' | 'Stuck' | 'Done' | null
   budgetHours:   number | null   // formula8 = fee ÷ 300
   ma003ItemIds:  string[]        // linked MA-003 item IDs
 }
@@ -76,7 +76,11 @@ export interface TS001HoursSummary {
   actualHours: number
 }
 
-// ── MA-004: Active projects ────────────────────────────────────────────────
+// ── MA-004: All projects ───────────────────────────────────────────────────
+// Done/Finished items are included with status 'Done' so the sync can update
+// their stored status (otherwise a project finished in Monday would keep its
+// last active status in EPM forever). Callers filter them out of the heavy
+// per-project work.
 
 export async function fetchActiveMA004Projects(): Promise<MA004Project[]> {
   const query = `
@@ -117,8 +121,9 @@ export async function fetchActiveMA004Projects(): Promise<MA004Project[]> {
       // Parse status from value JSON (the only reliable approach)
       let statusIndex: number | null = null
       try { statusIndex = JSON.parse(colMap['status']?.value ?? 'null')?.index ?? null } catch {}
-      if (statusIndex !== null && DONE_STATUS_IDS.has(statusIndex)) continue
-      const status = statusIndex !== null ? (STATUS_MAP[statusIndex] ?? null) : null
+      const status = statusIndex === null
+        ? null
+        : DONE_STATUS_IDS.has(statusIndex) ? 'Done' as const : (STATUS_MAP[statusIndex] ?? null)
 
       // Parse budget hours (שכט סופי ÷ 300) from the formula column's computed
       // display_value — its `text` field comes back empty from the API.

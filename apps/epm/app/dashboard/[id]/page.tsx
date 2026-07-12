@@ -3,6 +3,7 @@ import type { ProjectRow, ReportListItem } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import { deriveHoursProgress } from '@/lib/hours'
 import { resolveAccUrl } from '@/lib/services/apsService'
+import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 import ProjectDetailClient from '@/components/ProjectDetailClient'
 
 // Render on request so detail data reflects the latest sync (not a build snapshot).
@@ -16,7 +17,7 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
     const Report = (await import('@/app/models/Report')).default
     await connectDB()
     const docs = await Report.find({ projectId: id })
-      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt')
+      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean() as unknown as Array<Record<string, unknown>>
@@ -30,6 +31,7 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
       issueCount: d.issueCount as number | undefined,
       createdByName: d.createdByName as string | undefined,
       createdAt: d.createdAt ? new Date(d.createdAt as string).toISOString() : null,
+      hasSnapshot: Array.isArray(d.issuesSnapshot) && d.issuesSnapshot.length > 0,
     }))
   } catch {
     return []
@@ -60,6 +62,8 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow } | null>
         displayOrder: doc.displayOrder as number | undefined,
         links: {
           mondayBoard: String(ext.mondayBoardUrl ?? ''),
+          dedicatedBoard: ext.dedicatedBoardUrl as string | undefined,
+          mainBoard: ext.mainBoardUrl as string | undefined,
           driveFolder: String(ext.driveFolderUrl ?? ''),
           hoursSheet: ext.hoursSheetUrl as string | undefined,
           acc: resolveAccUrl(ext),
@@ -67,6 +71,8 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow } | null>
         accProjectId: ext.accProjectId as string | undefined,
         accLinkSource: ext.accLinkSource as ProjectRow['accLinkSource'],
         accExternalHub: ext.accExternalHub as boolean | undefined,
+        accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
+        accHubKey: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.key,
         status: (snap.status as ProjectRow['status']) ?? null,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
         milestoneDisciplines: (snap.milestoneDisciplines as ProjectRow['milestoneDisciplines']) ?? undefined,

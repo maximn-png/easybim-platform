@@ -63,6 +63,23 @@ export function segmentTextColor(s: string) {
   return luminance > 0.6 ? '#374151' : '#ffffff'
 }
 
+// Attribute titles that mean "discipline" across ACC naming conventions (incl.
+// the Hebrew "תחום" used on imported projects). Some projects carry discipline
+// as a custom attribute instead of the dedicated field.
+export const DISCIPLINE_ATTR_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסציפלינה', 'משמעת']
+
+// An issue's discipline: the dedicated field, else a discipline-titled attribute.
+export function issueDiscipline(issue: Pick<AccIssue, 'discipline' | 'attributes'>): string | undefined {
+  const direct = issue.discipline?.trim()
+  if (direct) return direct
+  if (issue.attributes) {
+    for (const [k, v] of Object.entries(issue.attributes)) {
+      if (DISCIPLINE_ATTR_LABELS.includes(k.trim().toLowerCase()) && v?.trim()) return v.trim()
+    }
+  }
+  return undefined
+}
+
 // ── Stack-by dimensions ──────────────────────────────────────────────────────
 // Static set used by the Export modal / PDF / server HTML (fixed layouts).
 export const GROUP_OPTIONS = [

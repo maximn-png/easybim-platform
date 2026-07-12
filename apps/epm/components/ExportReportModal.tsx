@@ -766,10 +766,13 @@ export default function ExportReportModal({
         </div>
       </div>
 
-      {/* ── Hidden snapshot nodes (off-screen, for PNG/PDF rasterization) ── */}
+      {/* ── Hidden snapshot nodes (off-screen, for PNG/PDF rasterization) ──
+          NOTE: this node lives OUTSIDE the modal's dir="rtl" container, so it must
+          set dir="rtl" itself — otherwise the rasterized chart comes out LTR
+          (labels on the left) while the in-modal preview renders RTL. */}
       <div style={{ position: 'fixed', top: 0, left: -10000, zIndex: -1 }} aria-hidden>
-        <div ref={emailChartRef} style={{ width: 600, background: '#fff', padding: 12, fontFamily: 'Arial, Assistant, sans-serif' }}>
-          <div dir="rtl" style={{ fontSize: 13, fontWeight: 700, color: '#1e248c', marginBottom: 8, textAlign: 'right' }}>
+        <div ref={emailChartRef} dir="rtl" style={{ width: 600, background: '#fff', padding: 12, fontFamily: 'Arial, Assistant, sans-serif', direction: 'rtl' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1e248c', marginBottom: 8, textAlign: 'right' }}>
             נושאים לפי {groupLabelHe(groupBy)}
           </div>
           <AnalyticsBars issues={effectiveIssues} groupBy={groupBy} renderName={localizeGroup} width={576} />

@@ -115,7 +115,9 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
   }, [projects, activeStatus, searchQuery, selectedPerson])
 
   return (
-    <div className="flex flex-col gap-5">
+    // w-fit: shrink the whole block to the table's width so the toolbar's right
+    // edge (sync button + search) lines up with the table instead of the page.
+    <div className="flex flex-col gap-5 w-fit max-w-full">
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
         <FilterTabs
@@ -128,8 +130,9 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
         />
 
         <div className="flex items-center gap-2">
-          {/* Sync button + last sync time */}
-          <div className="flex flex-col items-end gap-0.5">
+          {/* Sync button + last sync time. The caption hangs below the button
+              (absolute) so it doesn't push the button above the row's center. */}
+          <div className="relative">
             <button
               onClick={handleSync}
               disabled={syncing}
@@ -139,13 +142,13 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
               {syncing ? 'Syncing…' : 'Sync Now'}
             </button>
             {syncResult ? (
-              <span className={`text-[10px] ${('error' in syncResult) ? 'text-red-500' : 'text-green-600'}`}>
+              <span className={`absolute top-full right-0 mt-0.5 whitespace-nowrap text-[10px] ${('error' in syncResult) ? 'text-red-500' : 'text-green-600'}`}>
                 {'error' in syncResult
                   ? syncResult.error
                   : `✓ ${syncResult.synced} projects synced in ${(syncResult.durationMs / 1000).toFixed(1)}s`}
               </span>
             ) : lastSyncedAt ? (
-              <span className="text-[10px] text-gray-400">
+              <span className="absolute top-full right-0 mt-0.5 whitespace-nowrap text-[10px] text-gray-400">
                 Last sync: {formatSyncTime(lastSyncedAt)}
               </span>
             ) : null}

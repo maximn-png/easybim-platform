@@ -45,14 +45,23 @@ export default function FormaConnectPanel({
   accProjectId,
   accUrl,
   accExternalHub,
+  partnerHubName,
+  partnerHubKey,
 }: {
   projectId: string
   projectNumber: string
   accProjectId?: string
   accUrl?: string
   accExternalHub?: boolean
+  // Set when the external hub is a configured partner account (e.g. 'ANA') —
+  // issues come from the live API, so the Excel-import UI is not shown.
+  partnerHubName?: string
+  // Registry key (e.g. 'ana') — routes the project list + OAuth through the
+  // partner app's credentials.
+  partnerHubKey?: string
 }) {
   const router = useRouter()
+  const importMode = !!accExternalHub && !partnerHubName
 
   // ── External-hub (Excel import) state ──
   const [importMeta, setImportMeta] = useState<ImportMeta | null>(null)
@@ -62,7 +71,7 @@ export default function FormaConnectPanel({
 
   // ── EasyBIM-hub (dropdown) state ──
   const [projects, setProjects] = useState<AccProjectSummary[]>([])
-  const [loading, setLoading] = useState(!accExternalHub)
+  const [loading, setLoading] = useState(!importMode)
   const [stateMsg, setStateMsg] = useState<'needsAuth' | 'error' | null>(null)
   const [savedId, setSavedId] = useState<string>(accProjectId ?? '')
   const [selected, setSelected] = useState<string>(accProjectId ?? '')
@@ -70,22 +79,22 @@ export default function FormaConnectPanel({
 
   // External hub: load the current import metadata (no Autodesk fetch).
   useEffect(() => {
-    if (!accExternalHub) return
+    if (!importMode) return
     let cancelled = false
     fetch(`/api/projects/${projectId}/issues-import`)
       .then(r => r.json())
       .then((d: ImportMeta) => { if (!cancelled) setImportMeta(d) })
       .catch(() => { if (!cancelled) setImportMeta({ imported: false }) })
     return () => { cancelled = true }
-  }, [accExternalHub, projectId])
+  }, [importMode, projectId])
 
-  // EasyBIM hub: load the ACC project list for the dropdown.
+  // EasyBIM / partner hub: load the ACC project list for the dropdown.
   useEffect(() => {
-    if (accExternalHub) return
+    if (importMode) return
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch('/api/acc/projects')
+        const res = await fetch(`/api/acc/projects${partnerHubKey ? `?hub=${partnerHubKey}` : ''}`)
         const data = await res.json() as {
           projects?: AccProjectSummary[]
           needsApsAuth?: boolean
@@ -102,7 +111,7 @@ export default function FormaConnectPanel({
       }
     })()
     return () => { cancelled = true }
-  }, [accExternalHub])
+  }, [importMode, partnerHubKey])
 
   const autoMatch = useMemo(
     () => (projects.length ? matchByNumber(projects, projectNumber) : null),
@@ -160,7 +169,7 @@ export default function FormaConnectPanel({
     iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
 
   // ── External-hub render: Excel upload instead of the project dropdown ──
-  if (accExternalHub) {
+  if (importMode) {
     const imported = importMeta?.imported
     return (
       <div className="glass-card rounded-2xl p-4 border border-[#1e248c]/10 flex flex-col gap-3">
@@ -277,12 +286,20 @@ export default function FormaConnectPanel({
     )
   }
 
-  // ── EasyBIM-hub render: original ACC project dropdown ──
+  // ── EasyBIM-hub / partner-hub render: ACC project dropdown, live issues ──
   return (
     <div className="glass-card rounded-2xl p-4 border border-[#1e248c]/10 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
           <ExternalLink size={15} className="text-[#44b8d3]" /> Forms &amp; Actions
+          {partnerHubName && (
+            <span
+              title={`This ACC project lives in the ${partnerHubName} hub — connected via their API integration`}
+              className="inline-flex items-center gap-1 text-[10px] font-medium text-[#1e248c] bg-[#e7eefe] border border-[#44b8d3]/40 rounded-full px-2 py-0.5"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#44b8d3]" /> {partnerHubName} hub
+            </span>
+          )}
         </h2>
         {accUrl && (
           <a
@@ -318,7 +335,7 @@ export default function FormaConnectPanel({
             </div>
           ) : stateMsg === 'needsAuth' ? (
             <a
-              href={`/api/auth/autodesk?returnTo=/dashboard/${projectId}`}
+              href={`/api/auth/autodesk?returnTo=/dashboard/${projectId}${partnerHubKey ? `&hub=${partnerHubKey}` : ''}`}
               className="w-full inline-flex items-center justify-center gap-2 border border-[#1e248c] text-[#1e248c] rounded-lg py-2 text-sm font-semibold hover:bg-[#1e248c]/5 transition-colors"
             >
               Sign in with Autodesk to load projects

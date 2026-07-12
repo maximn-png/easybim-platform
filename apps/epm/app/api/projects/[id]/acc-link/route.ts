@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { accProjectUrl, fetchAllAccProjects, getApsToken } from '@/lib/services/apsService'
+import { getPartnerHubs } from '@/lib/services/apsHubs'
 
 // Manually links an EPM project to an ACC project chosen from the dropdown.
 // Marked accLinkSource:'manual' so the auto-detect sync never overwrites it.
@@ -41,6 +42,27 @@ export async function POST(
       // ignore — flag stays undefined
     }
 
+    // If it's external, check whether a configured partner hub (e.g. ANA) owns
+    // it, so the project gets live API access instead of the Excel import.
+    const hubFields: Record<string, unknown> = {}
+    if (accExternalHub) {
+      for (const hub of getPartnerHubs()) {
+        try {
+          const hubProjects = await fetchAllAccProjects(await getApsToken(hub), hub.accountId)
+          if (hubProjects.some(p => p.id === accProjectId)) {
+            hubFields['externalIds.accHubId']   = hub.accountId
+            hubFields['externalIds.accHubName'] = hub.name
+            break
+          }
+        } catch {
+          // ignore — stamp stays unset for this hub
+        }
+      }
+    } else if (accExternalHub === false) {
+      hubFields['externalIds.accHubId']   = null
+      hubFields['externalIds.accHubName'] = null
+    }
+
     const doc = await Project.findByIdAndUpdate(
       id,
       {
@@ -49,6 +71,7 @@ export async function POST(
           'externalIds.accProjectUrl': accUrl,
           'externalIds.accLinkSource': 'manual',
           ...(accExternalHub !== undefined ? { 'externalIds.accExternalHub': accExternalHub } : {}),
+          ...hubFields,
           'snapshot.accLastSyncedAt':  new Date(),
         },
       },

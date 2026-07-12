@@ -2,6 +2,7 @@ import { mockProjects } from '@/lib/mockProjects'
 import type { ProjectsApiResponse } from '@/lib/types'
 import { deriveHoursProgress } from '@/lib/hours'
 import { resolveAccUrl } from '@/lib/services/apsService'
+import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 import DashboardClient from '@/components/DashboardClient'
 
 // Always render on request so the table reflects the latest MongoDB sync. Without
@@ -46,6 +47,7 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
         accProjectId: ext.accProjectId as string | undefined,
         accLinkSource: ext.accLinkSource as import('@/lib/types').AccLinkSource | undefined,
         accExternalHub: ext.accExternalHub as boolean | undefined,
+        accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
         status: (snap.status as import('@/lib/types').ProjectRow['status']) ?? null,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
         hoursProgress: deriveHoursProgress(actualHours, budgetHours),

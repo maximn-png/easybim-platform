@@ -12,12 +12,12 @@ type ColSource = { label?: string; board: string; column?: string }
 
 function ColInfo({
   board, column, sources, formula, note, align = 'center',
-}: { board?: string; column?: string; sources?: ColSource[]; formula?: string; note?: ReactNode; align?: 'center' | 'right' }) {
+}: { board?: string; column?: string; sources?: ColSource[]; formula?: string; note?: ReactNode; align?: 'center' | 'right' | 'left' }) {
   const rows: ColSource[] = sources ?? (board ? [{ board, column }] : [])
-  // Right-edge columns open leftward so the tooltip stays inside the table.
-  const pos = align === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2'
+  // Edge columns open inward so the tooltip stays inside the table.
+  const pos = align === 'right' ? 'right-0' : align === 'left' ? 'left-0' : 'left-1/2 -translate-x-1/2'
   return (
-    <span className="relative group/ci cursor-default inline-flex items-center ml-1 align-middle">
+    <span className="relative group/ci cursor-default inline-flex items-center mx-1 align-middle">
       <Eye size={11} className="text-gray-300 group-hover/ci:text-gray-500 transition-colors" />
       <div className={`absolute top-full ${pos} mt-1.5 bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 opacity-0 group-hover/ci:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl whitespace-nowrap normal-case font-normal text-left space-y-1`}>
         {note && <div className="text-gray-200 leading-snug">{note}</div>}
@@ -80,12 +80,6 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
         <colgroup>
           {/* checkbox */}
           <col className="w-8" />
-          {/* Project Name — capped so it no longer dwarfs the other columns */}
-          <col className="w-[240px]" />
-          {/* Proj # */}
-          <col className="w-[68px]" />
-          {/* Status */}
-          <col className="w-[92px]" />
           {/* Milestone */}
           <col className="w-[84px]" />
           {/* Hours */}
@@ -102,6 +96,13 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
           <col className="w-[58px]" />
           {/* ACC */}
           <col className="w-[58px]" />
+          {/* Status */}
+          <col className="w-[92px]" />
+          {/* Proj # */}
+          <col className="w-[68px]" />
+          {/* Project Name — far right so Hebrew names anchor the RTL reading edge;
+              long names truncate (full name in the tooltip and on the detail page) */}
+          <col className="w-[180px]" />
         </colgroup>
         <thead>
           <tr className="bg-gray-50/80 border-b border-gray-200">
@@ -113,20 +114,17 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                 className="rounded border-gray-300 text-[#1e248c] focus:ring-[#1e248c]"
               />
             </th>
-            <th className="px-3 py-2 text-left font-medium text-gray-600 whitespace-nowrap">Project Name<ColInfo board="MA-004" column="Item name" /></th>
-            <th className="px-2 py-2 text-left font-medium text-gray-600 whitespace-nowrap">Proj #<ColInfo board="MA-004" column="מס פרויקט" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Status<ColInfo board="MA-004" column="Status" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Milestone<ColInfo board="MI-001" column="סטאטוס הגשה" formula="completed bills ÷ total bills × 100" note="Share of milestone bills marked Submitted / Work completed, pooled across all disciplines." /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Milestone<ColInfo board="MI-001" column="סטאטוס הגשה" formula="completed bills ÷ total bills × 100" note="Share of milestone bills marked Submitted / Work completed, pooled across all disciplines." align="left" /></th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Hours<ColInfo formula="actual ÷ budget × 100" sources={[
               { label: 'Actual', board: 'TS-001/003/004/005', column: 'ש״ע (numeric)' },
               { label: 'Budget', board: 'MA-004', column: 'כמות שעות' },
-            ]} /></th>
+            ]} align="left" /></th>
             <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Mgmt<ColInfo board="MA-003" column="Model MGMT" /></th>
             <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">MEP<br/>Coord<ColInfo board="MA-003" column="MEP Coordination" /></th>
-            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Modelling<ColInfo board="MA-003" column="Modelling / BIM Coord" align="right" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Monday<ColInfo note="Opens the project's dedicated Monday board (matched by project number), falling back to the MA-003 main board, then MA-004." align="right" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Drive<ColInfo note="Opens the project's Google Drive folder (matched by project number)." align="right" /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">ACC<ColInfo align="right" note={
+            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Modelling<ColInfo board="MA-003" column="Modelling / BIM Coord" /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Monday<ColInfo note="Opens the project's dedicated Monday board (matched by project number), falling back to the MA-003 main board, then MA-004." /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Drive<ColInfo note="Opens the project's Google Drive folder (matched by project number)." /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">ACC<ColInfo note={
               <div className="space-y-1.5">
                 <p className="flex items-center gap-1.5">
                   <Cloud size={13} className="text-[#1e248c] shrink-0" />
@@ -141,6 +139,9 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                 </p>
               </div>
             } /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Status<ColInfo board="MA-004" column="Status" /></th>
+            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-004" column="מס פרויקט" align="right" />Proj #</th>
+            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-004" column="Item name" align="right" />Project Name</th>
           </tr>
         </thead>
         <tbody>
@@ -161,26 +162,6 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                     onChange={() => toggleCheck(project._id)}
                     className="rounded border-gray-300 text-[#1e248c] focus:ring-[#1e248c]"
                   />
-                </td>
-
-                {/* Project Name — RTL for Hebrew, navigates to detail page */}
-                <td className="px-3 py-1.5 font-medium" dir="rtl">
-                  <Link
-                    href={`/dashboard/${project._id}`}
-                    title={project.projectName}
-                    className="block truncate text-[#1e248c] hover:underline"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {project.projectName}
-                  </Link>
-                </td>
-
-                {/* Project Number */}
-                <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap text-xs">{project.projectNumber}</td>
-
-                {/* Status */}
-                <td className="px-2 py-1.5 text-center">
-                  <StatusBadge status={project.status} />
                 </td>
 
                 {/* Milestone Progress — neutral gray bar (colour belongs to Hours). */}
@@ -261,8 +242,9 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                   )}
                 </td>
 
-                {/* Forma / BIM360 / ACC — icon only. Amber + corner dot when the
-                    linked project is outside the EasyBIM Hub (e.g. a client hub). */}
+                {/* Forma / BIM360 / ACC — icon only. Three looks: indigo = EasyBIM
+                    hub; cyan + dot = partner hub connected via API (e.g. ANA);
+                    amber + dot = unreachable external hub (Excel import). */}
                 <td className="px-2 py-1.5 text-center">
                   {project.links.acc ? (
                     <a
@@ -270,21 +252,49 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
-                      title={project.accExternalHub ? 'External hub — connected via MA-003' : 'Open in Autodesk ACC'}
+                      title={
+                        project.accHubName ? `${project.accHubName} — external hub connected via API`
+                        : project.accExternalHub ? 'External hub — connected via MA-003'
+                        : 'Open in Autodesk ACC'
+                      }
                       className={`relative inline-flex items-center justify-center w-7 h-7 rounded transition-colors ${
-                        project.accExternalHub
-                          ? 'text-amber-600 bg-amber-50 hover:bg-amber-100'
-                          : 'text-[#1e248c] bg-indigo-50 hover:bg-indigo-100'
+                        project.accHubName
+                          ? 'text-cyan-700 bg-cyan-50 hover:bg-cyan-100'
+                          : project.accExternalHub
+                            ? 'text-amber-600 bg-amber-50 hover:bg-amber-100'
+                            : 'text-[#1e248c] bg-indigo-50 hover:bg-indigo-100'
                       }`}
                     >
                       <Cloud size={13} />
-                      {project.accExternalHub && (
+                      {project.accHubName ? (
+                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#44b8d3] ring-1 ring-white" />
+                      ) : project.accExternalHub && (
                         <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500 ring-1 ring-white" />
                       )}
                     </a>
                   ) : (
                     <span className="text-gray-300 text-xs">—</span>
                   )}
+                </td>
+
+                {/* Status */}
+                <td className="px-2 py-1.5 text-center">
+                  <StatusBadge status={project.status} />
+                </td>
+
+                {/* Project Number */}
+                <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap text-xs text-right">{project.projectNumber}</td>
+
+                {/* Project Name — RTL for Hebrew, navigates to detail page */}
+                <td className="px-2 py-1.5 font-medium" dir="rtl">
+                  <Link
+                    href={`/dashboard/${project._id}`}
+                    title={project.projectName}
+                    className="block truncate max-w-[180px] text-[#1e248c] hover:underline"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {project.projectName}
+                  </Link>
                 </td>
               </tr>
             )

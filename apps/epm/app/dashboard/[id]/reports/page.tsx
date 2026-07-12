@@ -3,6 +3,7 @@ import type { ProjectRow } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import BimReportClient from '@/components/BimReportClient'
 import { resolveAccUrl } from '@/lib/services/apsService'
+import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 
 // Render on request so report data reflects the latest sync (not a build snapshot).
 export const dynamic = 'force-dynamic'
@@ -31,12 +32,16 @@ async function fetchProject(id: string): Promise<ProjectRow | null> {
       displayOrder: doc.displayOrder as number | undefined,
       links: {
         mondayBoard: String(ext.mondayBoardUrl ?? ''),
+        dedicatedBoard: ext.dedicatedBoardUrl as string | undefined,
+        mainBoard: ext.mainBoardUrl as string | undefined,
         driveFolder: String(ext.driveFolderUrl ?? ''),
         hoursSheet: ext.hoursSheetUrl as string | undefined,
         acc: resolveAccUrl(ext),
       },
       accProjectId: ext.accProjectId as string | undefined,
       accExternalHub: ext.accExternalHub as boolean | undefined,
+      accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
+      accHubKey: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.key,
       status: (snap.status as ProjectRow['status']) ?? null,
       milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
       hoursProgress: (snap.hoursProgress as number | null) ?? null,

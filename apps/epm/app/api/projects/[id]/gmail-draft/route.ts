@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth, clerkClient } from '@clerk/nextjs/server'
 import { getUserGoogleToken, gmailCreateDraft } from '@/lib/services/gmailService'
 import { buildEmailHtml } from '@/lib/emailHtml'
+import { normalizeStatus, issueDiscipline } from '@/lib/reportGrouping'
 import type { BodyLink } from '@/lib/reportTemplates'
 import type { AccIssue } from '@/lib/services/apsService'
 import type { ReportMeta } from '@/lib/server/reportHtml'
@@ -72,6 +73,13 @@ async function createReport(
       chartPng,
       screenshotPng,
       issueCount: d.issueCount,
+      // Compact snapshot for the Progress comparison (status flow over time).
+      issuesSnapshot: d.issues.map(i => ({
+        id:         i.id,
+        displayId:  i.displayId || undefined,
+        status:     normalizeStatus(i.status),
+        discipline: issueDiscipline(i),
+      })),
       filtersSummary: d.filtersSummary,
       groupBy: d.groupBy,
       createdByUserId: userId,
@@ -222,9 +230,11 @@ export async function POST(
     const reportId = await createReport(projectId, userId, body, pdf, xlsx, chartPng, screenshotPng)
 
     // 3. Build the email HTML. Prefer hosted https image URLs (reliable in all
-    //    mail clients); fall back to cid: inline images if we couldn't persist.
+    //    mail clients); fall back to cid: inline images if we couldn't persist —
+    //    or when the origin isn't publicly reachable (localhost dev: Gmail's
+    //    image proxy can't fetch it, so the image would never display).
     const origin = process.env.NEXT_PUBLIC_APP_URL || req.nextUrl.origin
-    const useHosted = !!reportId
+    const useHosted = !!reportId && origin.startsWith('https://')
     const urls = useHosted ? {
       chart: body.emailParts.hasChart ? `${origin}/api/report-image/${reportId}?kind=chart` : undefined,
       screenshot: body.emailParts.hasScreenshot ? `${origin}/api/report-image/${reportId}?kind=screenshot` : undefined,

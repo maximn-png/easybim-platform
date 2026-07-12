@@ -2,19 +2,25 @@
 // Phase 2: URL parsing + token fetching.
 // Phase 3: fetchAccIssues() for open issue counts.
 
+import type { ApsHub } from './apsHubs'
+
 const APS_AUTH_URL = 'https://developer.api.autodesk.com/authentication/v2/token'
 
 // ── Token cache ────────────────────────────────────────────────────────────
 
-let cachedToken: { token: string; expiresAt: number } | null = null
+// One cached 2-legged token per credential set: EasyBIM's own app (default)
+// plus each configured partner hub (see apsHubs.ts).
+const tokenCache = new Map<string, { token: string; expiresAt: number }>()
 
-export async function getApsToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt - 30_000) {
-    return cachedToken.token
+export async function getApsToken(hub?: ApsHub | null): Promise<string> {
+  const cacheKey = hub?.key ?? 'easybim'
+  const cached = tokenCache.get(cacheKey)
+  if (cached && Date.now() < cached.expiresAt - 30_000) {
+    return cached.token
   }
 
-  const clientId     = process.env.APS_CLIENT_ID
-  const clientSecret = process.env.APS_CLIENT_SECRET
+  const clientId     = hub?.clientId     ?? process.env.APS_CLIENT_ID
+  const clientSecret = hub?.clientSecret ?? process.env.APS_CLIENT_SECRET
 
   if (!clientId || !clientSecret) throw new Error('APS_CLIENT_ID / APS_CLIENT_SECRET not set')
 
@@ -31,14 +37,14 @@ export async function getApsToken(): Promise<string> {
     body:    params,
   })
 
-  if (!res.ok) throw new Error(`APS token fetch failed: ${res.status}`)
+  if (!res.ok) throw new Error(`APS token fetch failed (${cacheKey}): ${res.status}`)
 
   const json = await res.json() as { access_token: string; expires_in: number }
-  cachedToken = {
+  tokenCache.set(cacheKey, {
     token:     json.access_token,
     expiresAt: Date.now() + json.expires_in * 1000,
-  }
-  return cachedToken.token
+  })
+  return json.access_token
 }
 
 // ── URL parsing ────────────────────────────────────────────────────────────
@@ -56,13 +62,15 @@ export function parseAccProjectId(accUrl: string): string | null {
 
 // Exchanges a refresh_token for a new access_token.
 // Called by the issues route when the stored access_token has expired.
-export async function refreshApsUserToken(refreshToken: string): Promise<{
+// hub: refresh tokens are bound to the app that issued them — pass the partner
+// hub whose app ran the OAuth flow (omit for the default EasyBIM app).
+export async function refreshApsUserToken(refreshToken: string, hub?: ApsHub | null): Promise<{
   accessToken: string
   expiresIn: number
   newRefreshToken?: string
 }> {
-  const clientId     = process.env.APS_CLIENT_ID
-  const clientSecret = process.env.APS_CLIENT_SECRET
+  const clientId     = hub?.clientId     ?? process.env.APS_CLIENT_ID
+  const clientSecret = hub?.clientSecret ?? process.env.APS_CLIENT_SECRET
 
   if (!clientId || !clientSecret) throw new Error('APS credentials not set')
 
@@ -214,18 +222,19 @@ export function resolveAccUrl(ext: Record<string, unknown>): string | undefined 
 }
 
 // ── ACC project list cache ───────────────────────────────────────────────────
-let cachedProjects: { list: AccProjectSummary[]; expiresAt: number } | null = null
+const projectsCache = new Map<string, { list: AccProjectSummary[]; expiresAt: number }>()
 const PROJECTS_TTL = 5 * 60_000 // 5 min — the list is large and rarely changes
 
-// Lists all projects (ACC + BIM360) in the account. Uses a 2-legged token with
-// account:read. Requires the APS app to be provisioned as a custom integration
-// on the ACC account, otherwise the Admin API returns 403.
-export async function fetchAllAccProjects(token: string): Promise<AccProjectSummary[]> {
-  if (cachedProjects && Date.now() < cachedProjects.expiresAt) {
-    return cachedProjects.list
+// Lists all projects (ACC + BIM360) in an account (EasyBIM's by default; pass a
+// partner hub's accountId with a token from its credentials for client hubs).
+// Uses a 2-legged token with account:read. Requires the APS app to be provisioned
+// as a custom integration on the ACC account, otherwise the Admin API returns 403.
+export async function fetchAllAccProjects(token: string, accountIdOverride?: string): Promise<AccProjectSummary[]> {
+  const accountId = accountIdOverride ?? getApsAccountId()
+  const cached = projectsCache.get(accountId)
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.list
   }
-
-  const accountId = getApsAccountId()
   const list: AccProjectSummary[] = []
   const PAGE = 200
   for (let offset = 0; offset < 20_000; offset += PAGE) {
@@ -257,8 +266,8 @@ export async function fetchAllAccProjects(token: string): Promise<AccProjectSumm
     if (items.length < PAGE) break
   }
 
-  cachedProjects = { list, expiresAt: Date.now() + PROJECTS_TTL }
-  console.log(`[ACC][projects] fetched ${list.length} projects for account`)
+  projectsCache.set(accountId, { list, expiresAt: Date.now() + PROJECTS_TTL })
+  console.log(`[ACC][projects] fetched ${list.length} projects for account ${accountId.slice(0, 8)}…`)
   return list
 }
 
@@ -543,7 +552,9 @@ async function buildAttribMap(projectId: string, token: string): Promise<Map<str
 
 // userToken: the 3-legged OAuth access token from the user's cookie.
 // The ACC Issues API does NOT accept client-credential (2-legged) tokens.
-export async function fetchAccIssues(projectId: string, userToken: string): Promise<AccIssue[]> {
+// hub: pass the project's partner hub (client account) so the assignee-role
+// lookup uses that account's 2-legged credentials; omit for EasyBIM projects.
+export async function fetchAccIssues(projectId: string, userToken: string, hub?: ApsHub | null): Promise<AccIssue[]> {
   // ACC Issues API caps each page at 100 — paginate via offset to fetch ALL issues.
   const results: unknown[] = []
   const PAGE = 100
@@ -572,9 +583,10 @@ export async function fetchAccIssues(projectId: string, userToken: string): Prom
 
   console.log(`[ACC] projectId=${projectId} fetched ${results.length} issues (all pages)`)
 
-  // Assignee roles use a 2-legged token (ACC admin project-users API).
+  // Assignee roles use a 2-legged token (ACC admin project-users API) — the
+  // owning account's credentials (partner hub creds for client-hub projects).
   // Issue types & custom attributes are part of the Issues API → 3-legged user token.
-  const twoLeggedToken = await getApsToken()
+  const twoLeggedToken = await getApsToken(hub)
   const [assigneeMaps, typeMap, attribMap] = await Promise.all([
     buildAssigneeRoleMap(projectId, twoLeggedToken),
     buildTypeMap(projectId, userToken),

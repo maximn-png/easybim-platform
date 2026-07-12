@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { fetchAccProjectMembers, getApsToken } from '@/lib/services/apsService'
+import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 
 export async function GET(
   _req: NextRequest,
@@ -31,8 +32,10 @@ export async function GET(
       return NextResponse.json({ members: [], noAccProject: true })
     }
 
-    // Project-members lookup uses a 2-legged (client credentials) token.
-    const token = await getApsToken()
+    // Project-members lookup uses a 2-legged (client credentials) token — the
+    // owning account's credentials for partner-hub (client) projects.
+    const partnerHub = getPartnerHubByAccountId(ext.accHubId as string | undefined)
+    const token = await getApsToken(partnerHub)
     const members = await fetchAccProjectMembers(accProjectId, token)
 
     return NextResponse.json({ members, count: members.length })

@@ -12,12 +12,15 @@ import {
   CheckCircle2,
   Trash2,
   Loader2,
+  TrendingUp,
 } from 'lucide-react'
 import type { ProjectRow, ReportListItem, HoursTeam } from '@/lib/types'
 import StatusBadge from './StatusBadge'
+import ProjectLinksBar from './ProjectLinksBar'
 import TeamMemberCell from './TeamMemberCell'
 import FormaConnectPanel from './FormaConnectPanel'
 import ReportViewModal from './ReportViewModal'
+import ProgressModal from './ProgressModal'
 
 // Canonical subjects default to their namesake team; everything else to 'none'
 // until assigned on the Hours Analytics page. Mirrors HoursAnalyticsClient.
@@ -121,6 +124,10 @@ export default function ProjectDetailClient({
   const [reports, setReports] = useState<ReportListItem[]>(initialReports)
   const [openReportId, setOpenReportId] = useState<string | null>(null)
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null)
+  const [progressOpen, setProgressOpen] = useState(false)
+
+  // Progress needs two reports with issue snapshots to compare.
+  const comparableReports = reports.filter(r => r.hasSnapshot).length
 
   async function handleDeleteReport(reportId: string) {
     if (deletingReportId) return
@@ -211,9 +218,12 @@ export default function ProjectDetailClient({
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-mono text-[#44b8d3] uppercase tracking-widest">{project.projectNumber}</p>
-              <h1 className="text-3xl font-bold text-[#1e248c] mt-1 leading-tight" dir="rtl">
+              <h1 className="text-3xl font-bold text-[#1e248c] mt-1 leading-tight text-left" dir="rtl">
                 {project.projectName}
               </h1>
+              <div className="mt-3">
+                <ProjectLinksBar project={project} />
+              </div>
             </div>
             <StatusBadge status={project.status} />
           </div>
@@ -304,7 +314,19 @@ export default function ProjectDetailClient({
                 <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
                   <FileText size={15} className="text-[#44b8d3]" /> Activity & Reports
                 </h2>
-                <span dir="rtl" className="text-[10px] text-gray-400 font-mono">{reports.length} דוחות</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setProgressOpen(true)}
+                    disabled={comparableReports < 2}
+                    title={comparableReports < 2
+                      ? 'Needs at least two saved reports to compare'
+                      : 'Compare issue status between reports'}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium text-[#1e248c] bg-indigo-50 hover:bg-indigo-100 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <TrendingUp size={12} /> Progress
+                  </button>
+                  <span dir="rtl" className="text-[10px] text-gray-400 font-mono">{reports.length} דוחות</span>
+                </div>
               </div>
               <div className="flex flex-col gap-3">
                 {reports.length === 0 && (
@@ -357,6 +379,8 @@ export default function ProjectDetailClient({
               accProjectId={project.accProjectId}
               accUrl={project.links.acc}
               accExternalHub={project.accExternalHub}
+              partnerHubName={project.accHubName}
+              partnerHubKey={project.accHubKey}
             />
           </div>
 
@@ -399,6 +423,14 @@ export default function ProjectDetailClient({
           )}
         </div>
       </div>
+
+      {progressOpen && (
+        <ProgressModal
+          projectId={project._id}
+          reports={reports}
+          onClose={() => setProgressOpen(false)}
+        />
+      )}
 
       {openReportId && (
         <ReportViewModal
