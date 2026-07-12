@@ -2,8 +2,14 @@ import { redirect } from 'next/navigation'
 import { clerkClient } from '@clerk/nextjs/server'
 import { getActivityEventModel } from '@easybim/db'
 import { requireAdmin } from '@/lib/access'
+import { STAFF_EMAIL_DOMAIN } from '@/lib/adminApi'
+import { CARDS } from '@/lib/cards'
 import AppHeader from '@/components/AppHeader'
-import UserManagement, { type AdminUser, type PendingInvitation } from './UserManagement'
+import UserManagement, {
+  type AdminUser,
+  type PendingInvitation,
+  type StaffGroup,
+} from './UserManagement'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,13 +82,32 @@ export default async function AdminUsersPage() {
     createdAt: inv.createdAt,
   }))
 
+  // "EasyBIM domain" row: aggregate card state across non-admin staff.
+  // 'all' = every staff user holds the card, 'some' = a subset, 'none' = nobody.
+  const staffUsers = serializedUsers.filter(
+    (u) => !u.admin && u.email.toLowerCase().endsWith(`@${STAFF_EMAIL_DOMAIN}`)
+  )
+  const staff: StaffGroup = {
+    domain: STAFF_EMAIL_DOMAIN,
+    count: staffUsers.length,
+    state: Object.fromEntries(
+      CARDS.map((card) => {
+        const holders = staffUsers.filter((u) => u.apps.includes(card.id)).length
+        return [
+          card.id,
+          holders === 0 ? 'none' : holders === staffUsers.length ? 'all' : 'some',
+        ]
+      })
+    ),
+  }
+
   return (
     <div
       className="min-h-screen"
       style={{ background: 'linear-gradient(135deg, #eef6fb 0%, #f8f9ff 45%, #f0f4ff 100%)' }}
     >
       <AppHeader />
-      <UserManagement users={serializedUsers} invitations={serializedInvitations} />
+      <UserManagement users={serializedUsers} invitations={serializedInvitations} staff={staff} />
     </div>
   )
 }

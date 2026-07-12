@@ -30,6 +30,13 @@ export interface PendingInvitation {
   createdAt: number
 }
 
+export interface StaffGroup {
+  domain: string
+  count: number
+  /** Per card id: do all / some / none of the (non-admin) staff hold it. */
+  state: Record<string, 'all' | 'some' | 'none'>
+}
+
 interface TimelineEvent {
   type: 'sign_in' | 'card_open' | 'app_visit'
   at: number
@@ -206,21 +213,32 @@ function ActivityTimeline({
 }
 
 function CardChip({
-  label, active, disabled, onClick,
-}: { label: string; active: boolean; disabled?: boolean; onClick?: () => void }) {
+  label, active, mixed, disabled, onClick, title,
+}: {
+  label: string
+  active: boolean
+  /** Partial state: some (not all) of the group holds this card. */
+  mixed?: boolean
+  disabled?: boolean
+  onClick?: () => void
+  title?: string
+}) {
+  const style = active
+    ? { background: 'rgba(68,184,211,0.15)', border: `1px solid ${CYAN}`, color: NAVY }
+    : mixed
+      ? { background: 'rgba(68,184,211,0.06)', border: `1px dashed ${CYAN}`, color: NAVY }
+      : { background: 'rgba(255,255,255,0.6)', border: '1px solid #e5e7eb', color: '#9ca3af' }
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="text-xs px-2.5 py-1 rounded-full border font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      style={
-        active
-          ? { background: 'rgba(68,184,211,0.15)', borderColor: CYAN, color: NAVY }
-          : { background: 'rgba(255,255,255,0.6)', borderColor: '#e5e7eb', color: '#9ca3af' }
-      }
+      title={title}
+      className="text-xs px-2.5 py-1 rounded-full font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      style={style}
     >
       {label}
+      {mixed && ' ·'}
     </button>
   )
 }
@@ -234,8 +252,8 @@ interface DrawerState {
 }
 
 export default function UserManagement({
-  users, invitations,
-}: { users: AdminUser[]; invitations: PendingInvitation[] }) {
+  users, invitations, staff,
+}: { users: AdminUser[]; invitations: PendingInvitation[]; staff: StaffGroup }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [busy, setBusy] = useState<string | null>(null)
@@ -372,28 +390,24 @@ export default function UserManagement({
     }
   }
 
-  async function grantStaff() {
-    if (
-      !window.confirm(
-        'Grant ALL cards to every user with an @easybim.co.il email address? Admins are unaffected.'
-      )
-    )
-      return
-    setBusy('staff')
+  async function toggleStaffApp(appId: string) {
+    const grant = staff.state[appId] !== 'all'
+    setBusy(`staff:${appId}`)
     setError(null)
     setNotice(null)
     try {
-      const res = await fetch('/api/admin/users/bulk-grant', { method: 'POST' })
+      const res = await fetch('/api/admin/users/bulk-grant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: appId, grant }),
+      })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         setError(data?.error ?? 'Failed to update staff permissions')
         return
       }
       setNotice(
-        data.updated > 0
-          ? `Granted all cards to ${data.updated} EasyBIM employee${data.updated > 1 ? 's' : ''}` +
-              (data.alreadySet > 0 ? ` (${data.alreadySet} already had full access)` : '')
-          : 'All EasyBIM employees already have full access'
+        `${cardTitle(appId)} ${grant ? 'granted to' : 'removed from'} ${data.updated} EasyBIM employee${data.updated === 1 ? '' : 's'}`
       )
       startTransition(() => router.refresh())
     } catch {
@@ -429,27 +443,14 @@ export default function UserManagement({
             detailed activity timeline.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={grantStaff}
-            disabled={busy === 'staff'}
-            title="Grant all cards to every @easybim.co.il user"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all disabled:opacity-60"
-            style={{ background: 'rgba(30,36,140,0.05)', borderColor: 'rgba(30,36,140,0.20)', color: NAVY }}
-          >
-            {busy === 'staff' ? <Loader2 size={15} className="animate-spin" /> : <Users size={15} />}
-            Grant EasyBIM staff all cards
-          </button>
-          <button
-            type="button"
-            onClick={() => setInviteOpen((v) => !v)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all"
-            style={{ background: NAVY }}
-          >
-            <UserPlus size={15} /> Invite users
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setInviteOpen((v) => !v)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all"
+          style={{ background: NAVY }}
+        >
+          <UserPlus size={15} /> Invite users
+        </button>
       </div>
 
       {error && (
@@ -582,6 +583,55 @@ export default function UserManagement({
             </tr>
           </thead>
           <tbody>
+            {staff.count > 0 && (
+              <tr className="border-t" style={{ borderColor: '#f0f2ff', background: 'rgba(30,36,140,0.025)' }}>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-none"
+                      style={{ background: 'rgba(30,36,140,0.10)', color: NAVY }}
+                    >
+                      <Users size={15} />
+                    </div>
+                    <div>
+                      <div className="font-semibold" style={{ color: NAVY }}>EasyBIM domain</div>
+                      <div className="text-xs" style={{ color: '#6b7280' }}>
+                        @{staff.domain} · {staff.count} employee{staff.count === 1 ? '' : 's'}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {CARDS.map((card) => {
+                      const state = staff.state[card.id] ?? 'none'
+                      return (
+                        <CardChip
+                          key={card.id}
+                          label={card.title}
+                          active={state === 'all'}
+                          mixed={state === 'some'}
+                          disabled={busy === `staff:${card.id}`}
+                          title={
+                            state === 'some'
+                              ? 'Some employees have this card — click to grant it to everyone'
+                              : state === 'all'
+                                ? 'Click to remove from all employees'
+                                : 'Click to grant to all employees'
+                          }
+                          onClick={() => void toggleStaffApp(card.id)}
+                        />
+                      )
+                    })}
+                  </div>
+                </td>
+                <td className="px-5 py-4 text-xs" style={{ color: '#9ca3af' }}>
+                  Applies to all employees
+                </td>
+                <td className="px-5 py-4" />
+                <td className="px-5 py-4" />
+              </tr>
+            )}
             {users.map((user) => {
               const drawer = drawers[user.id]
               return (
