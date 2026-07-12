@@ -18,7 +18,7 @@ export async function GET(
     await connectDB()
 
     const docs = await Report.find({ projectId: id })
-      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt')
+      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean() as unknown as Array<Record<string, unknown>>
@@ -33,6 +33,9 @@ export async function GET(
       issueCount: d.issueCount as number | undefined,
       createdByName: d.createdByName as string | undefined,
       createdAt: d.createdAt ? new Date(d.createdAt as string).toISOString() : null,
+      // Same flag the project page computes server-side — keeps this route's
+      // shape consistent with ReportListItem (Progress modal eligibility).
+      hasSnapshot: Array.isArray(d.issuesSnapshot) && d.issuesSnapshot.length > 0,
     }))
 
     return NextResponse.json({ reports })
