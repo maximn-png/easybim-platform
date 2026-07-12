@@ -4,8 +4,8 @@ import { guardAdmin, STAFF_EMAIL_DOMAIN } from '@/lib/adminApi'
 import { CARDS } from '@/lib/cards'
 
 // POST /api/admin/users/bulk-grant — toggle ONE card for every @easybim.co.il
-// user (the "EasyBIM domain" row in the admin table). Admins are skipped —
-// they implicitly hold every card.
+// user (the "EasyBIM domain" row in the admin table). Cards are explicit for
+// everyone — admins included.
 // Body: { app: string, grant: boolean }
 export async function POST(req: NextRequest) {
   const guard = await guardAdmin()
@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
         ''
       ).toLowerCase()
       if (!email.endsWith(`@${STAFF_EMAIL_DOMAIN}`)) continue
-      if (user.publicMetadata?.admin === true) continue
 
       const current = Array.isArray(user.publicMetadata?.apps)
         ? (user.publicMetadata.apps as string[])
