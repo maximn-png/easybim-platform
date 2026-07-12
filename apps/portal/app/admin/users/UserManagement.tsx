@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   ArrowLeft, ShieldCheck, Mail, Trash2, UserPlus, Loader2, Clock, X,
-  ChevronDown, LogIn, ExternalLink, LayoutGrid, Users, CheckCircle2,
+  ChevronDown, LogIn, ExternalLink, LayoutGrid, CheckCircle2,
 } from 'lucide-react'
 import { CARDS } from '@/lib/cards'
 
@@ -28,13 +28,6 @@ export interface PendingInvitation {
   admin: boolean
   apps: string[]
   createdAt: number
-}
-
-export interface StaffGroup {
-  domain: string
-  count: number
-  /** Per card id: do all / some / none of the (non-admin) staff hold it. */
-  state: Record<string, 'all' | 'some' | 'none'>
 }
 
 interface TimelineEvent {
@@ -252,8 +245,8 @@ interface DrawerState {
 }
 
 export default function UserManagement({
-  users, invitations, staff,
-}: { users: AdminUser[]; invitations: PendingInvitation[]; staff: StaffGroup }) {
+  users, invitations,
+}: { users: AdminUser[]; invitations: PendingInvitation[] }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [busy, setBusy] = useState<string | null>(null)
@@ -390,33 +383,6 @@ export default function UserManagement({
     }
   }
 
-  async function toggleStaffApp(appId: string) {
-    const grant = staff.state[appId] !== 'all'
-    setBusy(`staff:${appId}`)
-    setError(null)
-    setNotice(null)
-    try {
-      const res = await fetch('/api/admin/users/bulk-grant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app: appId, grant }),
-      })
-      const data = await res.json().catch(() => null)
-      if (!res.ok) {
-        setError(data?.error ?? 'Failed to update staff permissions')
-        return
-      }
-      setNotice(
-        `${cardTitle(appId)} ${grant ? 'granted to' : 'removed from'} ${data.updated} EasyBIM employee${data.updated === 1 ? '' : 's'}`
-      )
-      startTransition(() => router.refresh())
-    } catch {
-      setError('Network error — please try again')
-    } finally {
-      setBusy(null)
-    }
-  }
-
   function revokeInvitation(inv: PendingInvitation) {
     if (!window.confirm(`Revoke the invitation for ${inv.email}?`)) return
     void call(`${inv.id}:revoke`, `/api/admin/invitations/${inv.id}`, { method: 'DELETE' })
@@ -514,7 +480,7 @@ export default function UserManagement({
                 checked={inviteAdmin}
                 onChange={(e) => setInviteAdmin(e.target.checked)}
               />
-              Admin (can manage users)
+              Admin (all cards + user management)
             </label>
           </div>
           <div>
@@ -583,55 +549,6 @@ export default function UserManagement({
             </tr>
           </thead>
           <tbody>
-            {staff.count > 0 && (
-              <tr className="border-t" style={{ borderColor: '#f0f2ff', background: 'rgba(30,36,140,0.025)' }}>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center flex-none"
-                      style={{ background: 'rgba(30,36,140,0.10)', color: NAVY }}
-                    >
-                      <Users size={15} />
-                    </div>
-                    <div>
-                      <div className="font-semibold" style={{ color: NAVY }}>EasyBIM domain</div>
-                      <div className="text-xs" style={{ color: '#6b7280' }}>
-                        @{staff.domain} · {staff.count} employee{staff.count === 1 ? '' : 's'}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {CARDS.map((card) => {
-                      const state = staff.state[card.id] ?? 'none'
-                      return (
-                        <CardChip
-                          key={card.id}
-                          label={card.title}
-                          active={state === 'all'}
-                          mixed={state === 'some'}
-                          disabled={busy === `staff:${card.id}`}
-                          title={
-                            state === 'some'
-                              ? 'Some employees have this card — click to grant it to everyone'
-                              : state === 'all'
-                                ? 'Click to remove from all employees'
-                                : 'Click to grant to all employees'
-                          }
-                          onClick={() => void toggleStaffApp(card.id)}
-                        />
-                      )
-                    })}
-                  </div>
-                </td>
-                <td className="px-5 py-4 text-xs" style={{ color: '#9ca3af' }}>
-                  Applies to all employees
-                </td>
-                <td className="px-5 py-4" />
-                <td className="px-5 py-4" />
-              </tr>
-            )}
             {users.map((user) => {
               const drawer = drawers[user.id]
               return (
@@ -653,10 +570,9 @@ export default function UserManagement({
       </div>
 
       <p className="text-xs mt-4" style={{ color: '#9ca3af' }}>
-        Cards are granted per user — the Admin switch only controls access to this page.
-        New sign-ups are invitation-only. Access changes take effect on the user&apos;s next
-        session refresh (up to a minute) — immediately on their next sign-in. Activity is kept
-        for 90 days.
+        Cards are granted per user; admins see everything. New sign-ups are invitation-only.
+        Access changes take effect on the user&apos;s next session refresh (up to a minute) —
+        immediately on their next sign-in. Activity is kept for 90 days.
       </p>
     </main>
   )
@@ -701,15 +617,19 @@ function FragmentRow({
         </td>
         <td className="px-5 py-4">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {CARDS.map((card) => (
-              <CardChip
-                key={card.id}
-                label={card.title}
-                active={user.apps.includes(card.id)}
-                disabled={busy === `${user.id}:${card.id}`}
-                onClick={() => onToggleApp(user, card.id)}
-              />
-            ))}
+            {user.admin ? (
+              <span className="text-xs" style={{ color: '#6b7280' }}>All cards (admin)</span>
+            ) : (
+              CARDS.map((card) => (
+                <CardChip
+                  key={card.id}
+                  label={card.title}
+                  active={user.apps.includes(card.id)}
+                  disabled={busy === `${user.id}:${card.id}`}
+                  onClick={() => onToggleApp(user, card.id)}
+                />
+              ))
+            )}
           </div>
         </td>
         <td className="px-5 py-4 whitespace-nowrap">

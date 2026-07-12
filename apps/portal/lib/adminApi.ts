@@ -2,9 +2,6 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/access'
 import { CARDS } from '@/lib/cards'
 
-/** Company domain: "grant all staff" targets every user on this domain. */
-export const STAFF_EMAIL_DOMAIN = 'easybim.co.il'
-
 /** 401 JSON response unless the caller is an admin; otherwise their userId. */
 export async function guardAdmin(): Promise<
   { adminId: string } | { error: NextResponse }

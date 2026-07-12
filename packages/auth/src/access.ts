@@ -66,12 +66,11 @@ export async function resolveAccess(
   }
 }
 
-/** Admin ONLY gates the portal's User Management page — not card access. */
 export function isAdmin(access: AccessMetadata): boolean {
   return access.admin === true
 }
 
-/** Everyone — admins included — needs an explicit per-card grant. */
+/** Admins can open every app; everyone else needs an explicit grant. */
 export function canAccessApp(access: AccessMetadata, appId: AppId): boolean {
-  return (access.apps ?? []).includes(appId)
+  return access.admin === true || (access.apps ?? []).includes(appId)
 }
