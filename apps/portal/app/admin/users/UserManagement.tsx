@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   ArrowLeft, ShieldCheck, Mail, Trash2, UserPlus, Loader2, Clock, X,
-  ChevronDown, LogIn, ExternalLink, LayoutGrid,
+  ChevronDown, LogIn, ExternalLink, LayoutGrid, Users, CheckCircle2,
 } from 'lucide-react'
 import { CARDS } from '@/lib/cards'
 
@@ -240,13 +240,18 @@ export default function UserManagement({
   const [, startTransition] = useTransition()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [drawers, setDrawers] = useState<Record<string, DrawerState>>({})
 
   // Invite form state
   const [inviteOpen, setInviteOpen] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteEmails, setInviteEmails] = useState('')
   const [inviteApps, setInviteApps] = useState<string[]>([])
   const [inviteAdmin, setInviteAdmin] = useState(false)
+
+  const parsedEmails = [
+    ...new Set(inviteEmails.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean)),
+  ]
 
   async function call(key: string, url: string, init: RequestInit): Promise<boolean> {
     setBusy(key)
@@ -328,15 +333,73 @@ export default function UserManagement({
 
   async function sendInvite(e: React.FormEvent) {
     e.preventDefault()
-    const ok = await call('invite', '/api/admin/invitations', {
-      method: 'POST',
-      body: JSON.stringify({ email: inviteEmail, apps: inviteApps, admin: inviteAdmin }),
-    })
-    if (ok) {
-      setInviteEmail('')
-      setInviteApps([])
-      setInviteAdmin(false)
-      setInviteOpen(false)
+    if (parsedEmails.length === 0) return
+    setBusy('invite')
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch('/api/admin/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: parsedEmails, apps: inviteApps, admin: inviteAdmin }),
+      })
+      const data = await res.json().catch(() => null)
+      const sent: string[] = data?.sent ?? []
+      const failed: Array<{ email: string; reason: string }> = data?.failed ?? []
+      if (sent.length > 0) {
+        setNotice(`Sent ${sent.length} invitation${sent.length > 1 ? 's' : ''}: ${sent.join(', ')}`)
+        // Keep only the addresses that failed, so they can be fixed and resent.
+        setInviteEmails(failed.map((f) => f.email).join('\n'))
+        if (failed.length === 0) {
+          setInviteApps([])
+          setInviteAdmin(false)
+          setInviteOpen(false)
+        }
+        startTransition(() => router.refresh())
+      }
+      if (failed.length > 0) {
+        setError(
+          `${failed.length} invitation${failed.length > 1 ? 's' : ''} failed — ` +
+            failed.map((f) => `${f.email} (${f.reason})`).join('; ')
+        )
+      } else if (sent.length === 0) {
+        setError(data?.error ?? 'Failed to send invitations')
+      }
+    } catch {
+      setError('Network error — please try again')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function grantStaff() {
+    if (
+      !window.confirm(
+        'Grant ALL cards to every user with an @easybim.co.il email address? Admins are unaffected.'
+      )
+    )
+      return
+    setBusy('staff')
+    setError(null)
+    setNotice(null)
+    try {
+      const res = await fetch('/api/admin/users/bulk-grant', { method: 'POST' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(data?.error ?? 'Failed to update staff permissions')
+        return
+      }
+      setNotice(
+        data.updated > 0
+          ? `Granted all cards to ${data.updated} EasyBIM employee${data.updated > 1 ? 's' : ''}` +
+              (data.alreadySet > 0 ? ` (${data.alreadySet} already had full access)` : '')
+          : 'All EasyBIM employees already have full access'
+      )
+      startTransition(() => router.refresh())
+    } catch {
+      setError('Network error — please try again')
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -366,21 +429,42 @@ export default function UserManagement({
             detailed activity timeline.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setInviteOpen((v) => !v)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all"
-          style={{ background: NAVY }}
-        >
-          <UserPlus size={15} /> Invite user
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={grantStaff}
+            disabled={busy === 'staff'}
+            title="Grant all cards to every @easybim.co.il user"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all disabled:opacity-60"
+            style={{ background: 'rgba(30,36,140,0.05)', borderColor: 'rgba(30,36,140,0.20)', color: NAVY }}
+          >
+            {busy === 'staff' ? <Loader2 size={15} className="animate-spin" /> : <Users size={15} />}
+            Grant EasyBIM staff all cards
+          </button>
+          <button
+            type="button"
+            onClick={() => setInviteOpen((v) => !v)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all"
+            style={{ background: NAVY }}
+          >
+            <UserPlus size={15} /> Invite users
+          </button>
+        </div>
       </div>
 
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl border text-sm flex items-center justify-between"
+        <div className="mb-4 px-4 py-3 rounded-xl border text-sm flex items-center justify-between gap-3"
           style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>
           <span>{error}</span>
           <button type="button" onClick={() => setError(null)}><X size={14} /></button>
+        </div>
+      )}
+
+      {notice && (
+        <div className="mb-4 px-4 py-3 rounded-xl border text-sm flex items-center justify-between gap-3"
+          style={{ background: '#f0fdf4', borderColor: '#bbf7d0', color: '#15803d' }}>
+          <span className="inline-flex items-center gap-2"><CheckCircle2 size={15} /> {notice}</span>
+          <button type="button" onClick={() => setNotice(null)}><X size={14} /></button>
         </div>
       )}
 
@@ -391,17 +475,24 @@ export default function UserManagement({
           className="mb-6 bg-white/70 backdrop-blur-sm border border-white/90 rounded-2xl p-5 shadow-sm flex flex-col gap-4"
         >
           <div className="flex items-center gap-2 text-sm font-bold" style={{ color: NAVY }}>
-            <Mail size={15} style={{ color: CYAN }} /> Invite a new user
+            <Mail size={15} style={{ color: CYAN }} /> Invite new users
           </div>
-          <input
-            type="email"
-            required
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="person@company.com — any email domain works"
-            className="w-full max-w-md px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2"
-            style={{ borderColor: '#e5e7eb' }}
-          />
+          <div className="w-full max-w-md">
+            <textarea
+              required
+              rows={3}
+              value={inviteEmails}
+              onChange={(e) => setInviteEmails(e.target.value)}
+              placeholder={'One or more email addresses — any domain works.\nSeparate with commas, spaces or new lines:\ndana@ana-corp.com, yossi@easybim.co.il'}
+              className="w-full px-3 py-2 rounded-xl border text-sm outline-none focus:ring-2 resize-y"
+              style={{ borderColor: '#e5e7eb' }}
+            />
+            {parsedEmails.length > 1 && (
+              <div className="text-xs mt-1" style={{ color: '#6b7280' }}>
+                {parsedEmails.length} addresses — everyone gets the same cards below
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold" style={{ color: '#6b7280' }}>Cards:</span>
             {CARDS.map((card) => (
@@ -428,12 +519,14 @@ export default function UserManagement({
           <div>
             <button
               type="submit"
-              disabled={busy === 'invite'}
+              disabled={busy === 'invite' || parsedEmails.length === 0}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-60"
               style={{ background: CYAN }}
             >
               {busy === 'invite' && <Loader2 size={14} className="animate-spin" />}
-              Send invitation
+              {parsedEmails.length > 1
+                ? `Send ${parsedEmails.length} invitations`
+                : 'Send invitation'}
             </button>
           </div>
         </form>
