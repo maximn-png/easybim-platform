@@ -69,7 +69,20 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      <AppHeader />
+      <AppHeader
+        rightSlot={
+          admin && (
+            <Link
+              href="/admin/users"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
+              style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
+            >
+              <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
+              User Management
+            </Link>
+          )
+        }
+      />
 
       <main className="relative z-10">
         {/* ── Centered hero header ── */}
@@ -92,17 +105,6 @@ export default async function DashboardPage() {
           <p className="text-sm mb-2" style={{ color: '#6b7280' }}>
             All EasyBIM workflow tools — one click away.
           </p>
-
-          {admin && (
-            <Link
-              href="/admin/users"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
-              style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
-            >
-              <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
-              User Management
-            </Link>
-          )}
 
           {quote && (
             <div className="max-w-lg mx-auto text-center mt-2">
