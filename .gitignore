@@ -30,6 +30,10 @@ Thumbs.db
 # Playwright MCP cache
 .playwright-mcp/
 
+# Claude Code local state (settings embed secrets in permission rules; worktrees
+# contain .env copies — never commit)
+.claude/
+
 # Research / session screenshots & QA artifacts
 yuv-ai-*.png
 qa-*.png
@@ -38,3 +42,7 @@ portal-sign-in*.png
 newsletter-sign-in*.png
 .vercel
 .env*
+
+# Generated copies of brand assets (source of truth: packages/assets/logos)
+apps/*/public/ana-logo.jpg
+apps/*/public/mlead-logo.jpg

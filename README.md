@@ -4,6 +4,85 @@ A Turborepo monorepo hosting all internal tools that streamline EasyBIM workflow
 
 ---
 
+## For EasyBIM Employees — Developing Features
+
+You do not need to be a professional programmer. Claude Code writes the code for you. Your job is to describe what the feature should do, test it in the browser, and submit it for review.
+
+### Before you start
+
+You need three things from Maxim before you can do anything:
+
+1. **Access to the repository** — the code is private. Send Maxim your GitHub username (create a free account at [github.com](https://github.com) if you don't have one).
+2. **The `.env.local` files** — the apps need secret keys (Clerk, MongoDB, APIs) that are never stored in Git. Maxim will send you the file for the app you'll work on.
+3. **An agreed feature** — tell Maxim what you want to build before you start, so two people don't work on the same thing.
+
+### First-time setup
+
+Install these four tools:
+
+| Tool | What it is | Download |
+|---|---|---|
+| Node.js (LTS) | Runs the platform on your machine | https://nodejs.org |
+| Git | Keeps your code in sync with GitHub | https://git-scm.com/download/win |
+| VS Code | Code editor | https://code.visualstudio.com |
+| Claude Code | AI that writes the code for you | https://claude.ai/download |
+
+Then open PowerShell and run:
+
+```powershell
+git clone https://github.com/maximn-png/easybim-platform C:\easybim-platform
+cd C:\easybim-platform
+npm install
+```
+
+Place the `.env.local` file you got from Maxim inside the app folder you're working on (for example `apps\portal\.env.local`).
+
+### Developing a feature
+
+Every time you sit down to work:
+
+```powershell
+# 1. Get your teammates' latest changes
+cd C:\easybim-platform
+git fetch origin
+git merge origin/master
+
+# 2. Create your own branch — your private workspace
+git checkout -b feature/name-of-your-feature
+
+# 3. Start the app you're working on (see ports below)
+cd C:\easybim-platform\apps\portal; npm run dev
+```
+
+| App | Local URL |
+|---|---|
+| portal | http://localhost:3000 |
+| newsletter | http://localhost:3001 |
+| epm | http://localhost:3002 |
+| agents | http://localhost:3003 |
+
+Sign in through the portal (http://localhost:3000) with your `@easybim.co.il` account — all apps share that session.
+
+Open the folder in VS Code (`code .`), start Claude Code, and describe what you want to build. The dev server hot-reloads: when Claude Code changes a file, refresh the browser and see the result. This loop — **describe → refresh → test → describe again** — is the whole development process.
+
+### Submitting your work
+
+```powershell
+git add .
+git commit -m "Add: short description of what the feature does"
+git push origin feature/name-of-your-feature
+```
+
+Then go to https://github.com/maximn-png/easybim-platform — a yellow banner will offer **"Compare & pull request"**. Click it, describe your feature, and create the pull request. Maxim reviews it, may ask for small changes, and merges it when it's ready. Vercel then deploys it live automatically.
+
+**Rules:**
+- Never commit directly to `master` — always open a PR from a branch.
+- Keep each PR to one feature or one fix.
+- Never commit `.env.local` or any secret keys.
+- Reuse shared components from `packages/ui` instead of rebuilding them (see [Shared Packages](#shared-packages)).
+
+---
+
 ## Architecture
 
 ```
