@@ -2,9 +2,11 @@ import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 import { connectDB } from '@/lib/db/mongoose'
 import QuoteRecord from '@/lib/models/QuoteRecord'
+import QuoteContent from '@/lib/models/QuoteContent'
 import { syncFromMonday, backfillAreas, readSheetTabs } from './quoteIndex'
+import { syncQuoteContent, refreshOne } from './contentSync'
 import { readQuoteItem } from './board'
-import { parseSheetId, parseDocId, getDocTables } from '@/lib/integrations/google/client'
+import { parseSheetId, parseDocId, getDocTables, getFileMeta } from '@/lib/integrations/google/client'
 
 // Case-insensitive contains match (client/project names vary in spelling/casing).
 function rx(s: string) {
@@ -186,14 +188,27 @@ export const getQuote = betaZodTool({
 export const syncIndex = betaZodTool({
   name: 'sync_index',
   description:
-    'Refresh the quote index from Monday now (upserts all items) and backfill a batch of missing areas from the sheets. Use when Maxim asks to refresh, or when data looks stale.',
+    'Refresh the quote index from Monday now (upserts all items) and backfill a batch of missing areas from the sheets. Optionally also refresh a batch of the doc/sheet content cache. Use when Maxim asks to refresh, or when data looks stale.',
   inputSchema: z.object({
     areaBatch: z.number().optional().describe('how many missing areas to backfill this run (default 40)'),
+    contentBatch: z
+      .number()
+      .optional()
+      .describe('also refresh the Drive content cache for up to N quotes (default 0 = skip)'),
   }),
-  run: async ({ areaBatch }) => {
+  run: async ({ areaBatch, contentBatch }) => {
     const sync = await syncFromMonday()
     const areas = await backfillAreas(areaBatch ?? 40)
-    return JSON.stringify({ synced: sync.total, areasUpdated: areas.updated, areasScanned: areas.scanned })
+    const content =
+      contentBatch && contentBatch > 0
+        ? await syncQuoteContent({ limit: contentBatch, timeBudgetMs: 120_000 })
+        : null
+    return JSON.stringify({
+      synced: sync.total,
+      areasUpdated: areas.updated,
+      areasScanned: areas.scanned,
+      ...(content ? { content } : {}),
+    })
   },
 })
 
@@ -209,37 +224,85 @@ async function resolveSheetId(itemId: string): Promise<string | null> {
 
 const SHEET_CHAR_CAP = 14000
 
+function capSheetJson(grids: Record<string, string[][]>): string {
+  let json = JSON.stringify(grids)
+  if (json.length > SHEET_CHAR_CAP) {
+    // Prefer ToQuote + WorkingSheet if the full payload is too large.
+    const trimmed: Record<string, string[][]> = {}
+    for (const t of ['ToQuote', 'WorkingSheet']) if (grids[t]) trimmed[t] = grids[t]
+    json = JSON.stringify(trimmed).slice(0, SHEET_CHAR_CAP)
+  }
+  return json
+}
+
 export const readQuoteSheet = betaZodTool({
   name: 'read_quote_sheet',
   description:
-    'Open a quote\'s work-plan Google Sheet and return its detail tabs (WorkingSheet / ToQuote / Prices) as cell grids, so you can read line-item pricing, rates, area, and price-per-m² — including per-section figures like תאום מערכות that are NOT in the index. Use this for detailed per-quote questions. Reads one sheet per call; for a few quotes call it per item (avoid for very large sets).',
+    'Read a quote\'s work-plan Google Sheet detail tabs (WorkingSheet / ToQuote / Prices) as cell grids, so you can read line-item pricing, rates, area, and price-per-m² — including per-section figures like תאום מערכות that are NOT in the index. Served from the nightly Mongo cache when fresh (fast), read live from Drive otherwise. Use this for detailed per-quote questions.',
   inputSchema: z.object({
     itemId: z.string(),
     tabs: z.array(z.string()).optional().describe('which tabs to read; default WorkingSheet, ToQuote, Prices'),
   }),
   run: async ({ itemId, tabs }) => {
+    await connectDB()
+    // Cache-first: serve the mirrored tabs if the sheet hasn't changed in Drive.
+    const cached = await QuoteContent.findOne({ itemId }).select('sheet').lean()
+    if (cached?.sheet?.tabs && Object.keys(cached.sheet.tabs).length > 0) {
+      const wanted = tabs && tabs.length ? tabs : Object.keys(cached.sheet.tabs)
+      const allCached = wanted.every((t) => cached.sheet!.tabs[t] != null)
+      if (allCached) {
+        const meta = await getFileMeta(cached.sheet.fileId).catch(() => null)
+        if (meta && meta.modifiedTime === cached.sheet.modifiedTime) {
+          const grids: Record<string, string[][]> = {}
+          for (const t of wanted) grids[t] = cached.sheet.tabs[t]
+          return capSheetJson(grids)
+        }
+        // Changed in Drive — refresh the cache, then serve it.
+        await refreshOne(itemId)
+        const fresh = await QuoteContent.findOne({ itemId }).select('sheet').lean()
+        if (fresh?.sheet?.tabs && wanted.every((t) => fresh.sheet!.tabs[t] != null)) {
+          const grids: Record<string, string[][]> = {}
+          for (const t of wanted) grids[t] = fresh.sheet.tabs[t]
+          return capSheetJson(grids)
+        }
+      }
+    }
+    // Cache miss (or custom tabs outside the cached set) — live read.
     const sheetId = await resolveSheetId(itemId)
     if (!sheetId) return 'NO_SHEET: this quote has no linked work-plan sheet on Monday'
     const grids = await readSheetTabs(sheetId, tabs && tabs.length ? tabs : undefined)
     if (Object.keys(grids).length === 0) return 'NO_DETAIL_TABS: none of the expected tabs were found in this sheet'
-    let json = JSON.stringify(grids)
-    if (json.length > SHEET_CHAR_CAP) {
-      // Prefer ToQuote + WorkingSheet if the full payload is too large.
-      const trimmed: Record<string, string[][]> = {}
-      for (const t of ['ToQuote', 'WorkingSheet']) if (grids[t]) trimmed[t] = grids[t]
-      json = JSON.stringify(trimmed).slice(0, SHEET_CHAR_CAP)
-    }
-    return json
+    await refreshOne(itemId).catch(() => {}) // warm the cache for next time
+    return capSheetJson(grids)
   },
 })
 
 export const readQuoteDoc = betaZodTool({
   name: 'read_quote_doc',
   description:
-    "Read a quote's final Google Doc (קובץ הצעה) — the authoritative quote sent to the client — as structured tables (via the Docs API). Returns the doc title + every table's rows/cells: the priced services (e.g. תאום מערכות, מידול פתחים), the מחיר למטר / שטח / מחיר מוצע table, and the milestone payment schedule. PREFER this over read_quote_sheet for pricing/section questions. Reads one doc per call.",
+    "Read a quote's final Google Doc (קובץ הצעה) — the authoritative quote sent to the client — as structured tables: the priced services (e.g. תאום מערכות, מידול פתחים), the מחיר למטר / שטח / מחיר מוצע table, and the milestone payment schedule. Served from the nightly Mongo cache when fresh (fast), read live from Drive otherwise. PREFER this over read_quote_sheet for pricing/section questions.",
   inputSchema: z.object({ itemId: z.string() }),
   run: async ({ itemId }) => {
     await connectDB()
+    // Cache-first: serve the mirrored tables if the doc hasn't changed in Drive.
+    const cached = await QuoteContent.findOne({ itemId }).select('doc').lean()
+    if (cached?.doc?.tables) {
+      const meta = await getFileMeta(cached.doc.fileId).catch(() => null)
+      if (meta && meta.modifiedTime === cached.doc.modifiedTime) {
+        let json = JSON.stringify({ title: cached.doc.title, tables: cached.doc.tables })
+        if (json.length > SHEET_CHAR_CAP) json = json.slice(0, SHEET_CHAR_CAP)
+        return json
+      }
+      // Changed in Drive — refresh the cache, then serve it.
+      await refreshOne(itemId)
+      const fresh = await QuoteContent.findOne({ itemId }).select('doc').lean()
+      if (fresh?.doc?.tables) {
+        let json = JSON.stringify({ title: fresh.doc.title, tables: fresh.doc.tables })
+        if (json.length > SHEET_CHAR_CAP) json = json.slice(0, SHEET_CHAR_CAP)
+        return json
+      }
+    }
+    // Cache miss — live read, then warm the cache.
     const r = await QuoteRecord.findOne({ itemId }).lean()
     let docUrl = r?.docUrl ?? null
     if (!docUrl) {
@@ -249,10 +312,84 @@ export const readQuoteDoc = betaZodTool({
     const docId = docUrl ? parseDocId(docUrl) : null
     if (!docId) return 'NO_DOC: this quote has no linked quote Doc on Monday (try read_quote_sheet)'
     const { title, tables } = await getDocTables(docId)
+    await refreshOne(itemId).catch(() => {})
     if (tables.length === 0) return JSON.stringify({ title, tables: [], note: 'no tables found in this doc' })
     let json = JSON.stringify({ title, tables })
     if (json.length > SHEET_CHAR_CAP) json = json.slice(0, SHEET_CHAR_CAP)
     return json
+  },
+})
+
+// Snippet of doc text around the first case-insensitive match (for search results).
+function snippetAround(text: string, query: string, radius = 120): string {
+  const idx = text.toLowerCase().indexOf(query.toLowerCase())
+  if (idx < 0) return text.slice(0, radius * 2)
+  const start = Math.max(0, idx - radius)
+  const end = Math.min(text.length, idx + query.length + radius)
+  return `${start > 0 ? '…' : ''}${text.slice(start, end)}${end < text.length ? '…' : ''}`
+}
+
+export const searchQuoteContent = betaZodTool({
+  name: 'search_quote_content',
+  description:
+    'Search INSIDE the cached quote documents (full text of every quote Doc) for a word or phrase — e.g. a service name, a clause, a term like "תאום מערכות" or "ACC". Returns matching quotes with a text snippet + key index fields. Use when Maxim asks which quotes mention/contain something, or to find similar past quotes as reference material.',
+  inputSchema: z.object({
+    query: z.string().describe('word or phrase to search for in the quote docs'),
+    filters: filtersSchema.optional().describe('optional index filters to narrow the search'),
+    limit: z.number().optional().describe('default 20, max 50'),
+  }),
+  run: async ({ query, filters, limit }) => {
+    await connectDB()
+    const cap = Math.min(limit ?? 20, 50)
+
+    // Optional index filters → allowed itemIds.
+    let allowedIds: string[] | null = null
+    if (filters && Object.keys(filters).length > 0) {
+      const recs = await QuoteRecord.find(buildMongoFilter(filters)).select('itemId').lean()
+      allowedIds = recs.map((r) => r.itemId)
+      if (allowedIds.length === 0) return JSON.stringify({ count: 0, matches: [] })
+    }
+
+    const idFilter = allowedIds ? { itemId: { $in: allowedIds } } : {}
+    // Regex match over the cached doc text/title (works for Hebrew phrases; $text
+    // tokenization is unreliable for Hebrew, so regex is the primary path).
+    const pattern = rx(query)
+    const hits = await QuoteContent.find({
+      ...idFilter,
+      $or: [{ 'doc.text': pattern }, { 'doc.title': pattern }],
+    })
+      .select('itemId doc.title doc.text')
+      .limit(cap)
+      .lean()
+
+    if (hits.length === 0) {
+      const cachedCount = await QuoteContent.countDocuments({ 'doc.text': { $exists: true, $ne: '' } })
+      return JSON.stringify({
+        count: 0,
+        matches: [],
+        note: `no matches in ${cachedCount} cached quote docs (cache refreshes nightly; sync_index with contentBatch to refresh now)`,
+      })
+    }
+
+    const recs = await QuoteRecord.find({ itemId: { $in: hits.map((h) => h.itemId) } }).lean()
+    const byId = new Map(recs.map((r) => [r.itemId, r]))
+    return JSON.stringify({
+      count: hits.length,
+      matches: hits.map((h) => {
+        const r = byId.get(h.itemId)
+        return {
+          itemId: h.itemId,
+          name: r?.name ?? h.doc?.title ?? '',
+          quoteNumber: r?.quoteNumber ?? null,
+          client: r?.client ?? null,
+          price: r?.price ?? null,
+          status: r?.status ?? null,
+          docTitle: h.doc?.title ?? null,
+          snippet: h.doc?.text ? snippetAround(h.doc.text, query) : null,
+          docUrl: r?.docUrl ?? null,
+        }
+      }),
+    })
   },
 })
 
@@ -262,5 +399,6 @@ export const analyticsTools = [
   getQuote,
   readQuoteDoc,
   readQuoteSheet,
+  searchQuoteContent,
   syncIndex,
 ]

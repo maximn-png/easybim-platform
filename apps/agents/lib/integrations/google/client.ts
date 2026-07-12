@@ -29,6 +29,22 @@ export function drive() {
   return google.drive({ version: 'v3', auth: auth() })
 }
 
+/**
+ * Drive client under a REAL user identity (Maxim), via OAuth refresh token.
+ * Used for template copies so the bound Apps Script (📄 הצעת מחיר menu)
+ * survives — service-account copies own the script and Google won't run it
+ * for humans. Returns null when the OAuth env vars aren't configured.
+ */
+export function userDrive() {
+  const id = (process.env.GOOGLE_OAUTH_CLIENT_ID ?? '').trim()
+  const secret = (process.env.GOOGLE_OAUTH_CLIENT_SECRET ?? '').trim()
+  const refresh = (process.env.GOOGLE_OAUTH_REFRESH_TOKEN ?? '').trim()
+  if (!id || !secret || !refresh) return null
+  const oauth = new google.auth.OAuth2(id, secret)
+  oauth.setCredentials({ refresh_token: refresh })
+  return google.drive({ version: 'v3', auth: oauth })
+}
+
 export function sheets() {
   return google.sheets({ version: 'v4', auth: auth() })
 }
@@ -72,6 +88,18 @@ export interface DriveFile {
   name: string
   mimeType: string
   webViewLink?: string | null
+  modifiedTime?: string | null
+}
+
+/** File metadata (incl. modifiedTime) — the cheap freshness check for the content cache. */
+export async function getFileMeta(fileId: string): Promise<DriveFile> {
+  const res = await drive().files.get({
+    fileId,
+    supportsAllDrives: true,
+    fields: 'id,name,mimeType,modifiedTime',
+  })
+  const f = res.data
+  return { id: f.id!, name: f.name!, mimeType: f.mimeType!, modifiedTime: f.modifiedTime ?? null }
 }
 
 /** Resolve a Shared Drive id by its display name (e.g. "Finance"). */
@@ -125,7 +153,7 @@ export async function listFilesInFolder(folderId: string, mimeType?: string): Pr
     q,
     supportsAllDrives: true,
     includeItemsFromAllDrives: true,
-    fields: 'files(id,name,mimeType,webViewLink)',
+    fields: 'files(id,name,mimeType,webViewLink,modifiedTime)',
     pageSize: 500,
   })
   return (res.data.files ?? []).map((f) => ({
@@ -133,6 +161,7 @@ export async function listFilesInFolder(folderId: string, mimeType?: string): Pr
     name: f.name!,
     mimeType: f.mimeType!,
     webViewLink: f.webViewLink,
+    modifiedTime: f.modifiedTime ?? null,
   }))
 }
 
@@ -181,16 +210,36 @@ export async function createFolder(name: string, parentId: string): Promise<stri
 }
 
 /**
- * Copy a Google Sheets template into a folder. Prefer the SheetCopier.gs web app
- * (SHEET_COPIER_URL + SHEET_COPIER_SECRET) so the copy runs under a real Google
- * user and the bound Apps Script (the "📄 הצעת מחיר" menu) keeps working. Falls
- * back to a Drive-API copy (bound script would then be service-account-owned).
+ * Copy a Google Sheets template into a folder so the bound Apps Script
+ * (the "📄 הצעת מחיר" menu) keeps working. Priority:
+ *   1. userDrive() — direct Drive copy under Maxim's OAuth identity (best)
+ *   2. SheetCopier.gs web app (legacy path, same effect)
+ *   3. service-account Drive copy (last resort — bound script won't run for users)
  */
 export async function copySheetTemplate(
   templateId: string,
   destFolderId: string,
   newName: string
 ): Promise<{ fileId: string; link: string }> {
+  const ud = userDrive()
+  if (ud) {
+    try {
+      const res = await ud.files.copy({
+        fileId: templateId,
+        requestBody: { name: newName, parents: [destFolderId] },
+        supportsAllDrives: true,
+        fields: 'id,webViewLink',
+      })
+      const fileId = res.data.id ?? ''
+      return {
+        fileId,
+        link: res.data.webViewLink ?? (fileId ? `https://docs.google.com/spreadsheets/d/${fileId}/edit` : ''),
+      }
+    } catch (e) {
+      console.error('[google] user-identity copy failed, falling back:', (e as Error).message)
+    }
+  }
+
   const url = (process.env.SHEET_COPIER_URL ?? '').trim()
   const secret = (process.env.SHEET_COPIER_SECRET ?? '').trim()
 

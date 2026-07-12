@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/squirrel/sync",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/squirrel/content",
+      "schedule": "0 23 * * *"
     }
   ]
 }
