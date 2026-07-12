@@ -22,6 +22,6 @@ const AgentGuidanceSchema = new Schema<IAgentGuidance>(
 AgentGuidanceSchema.index({ agentKey: 1, active: 1, createdAt: -1 })
 
 const AgentGuidance: Model<IAgentGuidance> =
-  mongoose.models.AgentGuidance ?? mongoose.model<IAgentGuidance>('AgentGuidance', AgentGuidanceSchema)
+  mongoose.models.AgentGuidance ?? mongoose.model<IAgentGuidance>('AgentGuidance', AgentGuidanceSchema, 'agent_guidance')
 
 export default AgentGuidance

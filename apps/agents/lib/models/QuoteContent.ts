@@ -104,6 +104,7 @@ const QuoteContentSchema = new Schema<IQuoteContent>(
 QuoteContentSchema.index({ 'doc.text': 'text', 'doc.title': 'text' })
 
 const QuoteContent: Model<IQuoteContent> =
-  mongoose.models.QuoteContent ?? mongoose.model<IQuoteContent>('QuoteContent', QuoteContentSchema)
+  mongoose.models.QuoteContent ??
+  mongoose.model<IQuoteContent>('QuoteContent', QuoteContentSchema, 'squirrel_quote_contents')
 
 export default QuoteContent

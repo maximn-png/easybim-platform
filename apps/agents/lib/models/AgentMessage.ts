@@ -40,6 +40,6 @@ AgentMessageSchema.index({ runId: 1, createdAt: 1 })
 AgentMessageSchema.index({ conversationId: 1, createdAt: 1 })
 
 const AgentMessage: Model<IAgentMessage> =
-  mongoose.models.AgentMessage ?? mongoose.model<IAgentMessage>('AgentMessage', AgentMessageSchema)
+  mongoose.models.AgentMessage ?? mongoose.model<IAgentMessage>('AgentMessage', AgentMessageSchema, 'agent_messages')
 
 export default AgentMessage

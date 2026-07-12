@@ -69,6 +69,6 @@ const QuoteRecordSchema = new Schema<IQuoteRecord>(
 )
 
 const QuoteRecord: Model<IQuoteRecord> =
-  mongoose.models.QuoteRecord ?? mongoose.model<IQuoteRecord>('QuoteRecord', QuoteRecordSchema)
+  mongoose.models.QuoteRecord ?? mongoose.model<IQuoteRecord>('QuoteRecord', QuoteRecordSchema, 'squirrel_quotes')
 
 export default QuoteRecord

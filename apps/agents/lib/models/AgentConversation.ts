@@ -27,6 +27,6 @@ AgentConversationSchema.index({ agentKey: 1, shared: 1 })
 
 const AgentConversation: Model<IAgentConversation> =
   mongoose.models.AgentConversation ??
-  mongoose.model<IAgentConversation>('AgentConversation', AgentConversationSchema)
+  mongoose.model<IAgentConversation>('AgentConversation', AgentConversationSchema, 'agent_conversations')
 
 export default AgentConversation

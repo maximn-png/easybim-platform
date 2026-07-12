@@ -38,6 +38,6 @@ const AgentRunSchema = new Schema<IAgentRun>(
 AgentRunSchema.index({ agentKey: 1, startedAt: -1 })
 
 const AgentRun: Model<IAgentRun> =
-  mongoose.models.AgentRun ?? mongoose.model<IAgentRun>('AgentRun', AgentRunSchema)
+  mongoose.models.AgentRun ?? mongoose.model<IAgentRun>('AgentRun', AgentRunSchema, 'agent_runs')
 
 export default AgentRun
