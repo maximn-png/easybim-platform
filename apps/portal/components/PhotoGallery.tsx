@@ -18,10 +18,10 @@ export default function PhotoGallery() {
   const doubled = [...photos, ...photos]
 
   return (
-    <section className="w-full mt-8" style={{ background: '#0a0e2e' }}>
-      <div className="py-6">
+    <section className="w-full mt-4" style={{ background: '#0a0e2e' }}>
+      <div className="py-5">
         {/* Section heading */}
-        <div className="text-center mb-8 px-6">
+        <div className="text-center mb-5 px-6">
           <p
             className="text-xs font-semibold tracking-widest uppercase mb-2"
             style={{ color: '#44b8d3' }}
@@ -70,7 +70,7 @@ export default function PhotoGallery() {
         </div>
 
         {/* Bottom accent */}
-        <p className="text-center text-xs mt-8 font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>
+        <p className="text-center text-xs mt-5 font-medium" style={{ color: 'rgba(255,255,255,0.25)' }}>
           EasyBIM Platform &mdash; Built by People, Driven by Innovation
         </p>
       </div>

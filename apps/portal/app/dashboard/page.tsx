@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { ArrowRight, Clock, Sparkles, ShieldCheck, Inbox } from 'lucide-react'
 import { canAccessApp, isAdmin } from '@easybim/auth'
 import { CARDS } from '@/lib/cards'
@@ -87,9 +88,9 @@ export default async function DashboardPage() {
 
       <main className="relative z-10">
         {/* ── Centered hero header ── */}
-        <div className="flex flex-col items-center text-center px-6 pt-6 pb-4">
+        <div className="flex flex-col items-center text-center px-6 pt-4 pb-3">
           <div
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold mb-3"
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold mb-2"
             style={{ background: 'rgba(68,184,211,0.10)', borderColor: 'rgba(68,184,211,0.30)', color: '#1e248c' }}
           >
             <Sparkles size={11} style={{ color: '#44b8d3' }} />
@@ -97,32 +98,32 @@ export default async function DashboardPage() {
           </div>
 
           <h1
-            className="font-black leading-tight mb-2"
-            style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', color: '#1e248c' }}
+            className="font-black leading-tight mb-1.5"
+            style={{ fontSize: 'clamp(1.6rem, 3.5vw, 2.5rem)', color: '#1e248c' }}
           >
             Your EasyBIM Platform
           </h1>
 
-          <p className="text-sm mb-2" style={{ color: '#6b7280' }}>
+          <p className="text-sm mb-1" style={{ color: '#6b7280' }}>
             All EasyBIM workflow tools — one click away.
           </p>
 
           {quote && (
-            <div className="max-w-lg mx-auto text-center mt-2">
-              <p className="italic text-sm leading-relaxed" style={{ color: '#4b5563' }}>
-                <span className="text-xl font-black not-italic mr-0.5" style={{ color: '#44b8d3' }}>&ldquo;</span>
+            <div className="max-w-xl mx-auto text-center mt-1">
+              <p className="italic text-xs leading-relaxed" style={{ color: '#4b5563' }}>
+                <span className="text-base font-black not-italic mr-0.5" style={{ color: '#44b8d3' }}>&ldquo;</span>
                 {quote.content}
-                <span className="text-xl font-black not-italic ml-0.5" style={{ color: '#44b8d3' }}>&rdquo;</span>
-              </p>
-              <p className="text-xs font-semibold mt-2 tracking-wide" style={{ color: 'rgba(30,36,140,0.7)' }}>
-                — {quote.author}
+                <span className="text-base font-black not-italic ml-0.5" style={{ color: '#44b8d3' }}>&rdquo;</span>
+                <span className="not-italic font-semibold ml-1.5" style={{ color: 'rgba(30,36,140,0.7)' }}>
+                  — {quote.author}
+                </span>
               </p>
             </div>
           )}
         </div>
 
         {/* ── Tool cards ── */}
-        <div className="px-6 pb-6 max-w-4xl mx-auto w-full">
+        <div className="px-6 pb-4 max-w-6xl mx-auto w-full">
           {visibleCards.length === 0 && (
             <div className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-10 flex flex-col items-center text-center gap-3 shadow-sm">
               <Inbox size={32} style={{ color: '#9ca3af' }} />
@@ -134,48 +135,64 @@ export default async function DashboardPage() {
               </p>
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
             {visibleCards.map((tool) => {
               const Icon = tool.icon
               const isLive = tool.status === 'live'
               const cardClassName =
-                'bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300'
+                'bg-white/65 backdrop-blur-sm border border-white/90 rounded-xl p-4 flex flex-col gap-2.5 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300'
               const cardBody = (
                 <>
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: `${tool.color}18` }}
-                  >
-                    <Icon size={24} style={{ color: tool.color }} />
+                  <div className="flex items-center justify-between">
+                    {tool.logo ? (
+                      <div className="w-10 h-10 rounded-lg bg-white border border-gray-100 flex items-center justify-center overflow-hidden">
+                        <Image
+                          src={tool.logo}
+                          alt={`${tool.title} logo`}
+                          width={36}
+                          height={36}
+                          className="object-contain w-9 h-9"
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center"
+                        style={{ background: `${tool.color}18` }}
+                      >
+                        <Icon size={20} style={{ color: tool.color }} />
+                      </div>
+                    )}
+                    {tool.status === 'live' ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 font-semibold">
+                        Live
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#f0f2ff', color: '#6b7280' }}>
+                        Soon
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h2 className="font-bold text-sm" style={{ color: '#111827' }}>{tool.title}</h2>
-                      {tool.status === 'live' && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-semibold">
-                          Live
-                        </span>
-                      )}
-                      {tool.status === 'coming-soon' && (
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: '#f0f2ff', color: '#6b7280' }}>
-                          Soon
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs leading-relaxed" style={{ color: '#6b7280' }}>{tool.description}</p>
+                    <h2 className="font-bold text-xs mb-1 leading-snug" style={{ color: '#111827' }}>{tool.title}</h2>
+                    <p
+                      className="text-[11px] leading-relaxed overflow-hidden"
+                      style={{ color: '#6b7280', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
+                    >
+                      {tool.description}
+                    </p>
                   </div>
 
                   {isLive ? (
                     <span
-                      className="flex items-center gap-1.5 text-sm font-semibold transition-colors"
+                      className="flex items-center gap-1 text-xs font-semibold transition-colors"
                       style={{ color: '#1e248c' }}
                     >
-                      Open tool <ArrowRight size={14} />
+                      Open tool <ArrowRight size={12} />
                     </span>
                   ) : (
-                    <span className="flex items-center gap-1.5 text-xs" style={{ color: '#9ca3af' }}>
-                      <Clock size={13} /> Coming soon
+                    <span className="flex items-center gap-1 text-[11px]" style={{ color: '#9ca3af' }}>
+                      <Clock size={11} /> Coming soon
                     </span>
                   )}
                 </>

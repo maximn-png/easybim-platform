@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { clerkClient } from '@clerk/nextjs/server'
 import { guardAdmin, sanitizeApps } from '@/lib/adminApi'
 
-// PATCH /api/admin/users/:userId — update a user's card grants / admin flag.
+const MAX_FIELD = 80
+
+// PATCH /api/admin/users/:userId — update a user's card grants / admin flag /
+// display name / company. Name and company live in publicMetadata and are
+// rendered in the Hebrew invitation email for future invites.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
@@ -16,8 +20,15 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  const update: { admin?: boolean; apps?: string[] } = {}
+  const update: { admin?: boolean; apps?: string[]; name?: string; company?: string } = {}
   if ('apps' in body) update.apps = sanitizeApps(body.apps)
+  if ('name' in body) {
+    update.name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_FIELD) : ''
+  }
+  if ('company' in body) {
+    update.company =
+      typeof body.company === 'string' ? body.company.trim().slice(0, MAX_FIELD) : ''
+  }
   if ('admin' in body) {
     if (typeof body.admin !== 'boolean') {
       return NextResponse.json({ error: 'admin must be a boolean' }, { status: 400 })

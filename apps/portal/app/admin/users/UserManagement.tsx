@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -19,6 +19,10 @@ export interface AdminUser {
   lastEvent: { type: string; app: string; at: number } | null
   admin: boolean
   apps: string[]
+  /** Admin-managed display name (publicMetadata.name) — used in invitation emails. */
+  metaName: string
+  /** Admin-managed company (publicMetadata.company) — used in invitation emails. */
+  company: string
   isSelf: boolean
 }
 
@@ -27,6 +31,8 @@ export interface PendingInvitation {
   email: string
   admin: boolean
   apps: string[]
+  name: string
+  company: string
   createdAt: number
 }
 
@@ -236,6 +242,33 @@ function CardChip({
   )
 }
 
+/** Inline-editable text cell — saves on blur or Enter, reverts on Escape. */
+function EditableCell({
+  value, placeholder, saving, onSave,
+}: { value: string; placeholder: string; saving: boolean; onSave: (next: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  useEffect(() => setDraft(value), [value])
+  return (
+    <input
+      type="text"
+      value={draft}
+      placeholder={placeholder}
+      disabled={saving}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const next = draft.trim()
+        if (next !== value) onSave(next)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') setDraft(value)
+      }}
+      className="w-full px-2.5 py-1.5 rounded-lg border text-sm bg-white/60 outline-none focus:ring-2 disabled:opacity-50 transition-shadow"
+      style={{ borderColor: '#e5e7eb', minWidth: 110 }}
+    />
+  )
+}
+
 interface DrawerState {
   open: boolean
   loading: boolean
@@ -259,6 +292,8 @@ export default function UserManagement({
   const [inviteEmails, setInviteEmails] = useState('')
   const [inviteApps, setInviteApps] = useState<string[]>([])
   const [inviteAdmin, setInviteAdmin] = useState(false)
+  // Per-email name & company, keyed by the parsed address.
+  const [inviteDetails, setInviteDetails] = useState<Record<string, { name: string; company: string }>>({})
 
   const parsedEmails = [
     ...new Set(inviteEmails.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean)),
@@ -337,6 +372,13 @@ export default function UserManagement({
     })
   }
 
+  function saveField(user: AdminUser, field: 'name' | 'company', value: string) {
+    void call(`${user.id}:${field}`, `/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ [field]: value }),
+    })
+  }
+
   function deleteUser(user: AdminUser) {
     if (!window.confirm(`Remove ${user.name} (${user.email}) from the platform? This cannot be undone.`)) return
     void call(`${user.id}:delete`, `/api/admin/users/${user.id}`, { method: 'DELETE' })
@@ -352,7 +394,15 @@ export default function UserManagement({
       const res = await fetch('/api/admin/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emails: parsedEmails, apps: inviteApps, admin: inviteAdmin }),
+        body: JSON.stringify({
+          invites: parsedEmails.map((email) => ({
+            email,
+            name: inviteDetails[email]?.name.trim() ?? '',
+            company: inviteDetails[email]?.company.trim() ?? '',
+          })),
+          apps: inviteApps,
+          admin: inviteAdmin,
+        }),
       })
       const data = await res.json().catch(() => null)
       const sent: string[] = data?.sent ?? []
@@ -364,6 +414,7 @@ export default function UserManagement({
         if (failed.length === 0) {
           setInviteApps([])
           setInviteAdmin(false)
+          setInviteDetails({})
           setInviteOpen(false)
         }
         startTransition(() => router.refresh())
@@ -460,6 +511,52 @@ export default function UserManagement({
               </div>
             )}
           </div>
+          {parsedEmails.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <div className="text-xs font-semibold" style={{ color: '#6b7280' }}>
+                Name and company appear in the Hebrew invitation email:
+              </div>
+              {parsedEmails.map((email) => (
+                <div key={email} className="flex items-center gap-2 flex-wrap">
+                  <span
+                    className="text-xs font-semibold w-52 truncate"
+                    style={{ color: '#374151' }}
+                    title={email}
+                  >
+                    {email}
+                  </span>
+                  <input
+                    type="text"
+                    required
+                    value={inviteDetails[email]?.name ?? ''}
+                    onChange={(e) =>
+                      setInviteDetails((prev) => ({
+                        ...prev,
+                        [email]: { name: e.target.value, company: prev[email]?.company ?? '' },
+                      }))
+                    }
+                    placeholder="Full name"
+                    className="px-3 py-1.5 rounded-xl border text-sm outline-none focus:ring-2 w-44"
+                    style={{ borderColor: '#e5e7eb' }}
+                  />
+                  <input
+                    type="text"
+                    required
+                    value={inviteDetails[email]?.company ?? ''}
+                    onChange={(e) =>
+                      setInviteDetails((prev) => ({
+                        ...prev,
+                        [email]: { name: prev[email]?.name ?? '', company: e.target.value },
+                      }))
+                    }
+                    placeholder="Company"
+                    className="px-3 py-1.5 rounded-xl border text-sm outline-none focus:ring-2 w-44"
+                    style={{ borderColor: '#e5e7eb' }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold" style={{ color: '#6b7280' }}>Cards:</span>
             {CARDS.map((card) => (
@@ -510,6 +607,11 @@ export default function UserManagement({
               <div key={inv.id} className="flex items-center justify-between gap-3 text-sm flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold" style={{ color: '#111827' }}>{inv.email}</span>
+                  {(inv.name || inv.company) && (
+                    <span className="text-xs" style={{ color: '#6b7280' }}>
+                      {[inv.name, inv.company].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                   {inv.admin && (
                     <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
                       style={{ background: 'rgba(30,36,140,0.08)', color: NAVY }}>admin</span>
@@ -538,10 +640,12 @@ export default function UserManagement({
 
       {/* Users table */}
       <div className="bg-white/70 backdrop-blur-sm border border-white/90 rounded-2xl shadow-sm overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 820 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1080 }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide" style={{ color: '#9ca3af' }}>
               <th className="px-5 py-3 font-semibold">User</th>
+              <th className="px-5 py-3 font-semibold">Name</th>
+              <th className="px-5 py-3 font-semibold">Company</th>
               <th className="px-5 py-3 font-semibold">Card access</th>
               <th className="px-5 py-3 font-semibold">Last sign-in</th>
               <th className="px-5 py-3 font-semibold">Admin</th>
@@ -559,6 +663,7 @@ export default function UserManagement({
                   busy={busy}
                   onToggleApp={toggleApp}
                   onToggleAdmin={toggleAdmin}
+                  onSaveField={saveField}
                   onDelete={deleteUser}
                   onToggleDrawer={toggleDrawer}
                   onShowMore={() => void loadActivity(user.id, 30)}
@@ -579,13 +684,14 @@ export default function UserManagement({
 }
 
 function FragmentRow({
-  user, drawer, busy, onToggleApp, onToggleAdmin, onDelete, onToggleDrawer, onShowMore,
+  user, drawer, busy, onToggleApp, onToggleAdmin, onSaveField, onDelete, onToggleDrawer, onShowMore,
 }: {
   user: AdminUser
   drawer: DrawerState | undefined
   busy: string | null
   onToggleApp: (user: AdminUser, appId: string) => void
   onToggleAdmin: (user: AdminUser) => void
+  onSaveField: (user: AdminUser, field: 'name' | 'company', value: string) => void
   onDelete: (user: AdminUser) => void
   onToggleDrawer: (userId: string) => void
   onShowMore: () => void
@@ -606,7 +712,7 @@ function FragmentRow({
             />
             <div>
               <div className="font-semibold" style={{ color: '#111827' }}>
-                {user.name}
+                {user.metaName || user.name}
                 {user.isSelf && (
                   <span className="ml-1.5 text-xs font-normal" style={{ color: '#9ca3af' }}>(you)</span>
                 )}
@@ -614,6 +720,22 @@ function FragmentRow({
               <div className="text-xs" style={{ color: '#6b7280' }}>{user.email}</div>
             </div>
           </div>
+        </td>
+        <td className="px-5 py-4">
+          <EditableCell
+            value={user.metaName}
+            placeholder="Full name"
+            saving={busy === `${user.id}:name`}
+            onSave={(next) => onSaveField(user, 'name', next)}
+          />
+        </td>
+        <td className="px-5 py-4">
+          <EditableCell
+            value={user.company}
+            placeholder="Company"
+            saving={busy === `${user.id}:company`}
+            onSave={(next) => onSaveField(user, 'company', next)}
+          />
         </td>
         <td className="px-5 py-4">
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -691,7 +813,7 @@ function FragmentRow({
       </tr>
       {open && (
         <tr>
-          <td colSpan={5} className="px-5 pt-0 pb-1">
+          <td colSpan={7} className="px-5 pt-0 pb-1">
             <ActivityTimeline
               events={drawer?.events ?? []}
               days={drawer?.days ?? 7}

@@ -64,6 +64,8 @@ export default async function AdminUsersPage() {
       lastEvent: lastEvents.get(u.id) ?? null,
       admin: u.publicMetadata?.admin === true,
       apps: Array.isArray(u.publicMetadata?.apps) ? (u.publicMetadata.apps as string[]) : [],
+      metaName: typeof u.publicMetadata?.name === 'string' ? u.publicMetadata.name : '',
+      company: typeof u.publicMetadata?.company === 'string' ? u.publicMetadata.company : '',
       isSelf: u.id === adminId,
     }
   })
@@ -73,6 +75,8 @@ export default async function AdminUsersPage() {
     email: inv.emailAddress,
     admin: inv.publicMetadata?.admin === true,
     apps: Array.isArray(inv.publicMetadata?.apps) ? (inv.publicMetadata.apps as string[]) : [],
+    name: typeof inv.publicMetadata?.name === 'string' ? inv.publicMetadata.name : '',
+    company: typeof inv.publicMetadata?.company === 'string' ? inv.publicMetadata.company : '',
     createdAt: inv.createdAt,
   }))
 

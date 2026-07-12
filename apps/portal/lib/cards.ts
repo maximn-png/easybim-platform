@@ -1,4 +1,4 @@
-import { Newspaper, Database, BookOpen, Crown, type LucideIcon } from 'lucide-react'
+import { Newspaper, Database, BookOpen, Crown, TrainFront, Building2, type LucideIcon } from 'lucide-react'
 
 // Single source of truth for the platform's app cards.
 // `id` doubles as the access grant key stored in Clerk publicMetadata.apps
@@ -8,6 +8,8 @@ export interface AppCard {
   title: string
   description: string
   icon: LucideIcon
+  /** Brand image from packages/assets/logos (served from /public) — shown instead of the icon when set. */
+  logo?: string
   href: string
   status: 'live' | 'coming-soon'
   color: string
@@ -55,5 +57,27 @@ export const CARDS: AppCard[] = [
     // environment — otherwise show "coming soon" instead of a dead `#` link.
     status: process.env.NEXT_PUBLIC_AGENTS_URL ? 'live' : 'coming-soon',
     color: '#7c3aed',
+  },
+  {
+    id: 'metro',
+    title: 'Metro Project',
+    description:
+      'Dedicated workspace for the Metro project with MLEAD — Building Human Systems.',
+    icon: TrainFront,
+    logo: '/mlead-logo.jpg',
+    href: '#',
+    status: 'coming-soon',
+    color: '#2ec4c6',
+  },
+  {
+    id: 'ana',
+    title: 'ANA Projects',
+    description:
+      'Project workspace for ANA — the Israeli Hostels Network.',
+    icon: Building2,
+    logo: '/ana-logo.jpg',
+    href: '#',
+    status: 'coming-soon',
+    color: '#29abe2',
   },
 ]
