@@ -5,6 +5,7 @@ import { canAccessApp, isAdmin } from '@easybim/auth'
 import { CARDS } from '@/lib/cards'
 import { getAccess } from '@/lib/access'
 import AppHeader from '@/components/AppHeader'
+import CardLink from '@/components/CardLink'
 import CursorEffect from '@/components/CursorEffect'
 import PhotoGallery from '@/components/PhotoGallery'
 
@@ -181,15 +182,14 @@ export default async function DashboardPage() {
               )
 
               return isLive ? (
-                <a
+                <CardLink
                   key={tool.id}
+                  appId={tool.id}
                   href={tool.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className={`${cardClassName} cursor-pointer`}
                 >
                   {cardBody}
-                </a>
+                </CardLink>
               ) : (
                 <div key={tool.id} className={cardClassName}>
                   {cardBody}

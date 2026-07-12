@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   ArrowLeft, ShieldCheck, Mail, Trash2, UserPlus, Loader2, Clock, X,
+  ChevronDown, LogIn, ExternalLink, LayoutGrid,
 } from 'lucide-react'
 import { CARDS } from '@/lib/cards'
 
@@ -15,6 +16,7 @@ export interface AdminUser {
   email: string
   imageUrl: string
   lastSignInAt: number | null
+  lastEvent: { type: string; app: string; at: number } | null
   admin: boolean
   apps: string[]
   isSelf: boolean
@@ -28,8 +30,180 @@ export interface PendingInvitation {
   createdAt: number
 }
 
+interface TimelineEvent {
+  type: 'sign_in' | 'card_open' | 'app_visit'
+  at: number
+  app?: string
+  count?: number
+  browser?: string
+}
+
 const NAVY = '#1e248c'
 const CYAN = '#44b8d3'
+
+const cardTitle = (id: string) => CARDS.find((c) => c.id === id)?.title ?? id
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+function startOfDay(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+function timeOf(ts: number): string {
+  return new Date(ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+}
+
+function dayLabel(ts: number): string {
+  const today = startOfDay(Date.now())
+  const day = startOfDay(ts)
+  const date = new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  if (day === today) return `Today · ${date}`
+  if (day === today - DAY_MS) return `Yesterday · ${date}`
+  const weekday = new Date(ts).toLocaleDateString('en-GB', { weekday: 'long' })
+  return `${weekday} · ${date}`
+}
+
+function whenLabel(ts: number): string {
+  const today = startOfDay(Date.now())
+  const day = startOfDay(ts)
+  if (day === today) return `Today, ${timeOf(ts)}`
+  if (day === today - DAY_MS) return `Yesterday, ${timeOf(ts)}`
+  const date = new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  return `${date}, ${timeOf(ts)}`
+}
+
+function eventDescription(ev: { type: string; app: string }): string {
+  if (ev.type === 'card_open') return `opened ${cardTitle(ev.app)} card`
+  if (ev.type === 'app_visit') return `worked in ${cardTitle(ev.app)}`
+  return ''
+}
+
+/** Fold hourly visit buckets into one line per (day, app); keep other events as-is. */
+function groupTimeline(events: TimelineEvent[]): TimelineEvent[] {
+  const visits = new Map<string, TimelineEvent>()
+  const rest: TimelineEvent[] = []
+  for (const ev of events) {
+    if (ev.type !== 'app_visit' || !ev.app) {
+      rest.push(ev)
+      continue
+    }
+    const key = `${startOfDay(ev.at)}:${ev.app}`
+    const existing = visits.get(key)
+    if (existing) {
+      existing.count = (existing.count ?? 1) + (ev.count ?? 1)
+      existing.at = Math.max(existing.at, ev.at)
+    } else {
+      visits.set(key, { ...ev, count: ev.count ?? 1 })
+    }
+  }
+  return [...rest, ...visits.values()].sort((a, b) => b.at - a.at)
+}
+
+function EventIcon({ type }: { type: TimelineEvent['type'] }) {
+  const styles: Record<TimelineEvent['type'], { bg: string; color: string }> = {
+    sign_in: { bg: 'rgba(30,36,140,0.08)', color: NAVY },
+    card_open: { bg: 'rgba(68,184,211,0.14)', color: NAVY },
+    app_visit: { bg: 'rgba(124,58,237,0.10)', color: '#7c3aed' },
+  }
+  const s = styles[type]
+  const Icon = type === 'sign_in' ? LogIn : type === 'card_open' ? ExternalLink : LayoutGrid
+  return (
+    <span
+      className="w-6 h-6 rounded-lg flex items-center justify-center flex-none"
+      style={{ background: s.bg, color: s.color }}
+    >
+      <Icon size={13} />
+    </span>
+  )
+}
+
+function ActivityTimeline({
+  events, days, loading, onShowMore,
+}: { events: TimelineEvent[]; days: number; loading: boolean; onShowMore: () => void }) {
+  if (loading && events.length === 0) {
+    return (
+      <div className="flex items-center gap-2 py-3 text-xs" style={{ color: '#9ca3af' }}>
+        <Loader2 size={13} className="animate-spin" /> Loading activity…
+      </div>
+    )
+  }
+  if (events.length === 0) {
+    return (
+      <div className="py-3 text-xs" style={{ color: '#9ca3af' }}>
+        No activity recorded in the last {days} days.
+      </div>
+    )
+  }
+
+  const grouped = groupTimeline(events)
+  let currentDay = -1
+
+  return (
+    <div
+      className="ml-11 mb-3.5 pl-4"
+      style={{ borderLeft: '2px solid rgba(68,184,211,0.35)' }}
+    >
+      {grouped.map((ev, i) => {
+        const day = startOfDay(ev.at)
+        const showLabel = day !== currentDay
+        currentDay = day
+        return (
+          <div key={i}>
+            {showLabel && (
+              <div
+                className="text-xs font-bold uppercase tracking-wide mt-2.5 mb-1.5"
+                style={{ color: '#9ca3af', fontSize: 11 }}
+              >
+                {dayLabel(ev.at)}
+              </div>
+            )}
+            <div className="flex items-center gap-2.5 py-1">
+              <EventIcon type={ev.type} />
+              <span className="flex-1 text-sm" style={{ color: '#374151' }}>
+                {ev.type === 'sign_in' && (
+                  <>Signed in{ev.browser && <span style={{ color: '#9ca3af' }}> · {ev.browser}</span>}</>
+                )}
+                {ev.type === 'card_open' && (
+                  <>Opened the <b className="font-semibold">{cardTitle(ev.app!)}</b> card</>
+                )}
+                {ev.type === 'app_visit' && (
+                  <>
+                    Worked in <b className="font-semibold">{cardTitle(ev.app!)}</b>
+                    {(ev.count ?? 1) > 1 && (
+                      <span style={{ color: '#9ca3af' }}> · {ev.count} visits</span>
+                    )}
+                  </>
+                )}
+              </span>
+              <span className="text-xs tabular-nums" style={{ color: '#9ca3af' }}>
+                {timeOf(ev.at)}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+      <div className="text-xs mt-2 mb-1" style={{ color: '#9ca3af' }}>
+        Showing last {days} days
+        {days < 30 && (
+          <>
+            {' · '}
+            <button
+              type="button"
+              onClick={onShowMore}
+              disabled={loading}
+              className="font-semibold hover:underline disabled:opacity-50"
+              style={{ color: NAVY }}
+            >
+              {loading ? 'Loading…' : 'Show more'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function CardChip({
   label, active, disabled, onClick,
@@ -51,6 +225,14 @@ function CardChip({
   )
 }
 
+interface DrawerState {
+  open: boolean
+  loading: boolean
+  days: number
+  events: TimelineEvent[]
+  loaded: boolean
+}
+
 export default function UserManagement({
   users, invitations,
 }: { users: AdminUser[]; invitations: PendingInvitation[] }) {
@@ -58,6 +240,7 @@ export default function UserManagement({
   const [, startTransition] = useTransition()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [drawers, setDrawers] = useState<Record<string, DrawerState>>({})
 
   // Invite form state
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -86,6 +269,39 @@ export default function UserManagement({
     } finally {
       setBusy(null)
     }
+  }
+
+  async function loadActivity(userId: string, days: number) {
+    setDrawers((prev) => ({
+      ...prev,
+      [userId]: { ...(prev[userId] ?? { open: true, events: [], loaded: false }), open: true, loading: true, days },
+    }))
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/activity?days=${days}`)
+      const data = res.ok ? await res.json() : { events: [] }
+      setDrawers((prev) => ({
+        ...prev,
+        [userId]: { open: true, loading: false, days, events: data.events ?? [], loaded: true },
+      }))
+    } catch {
+      setDrawers((prev) => ({
+        ...prev,
+        [userId]: { open: true, loading: false, days, events: [], loaded: true },
+      }))
+    }
+  }
+
+  function toggleDrawer(userId: string) {
+    const current = drawers[userId]
+    if (current?.open) {
+      setDrawers((prev) => ({ ...prev, [userId]: { ...current, open: false } }))
+      return
+    }
+    if (current?.loaded) {
+      setDrawers((prev) => ({ ...prev, [userId]: { ...current, open: true } }))
+      return
+    }
+    void loadActivity(userId, 7)
   }
 
   function toggleApp(user: AdminUser, appId: string) {
@@ -129,8 +345,6 @@ export default function UserManagement({
     void call(`${inv.id}:revoke`, `/api/admin/invitations/${inv.id}`, { method: 'DELETE' })
   }
 
-  const cardTitle = (id: string) => CARDS.find((c) => c.id === id)?.title ?? id
-
   return (
     <main className="max-w-5xl mx-auto px-6 py-8">
       {/* Header row */}
@@ -148,7 +362,8 @@ export default function UserManagement({
             User Management
           </h1>
           <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
-            Grant or revoke access to platform cards, per user. Changes apply within a minute.
+            Grant or revoke access to platform cards, per user. Click the arrow on a row for the
+            detailed activity timeline.
           </p>
         </div>
         <button
@@ -263,97 +478,169 @@ export default function UserManagement({
 
       {/* Users table */}
       <div className="bg-white/70 backdrop-blur-sm border border-white/90 rounded-2xl shadow-sm overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 640 }}>
+        <table className="w-full text-sm" style={{ minWidth: 820 }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide" style={{ color: '#9ca3af' }}>
               <th className="px-5 py-3 font-semibold">User</th>
               <th className="px-5 py-3 font-semibold">Card access</th>
+              <th className="px-5 py-3 font-semibold">Last sign-in</th>
               <th className="px-5 py-3 font-semibold">Admin</th>
-              <th className="px-5 py-3 font-semibold sr-only">Actions</th>
+              <th className="px-5 py-3 font-semibold text-right">Activity</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="border-t" style={{ borderColor: '#f0f2ff' }}>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <Image
-                      src={user.imageUrl}
-                      alt=""
-                      width={32}
-                      height={32}
-                      className="rounded-full"
-                      unoptimized
-                    />
-                    <div>
-                      <div className="font-semibold" style={{ color: '#111827' }}>
-                        {user.name}
-                        {user.isSelf && (
-                          <span className="ml-1.5 text-xs font-normal" style={{ color: '#9ca3af' }}>(you)</span>
-                        )}
-                      </div>
-                      <div className="text-xs" style={{ color: '#6b7280' }}>{user.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {user.admin ? (
-                      <span className="text-xs" style={{ color: '#6b7280' }}>All cards (admin)</span>
-                    ) : (
-                      CARDS.map((card) => (
-                        <CardChip
-                          key={card.id}
-                          label={card.title}
-                          active={user.apps.includes(card.id)}
-                          disabled={busy === `${user.id}:${card.id}`}
-                          onClick={() => toggleApp(user, card.id)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <button
-                    type="button"
-                    onClick={() => toggleAdmin(user)}
-                    disabled={user.isSelf || busy === `${user.id}:admin`}
-                    title={user.isSelf ? 'You cannot remove your own admin access' : undefined}
-                    className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ background: user.admin ? CYAN : '#d1d5db' }}
-                  >
-                    <span
-                      className="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform"
-                      style={{ transform: user.admin ? 'translateX(18px)' : 'translateX(3px)' }}
-                    />
-                  </button>
-                </td>
-                <td className="px-5 py-4 text-right">
-                  {!user.isSelf && (
-                    <button
-                      type="button"
-                      onClick={() => deleteUser(user)}
-                      disabled={busy === `${user.id}:delete`}
-                      title="Remove user"
-                      className="p-1.5 rounded-lg transition-colors hover:bg-red-50 disabled:opacity-50"
-                      style={{ color: '#b91c1c' }}
-                    >
-                      {busy === `${user.id}:delete`
-                        ? <Loader2 size={15} className="animate-spin" />
-                        : <Trash2 size={15} />}
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {users.map((user) => {
+              const drawer = drawers[user.id]
+              return (
+                <FragmentRow
+                  key={user.id}
+                  user={user}
+                  drawer={drawer}
+                  busy={busy}
+                  onToggleApp={toggleApp}
+                  onToggleAdmin={toggleAdmin}
+                  onDelete={deleteUser}
+                  onToggleDrawer={toggleDrawer}
+                  onShowMore={() => void loadActivity(user.id, 30)}
+                />
+              )
+            })}
           </tbody>
         </table>
       </div>
 
       <p className="text-xs mt-4" style={{ color: '#9ca3af' }}>
         New sign-ups are invitation-only. Access changes take effect on the user&apos;s next
-        session refresh (up to a minute) — immediately on their next sign-in.
+        session refresh (up to a minute) — immediately on their next sign-in. Activity is kept
+        for 90 days.
       </p>
     </main>
+  )
+}
+
+function FragmentRow({
+  user, drawer, busy, onToggleApp, onToggleAdmin, onDelete, onToggleDrawer, onShowMore,
+}: {
+  user: AdminUser
+  drawer: DrawerState | undefined
+  busy: string | null
+  onToggleApp: (user: AdminUser, appId: string) => void
+  onToggleAdmin: (user: AdminUser) => void
+  onDelete: (user: AdminUser) => void
+  onToggleDrawer: (userId: string) => void
+  onShowMore: () => void
+}) {
+  const open = drawer?.open === true
+  return (
+    <>
+      <tr className="border-t" style={{ borderColor: '#f0f2ff' }}>
+        <td className="px-5 py-4">
+          <div className="flex items-center gap-3">
+            <Image
+              src={user.imageUrl}
+              alt=""
+              width={32}
+              height={32}
+              className="rounded-full"
+              unoptimized
+            />
+            <div>
+              <div className="font-semibold" style={{ color: '#111827' }}>
+                {user.name}
+                {user.isSelf && (
+                  <span className="ml-1.5 text-xs font-normal" style={{ color: '#9ca3af' }}>(you)</span>
+                )}
+              </div>
+              <div className="text-xs" style={{ color: '#6b7280' }}>{user.email}</div>
+            </div>
+          </div>
+        </td>
+        <td className="px-5 py-4">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {user.admin ? (
+              <span className="text-xs" style={{ color: '#6b7280' }}>All cards (admin)</span>
+            ) : (
+              CARDS.map((card) => (
+                <CardChip
+                  key={card.id}
+                  label={card.title}
+                  active={user.apps.includes(card.id)}
+                  disabled={busy === `${user.id}:${card.id}`}
+                  onClick={() => onToggleApp(user, card.id)}
+                />
+              ))
+            )}
+          </div>
+        </td>
+        <td className="px-5 py-4 whitespace-nowrap">
+          <div className="font-bold text-sm tabular-nums" style={{ color: '#111827' }}>
+            {user.lastSignInAt ? whenLabel(user.lastSignInAt) : 'Never'}
+          </div>
+          {user.lastEvent && (
+            <div className="text-xs" style={{ color: '#9ca3af' }}>
+              {eventDescription(user.lastEvent)}
+            </div>
+          )}
+        </td>
+        <td className="px-5 py-4">
+          <button
+            type="button"
+            onClick={() => onToggleAdmin(user)}
+            disabled={user.isSelf || busy === `${user.id}:admin`}
+            title={user.isSelf ? 'You cannot remove your own admin access' : undefined}
+            className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: user.admin ? CYAN : '#d1d5db' }}
+          >
+            <span
+              className="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform"
+              style={{ transform: user.admin ? 'translateX(18px)' : 'translateX(3px)' }}
+            />
+          </button>
+        </td>
+        <td className="px-5 py-4 text-right">
+          <div className="inline-flex items-center gap-2">
+            {!user.isSelf && (
+              <button
+                type="button"
+                onClick={() => onDelete(user)}
+                disabled={busy === `${user.id}:delete`}
+                title="Remove user"
+                className="p-1.5 rounded-lg transition-colors hover:bg-red-50 disabled:opacity-50"
+                style={{ color: '#b91c1c' }}
+              >
+                {busy === `${user.id}:delete`
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : <Trash2 size={15} />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onToggleDrawer(user.id)}
+              title="Show activity"
+              aria-expanded={open}
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ background: 'rgba(30,36,140,0.05)', color: NAVY }}
+            >
+              <ChevronDown
+                size={15}
+                style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.18s' }}
+              />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr>
+          <td colSpan={5} className="px-5 pt-0 pb-1">
+            <ActivityTimeline
+              events={drawer?.events ?? []}
+              days={drawer?.days ?? 7}
+              loading={drawer?.loading === true}
+              onShowMore={onShowMore}
+            />
+          </td>
+        </tr>
+      )}
+    </>
   )
 }

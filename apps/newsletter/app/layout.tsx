@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
+import { logAppVisit } from "@easybim/db";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,11 +20,15 @@ export const metadata: Metadata = {
   description: "AI-powered BIM newsletter generator",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Activity log: throttled to one write per user per hour inside logAppVisit.
+  const { userId } = await auth();
+  if (userId) await logAppVisit(userId, "newsletter").catch(() => {});
+
   return (
     <ClerkProvider>
       <html
