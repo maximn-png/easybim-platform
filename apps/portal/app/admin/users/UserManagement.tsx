@@ -514,7 +514,7 @@ export default function UserManagement({
                 checked={inviteAdmin}
                 onChange={(e) => setInviteAdmin(e.target.checked)}
               />
-              Admin (all cards + user management)
+              Admin (can manage users)
             </label>
           </div>
           <div>
@@ -653,6 +653,7 @@ export default function UserManagement({
       </div>
 
       <p className="text-xs mt-4" style={{ color: '#9ca3af' }}>
+        Cards are granted per user — the Admin switch only controls access to this page.
         New sign-ups are invitation-only. Access changes take effect on the user&apos;s next
         session refresh (up to a minute) — immediately on their next sign-in. Activity is kept
         for 90 days.
@@ -700,19 +701,15 @@ function FragmentRow({
         </td>
         <td className="px-5 py-4">
           <div className="flex items-center gap-1.5 flex-wrap">
-            {user.admin ? (
-              <span className="text-xs" style={{ color: '#6b7280' }}>All cards (admin)</span>
-            ) : (
-              CARDS.map((card) => (
-                <CardChip
-                  key={card.id}
-                  label={card.title}
-                  active={user.apps.includes(card.id)}
-                  disabled={busy === `${user.id}:${card.id}`}
-                  onClick={() => onToggleApp(user, card.id)}
-                />
-              ))
-            )}
+            {CARDS.map((card) => (
+              <CardChip
+                key={card.id}
+                label={card.title}
+                active={user.apps.includes(card.id)}
+                disabled={busy === `${user.id}:${card.id}`}
+                onClick={() => onToggleApp(user, card.id)}
+              />
+            ))}
           </div>
         </td>
         <td className="px-5 py-4 whitespace-nowrap">
