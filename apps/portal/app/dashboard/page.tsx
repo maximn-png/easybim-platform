@@ -1,6 +1,9 @@
-import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { Newspaper, Database, BookOpen, ArrowRight, Clock, Sparkles, Crown } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowRight, Clock, Sparkles, ShieldCheck, Inbox } from 'lucide-react'
+import { canAccessApp, isAdmin } from '@easybim/auth'
+import { CARDS } from '@/lib/cards'
+import { getAccess } from '@/lib/access'
 import AppHeader from '@/components/AppHeader'
 import CursorEffect from '@/components/CursorEffect'
 import PhotoGallery from '@/components/PhotoGallery'
@@ -34,54 +37,13 @@ const PARTICLES = [
   { x: '62%', y: '88%', size: 3, delay: '2.8s',  dur: '7s'   },
 ]
 
-const TOOLS = [
-  {
-    id: 'newsletter',
-    title: 'Newsletter Generator',
-    description:
-      'Generate AI-powered BIM industry newsletters from 21 RSS sources using Google Gemini. Ready to send in under a minute.',
-    icon: Newspaper,
-    href: process.env.NEXT_PUBLIC_NEWSLETTER_URL || '#',
-    status: 'live' as const,
-    color: '#1e248c',
-  },
-  {
-    id: 'easybim-projects',
-    title: 'EasyBIM Projects',
-    description:
-      'Track, manage, and collaborate on BIM projects in one place. Built around the EasyBIM team\'s workflow.',
-    icon: Database,
-    href: process.env.NEXT_PUBLIC_EPM_URL || '#',
-    status: 'live' as const,
-    color: '#44b8d3',
-  },
-  {
-    id: 'revit-sync',
-    title: 'EasyBIM Knowledge Center',
-    description:
-      'Your central hub for EasyBIM standards, BIM guides, templates, and best practices — find the right workflow and answer in seconds.',
-    icon: BookOpen,
-    href: '#',
-    status: 'coming-soon' as const,
-    color: '#818cf8',
-  },
-  {
-    id: 'agents',
-    title: 'EasyBIM Agents Kingdom',
-    description:
-      'Autonomous agents that run your workflows. Peacock drafts and routes weekly LinkedIn posts through Monday — you just approve.',
-    icon: Crown,
-    href: process.env.NEXT_PUBLIC_AGENTS_URL || '#',
-    // Only advertise as Live when the agents URL is actually configured for this
-    // environment — otherwise show "coming soon" instead of a dead `#` link.
-    status: (process.env.NEXT_PUBLIC_AGENTS_URL ? 'live' : 'coming-soon') as 'live' | 'coming-soon',
-    color: '#7c3aed',
-  },
-]
-
 export default async function DashboardPage() {
-  const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
+  const session = await getAccess()
+  if (!session) redirect('/sign-in')
+
+  const { access } = session
+  const admin = isAdmin(access)
+  const visibleCards = CARDS.filter((card) => canAccessApp(access, card.id))
 
   const quote = await getQuote()
 
@@ -131,6 +93,17 @@ export default async function DashboardPage() {
             All EasyBIM workflow tools — one click away.
           </p>
 
+          {admin && (
+            <Link
+              href="/admin/users"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
+              style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
+            >
+              <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
+              User Management
+            </Link>
+          )}
+
           {quote && (
             <div className="max-w-lg mx-auto text-center mt-2">
               <p className="italic text-sm leading-relaxed" style={{ color: '#4b5563' }}>
@@ -147,8 +120,19 @@ export default async function DashboardPage() {
 
         {/* ── Tool cards ── */}
         <div className="px-6 pb-6 max-w-4xl mx-auto w-full">
+          {visibleCards.length === 0 && (
+            <div className="bg-white/65 backdrop-blur-sm border border-white/90 rounded-2xl p-10 flex flex-col items-center text-center gap-3 shadow-sm">
+              <Inbox size={32} style={{ color: '#9ca3af' }} />
+              <p className="font-semibold text-sm" style={{ color: '#111827' }}>
+                No tools have been assigned to you yet
+              </p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>
+                Contact your EasyBIM administrator to get access.
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {TOOLS.map((tool) => {
+            {visibleCards.map((tool) => {
               const Icon = tool.icon
               const isLive = tool.status === 'live'
               const cardClassName =

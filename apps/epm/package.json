@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^7.2.3",
+    "@easybim/auth": "*",
     "@easybim/db": "*",
     "@easybim/ui": "*",
     "@sparticuz/chromium": "^149.0.0",

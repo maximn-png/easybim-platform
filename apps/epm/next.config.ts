@@ -4,7 +4,7 @@ import path from 'path'
 const monorepoRoot = path.resolve(__dirname, '../..')
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@easybim/ui', '@easybim/db'],
+  transpilePackages: ['@easybim/ui', '@easybim/db', '@easybim/auth'],
   // Keep these in node_modules (don't bundle/relocate) — @sparticuz/chromium loads
   // its binary from its own bin/ dir at runtime, which breaks if Next bundles it.
   serverExternalPackages: ['mongoose', '@sparticuz/chromium', 'puppeteer-core'],

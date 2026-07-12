@@ -1,4 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { NextResponse } from 'next/server'
+import { canAccessApp, resolveAccess } from '@easybim/auth'
 
 // Public to Clerk middleware:
 //  - the cron sync endpoint self-guards with CRON_SECRET (otherwise the Vercel
@@ -11,8 +13,21 @@ const isPublicRoute = createRouteMatcher([
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect()
+  if (isPublicRoute(req)) return
+
+  const { userId, sessionClaims } = await auth()
+  const portalUrl = process.env.NEXT_PUBLIC_PORTAL_URL ?? 'http://localhost:3000'
+
+  if (!userId) {
+    const signInUrl = new URL(`${portalUrl}/sign-in`)
+    signInUrl.searchParams.set('redirect_url', req.url)
+    return NextResponse.redirect(signInUrl)
+  }
+
+  // Signed in, but does this user have the EPM card grant?
+  const access = await resolveAccess(userId, sessionClaims)
+  if (!canAccessApp(access, 'epm')) {
+    return NextResponse.redirect(new URL(`${portalUrl}/no-access?app=epm`))
   }
 })
 
