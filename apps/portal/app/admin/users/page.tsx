@@ -82,17 +82,19 @@ export default async function AdminUsersPage() {
     createdAt: inv.createdAt,
   }))
 
-  // "EasyBIM domain" row: aggregate card state across non-admin staff.
+  // "EasyBIM domain" row: aggregate card state across ALL @easybim.co.il
+  // users. Admins count as holding every card (they implicitly do); the
+  // bulk-grant API only ever writes to non-admins.
   // 'all' = every staff user holds the card, 'some' = a subset, 'none' = nobody.
-  const staffUsers = serializedUsers.filter(
-    (u) => !u.admin && u.email.toLowerCase().endsWith(`@${STAFF_EMAIL_DOMAIN}`)
+  const staffUsers = serializedUsers.filter((u) =>
+    u.email.toLowerCase().endsWith(`@${STAFF_EMAIL_DOMAIN}`)
   )
   const staff: StaffGroup = {
     domain: STAFF_EMAIL_DOMAIN,
     count: staffUsers.length,
     state: Object.fromEntries(
       CARDS.map((card) => {
-        const holders = staffUsers.filter((u) => u.apps.includes(card.id)).length
+        const holders = staffUsers.filter((u) => u.admin || u.apps.includes(card.id)).length
         return [
           card.id,
           holders === 0 ? 'none' : holders === staffUsers.length ? 'all' : 'some',
