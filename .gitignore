@@ -42,7 +42,3 @@ portal-sign-in*.png
 newsletter-sign-in*.png
 .vercel
 .env*
-
-# Generated copies of brand assets (source of truth: packages/assets/logos)
-apps/*/public/ana-logo.jpg
-apps/*/public/mlead-logo.jpg
