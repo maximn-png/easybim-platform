@@ -47,6 +47,7 @@ export default function FormaConnectPanel({
   accExternalHub,
   partnerHubName,
   partnerHubKey,
+  basePath = '/dashboard',
 }: {
   projectId: string
   projectNumber: string
@@ -59,6 +60,9 @@ export default function FormaConnectPanel({
   // Registry key (e.g. 'ana') — routes the project list + OAuth through the
   // partner app's credentials.
   partnerHubKey?: string
+  // Route prefix for the project's pages — '/dashboard' internally, '/ana' in
+  // the ANA client area — so "Get Forma Status" and OAuth returns land correctly.
+  basePath?: string
 }) {
   const router = useRouter()
   const importMode = !!accExternalHub && !partnerHubName
@@ -275,7 +279,7 @@ export default function FormaConnectPanel({
           </button>
 
           <button
-            onClick={() => router.push(`/dashboard/${projectId}/reports`)}
+            onClick={() => router.push(`${basePath}/${projectId}/reports`)}
             disabled={!imported}
             className="w-full bg-[#1e248c] text-white rounded-lg py-2 text-sm font-semibold hover:bg-[#44b8d3] transition-colors disabled:opacity-40 disabled:hover:bg-[#1e248c]"
           >
@@ -335,7 +339,7 @@ export default function FormaConnectPanel({
             </div>
           ) : stateMsg === 'needsAuth' ? (
             <a
-              href={`/api/auth/autodesk?returnTo=/dashboard/${projectId}${partnerHubKey ? `&hub=${partnerHubKey}` : ''}`}
+              href={`/api/auth/autodesk?returnTo=${basePath}/${projectId}${partnerHubKey ? `&hub=${partnerHubKey}` : ''}`}
               className="w-full inline-flex items-center justify-center gap-2 border border-[#1e248c] text-[#1e248c] rounded-lg py-2 text-sm font-semibold hover:bg-[#1e248c]/5 transition-colors"
             >
               Sign in with Autodesk to load projects
@@ -380,7 +384,7 @@ export default function FormaConnectPanel({
         </div>
 
         <button
-          onClick={() => router.push(`/dashboard/${projectId}/reports`)}
+          onClick={() => router.push(`${basePath}/${projectId}/reports`)}
           disabled={!savedId}
           className="w-full bg-[#1e248c] text-white rounded-lg py-2 text-sm font-semibold hover:bg-[#44b8d3] transition-colors disabled:opacity-40 disabled:hover:bg-[#1e248c]"
         >

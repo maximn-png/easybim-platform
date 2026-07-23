@@ -76,8 +76,10 @@ export const CARDS: AppCard[] = [
       'Project workspace for ANA — the Israeli Hostels Network.',
     icon: Building2,
     logo: '/ana-logo.jpg',
-    href: '#',
-    status: 'coming-soon',
+    // Deep-links into the ANA client area inside EPM. Only "live" when the EPM
+    // URL is configured for this environment (mirrors the agents card).
+    href: process.env.NEXT_PUBLIC_EPM_URL ? `${process.env.NEXT_PUBLIC_EPM_URL}/ana` : '#',
+    status: process.env.NEXT_PUBLIC_EPM_URL ? 'live' : 'coming-soon',
     color: '#29abe2',
   },
 ]

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 
 // Full report (email preview HTML + metadata) for the view modal. The PDF bytes
 // are served separately by ./pdf to keep this payload light.
@@ -11,6 +12,9 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id, reportId } = await params
+
+  const denied = await guardSharedProjectForAna('GET', id)
+  if (denied) return denied
   if (!process.env.MONGODB_URI) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   try {
@@ -53,6 +57,11 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id, reportId } = await params
+
+  // ANA-only clients are read-only — the guard rejects their non-GET requests.
+  const denied = await guardSharedProjectForAna('DELETE', id)
+  if (denied) return denied
+
   if (!process.env.MONGODB_URI) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   try {

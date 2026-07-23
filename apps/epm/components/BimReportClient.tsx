@@ -34,7 +34,18 @@ function badgeTextColor(s: string) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function Breadcrumb({ project }: { project: ProjectRow }) {
+function Breadcrumb({ project, anaView = false }: { project: ProjectRow; anaView?: boolean }) {
+  if (anaView) {
+    return (
+      <nav className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+        <Link href="/ana" className="hover:text-[#1e248c]">ANA Projects</Link>
+        <ChevronRight size={12} />
+        <Link href={`/ana/${project._id}`} className="hover:text-[#1e248c]" dir="rtl">{project.projectName}</Link>
+        <ChevronRight size={12} />
+        <span className="text-[#1e248c] font-medium">Reports</span>
+      </nav>
+    )
+  }
   return (
     <nav className="flex items-center gap-1 text-xs text-gray-500 mb-1">
       <Link href="/dashboard" className="hover:text-[#1e248c]">Dashboard</Link>
@@ -144,7 +155,7 @@ function GroupBar({
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export default function BimReportClient({ project }: { project: ProjectRow }) {
+export default function BimReportClient({ project, anaView = false }: { project: ProjectRow; anaView?: boolean }) {
   // Partner-hub projects (accHubName set, e.g. ANA) use the live API like
   // EasyBIM-hub ones — only unreachable external hubs are import-based.
   const isExternal = !!project.accExternalHub && !project.accHubName
@@ -358,7 +369,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <Breadcrumb project={project} />
+            <Breadcrumb project={project} anaView={anaView} />
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               <h1 className="text-3xl font-bold text-[#1e248c]">
                 Reports –{' '}
@@ -373,23 +384,26 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
               <ProjectLinksBar project={project} />
             </div>
           </div>
-          <div className="flex items-center gap-3 self-start flex-wrap">
-            {!isExternal && (
-              <a
-                href={`/api/auth/autodesk/disconnect?returnTo=/dashboard/${project._id}/reports${project.accHubKey ? `&hub=${project.accHubKey}` : ''}`}
-                className="text-xs text-gray-400 hover:text-[#1e248c] underline underline-offset-2 transition-colors"
-                title="Clear token and re-authenticate with Autodesk"
+          {/* Internal-only actions — hidden for the ANA client view. */}
+          {!anaView && (
+            <div className="flex items-center gap-3 self-start flex-wrap">
+              {!isExternal && (
+                <a
+                  href={`/api/auth/autodesk/disconnect?returnTo=/dashboard/${project._id}/reports${project.accHubKey ? `&hub=${project.accHubKey}` : ''}`}
+                  className="text-xs text-gray-400 hover:text-[#1e248c] underline underline-offset-2 transition-colors"
+                  title="Clear token and re-authenticate with Autodesk"
+                >
+                  Reconnect Autodesk
+                </a>
+              )}
+              <button
+                onClick={() => setExportOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-medium hover:bg-[#44b8d3] transition-colors shadow-sm"
               >
-                Reconnect Autodesk
-              </a>
-            )}
-            <button
-              onClick={() => setExportOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-medium hover:bg-[#44b8d3] transition-colors shadow-sm"
-            >
-              <FileDown size={15} /> Export Report
-            </button>
-          </div>
+                <FileDown size={15} /> Export Report
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Filter bar */}
@@ -467,7 +481,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
               </p>
             </div>
             <a
-              href={`/api/auth/autodesk?returnTo=/dashboard/${project._id}/reports${project.accHubKey ? `&hub=${project.accHubKey}` : ''}`}
+              href={`/api/auth/autodesk?returnTo=${anaView ? '/ana' : '/dashboard'}/${project._id}/reports${project.accHubKey ? `&hub=${project.accHubKey}` : ''}`}
               className="inline-flex items-center gap-2 px-6 py-3 bg-[#1e248c] text-white rounded-xl text-sm font-semibold hover:bg-[#44b8d3] transition-colors shadow-md"
             >
               Sign in with Autodesk
@@ -504,7 +518,7 @@ export default function BimReportClient({ project }: { project: ProjectRow }) {
               file from the project&apos;s <span className="font-medium text-gray-600">Forms &amp; Actions</span> card to build this report.
             </p>
             <Link
-              href={`/dashboard/${project._id}`}
+              href={`${anaView ? '/ana' : '/dashboard'}/${project._id}`}
               className="mt-1 inline-flex items-center gap-2 px-5 py-2.5 bg-[#1e248c] text-white rounded-xl text-sm font-semibold hover:bg-[#44b8d3] transition-colors"
             >
               Go to project to upload

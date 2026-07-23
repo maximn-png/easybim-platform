@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 
 // Lightweight report history for a project (metadata only — no PDF / HTML).
 export async function GET(
@@ -10,6 +11,9 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
+
+  const denied = await guardSharedProjectForAna('GET', id)
+  if (denied) return denied
   if (!process.env.MONGODB_URI) return NextResponse.json({ reports: [] })
 
   try {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 
 // Streams the stored PDF bytes for embedding / download in the report view.
 export async function GET(
@@ -10,6 +11,10 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id, reportId } = await params
+
+  const denied = await guardSharedProjectForAna('GET', id)
+  if (denied) return denied
+
   if (!process.env.MONGODB_URI) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   try {

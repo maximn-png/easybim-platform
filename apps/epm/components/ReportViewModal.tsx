@@ -22,12 +22,15 @@ interface ReportDetail {
 }
 
 export default function ReportViewModal({
-  projectId, reportId, onClose, onDeleted,
+  projectId, reportId, onClose, onDeleted, external = false,
 }: {
   projectId: string
   reportId: string
   onClose: () => void
   onDeleted: (id: string) => void
+  // ANA client view: hide internal-only bits (recipient list, Gmail draft link,
+  // delete) — leaving the email preview + PDF.
+  external?: boolean
 }) {
   const [report, setReport] = useState<ReportDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -112,10 +115,14 @@ export default function ReportViewModal({
           <>
             {/* Recipients + actions */}
             <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-mono text-gray-400">אל</span>
-              <span className="text-xs text-gray-700">{report.recipients.join(', ') || '—'}</span>
+              {!external && (
+                <>
+                  <span className="text-[10px] font-mono text-gray-400">אל</span>
+                  <span className="text-xs text-gray-700">{report.recipients.join(', ') || '—'}</span>
+                </>
+              )}
               <div className="ms-auto flex items-center gap-2">
-                {report.gmailUrl && (
+                {!external && report.gmailUrl && (
                   <a href={report.gmailUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-700 hover:border-[#44b8d3]">
                     <ExternalLink size={13} /> פתח טיוטה ב-Gmail
                   </a>
@@ -123,9 +130,11 @@ export default function ReportViewModal({
                 <a href={`${pdfUrl}?download=1`} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-700 hover:border-[#44b8d3]">
                   <Download size={13} /> הורד PDF
                 </a>
-                <button onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60">
-                  {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} מחק
-                </button>
+                {!external && (
+                  <button onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-60">
+                    {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} מחק
+                  </button>
+                )}
               </div>
             </div>
 

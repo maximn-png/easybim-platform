@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { fetchAccIssues } from '@/lib/services/apsService'
 import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 import { getApsUserToken } from '@/lib/services/apsUserToken'
+import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 
 export async function GET(
   _req: NextRequest,
@@ -12,6 +13,10 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
+
+  // ANA-only clients may read issues, but only for ANA-hub projects.
+  const denied = await guardSharedProjectForAna('GET', id)
+  if (denied) return denied
 
   if (!process.env.MONGODB_URI) {
     return NextResponse.json({ issues: [], count: 0, mock: true })

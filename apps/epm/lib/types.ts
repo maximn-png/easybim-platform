@@ -40,11 +40,21 @@ export interface ProjectSyncMeta {
   accLastSyncedAt: string | null
 }
 
+// Client-editable ANA fields (see AnaFields in the Project model). Owned by the
+// ANA client user in the /ana portal area; kept separate from the Monday sync.
+export interface AnaFields {
+  number?: string
+  status?: string
+  projectType?: string
+}
+
 export interface ProjectRow {
   _id: string
   projectName: string
   projectNumber: string
   displayOrder?: number
+  /** Client-entered ANA fields; only present/relevant for ANA-hub projects. */
+  ana?: AnaFields
   links: ProjectLinks
   accProjectId?: string
   accLinkSource?: AccLinkSource
