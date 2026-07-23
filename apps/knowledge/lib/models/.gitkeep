@@ -1,0 +1,3 @@
+# Mongoose models for the Knowledge Center live here.
+# Follow the pattern in apps/agents/lib/models (one file per model,
+# guard re-compilation with `mongoose.models.X || mongoose.model('X', schema)`).
