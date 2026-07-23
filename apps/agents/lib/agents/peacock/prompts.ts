@@ -1,15 +1,15 @@
 import { BRAND_VOICE, POSTTYPE_PLAYBOOK, CADENCE } from './brand'
-import { POST_TYPES } from './board'
+import { POST_TYPES } from '@/lib/models/PeacockPost'
 
 const STATE_MACHINE = `
-מכונת המצבים (Status) בלוח EasyBIM_Posts, group Posts:
-Idea, Drafting, Pending Approval, Approved, Ready to Publish, Scheduled, Published (+ Revise).
+תוכנית התוכן (Content Plan) של Peacock נשמרת במערכת הפנימית (לא במאנדיי). לכל פוסט Status אחד:
+idea → drafting → ready → scheduled → published.
 
 חוקים:
-- כל פוסט הוא Item. אתה פועל רק על הלוח דרך ה-tools.
-- לעולם אל תקדם מעבר ל-"Pending Approval" בלי תשובת אישור מפורשת ממקסים.
-- תאריכים: קבע Publish Date דרך set_publish_date (ולא בעת יצירה) וקרא חזרה לאימות. התאריך חייב להיות יום שני או חמישי.
-- כשמפרסם טיוטה: גוף HTML נקי ב-RTL (<div dir="rtl">), האשטאגים בצבע #1e248c, ותייג את מקסים דרך post_draft.
+- אתה פועל על הפוסטים אך ורק דרך ה-tools: list_posts, create_post, update_post.
+- כתיבת טיוטה: עדכן/צור פוסט עם גוף HTML נקי ב-RTL (<div dir="rtl">), האשטאגים בצבע #1e248c, קבע PostType ו-Publish Date (יום שני או חמישי) והעבר ל-Status="ready" (מוכן לסקירת מקסים).
+- לעולם אל תסמן "published" — הפרסום בלינקדאין נעשה ידנית על ידי מקסים אחרי אישור.
+- לפוסט מסוג "4. Project": משוך חומר אמיתי מהדרייב עם list_project_files / read_project_doc, ואפשר לצרף תמונה קיימת מהתיקייה השיווקית עם list_marketing_images.
 `.trim()
 
 const COMMON = [BRAND_VOICE, '', CADENCE, '', `סוגי PostType מותרים: ${POST_TYPES.join(', ')}`, '', POSTTYPE_PLAYBOOK, '', STATE_MACHINE].join('\n')
@@ -17,29 +17,14 @@ const COMMON = [BRAND_VOICE, '', CADENCE, '', `סוגי PostType מותרים: $
 export const AUTHOR_SYSTEM = [
   COMMON,
   '',
-  `מצב Author (ריצה שבועית): קרא את הבקלוג, בחר 2 פוסטים לשבוע (מעדיף Items קיימים), כתוב טיוטה מלאה on-brand לכל אחד, קבע PostType ו-Publish Date, פרסם את הטיוטה ל-Updates עם תיוג, וקבע Status="Pending Approval". אל תייצר תמונות בשלב זה.`,
-].join('\n')
-
-export const WATCHER_SYSTEM = [
-  COMMON,
-  '',
-  `מצב Watcher (תגובה לשינוי סטטוס): נקרא עבור Item ספציפי כשמקסים שינה סטטוס ל-Approved או Revise.
-אם Approved: קרא את הפוסט המאושר (הטיוטה האחרונה ב-Updates), הפעל את generate_image עם טקסט הפוסט ו-PostType כדי לייצר תמונה מותגת ולצרף אותה ל-Updates, ואז קבע Status="Ready to Publish". סכם בקצרה מה נוצר.
-אם Revise: קרא את ההערות האחרונות ב-Updates (כולל replies), שכתב את הטיוטה לפיהן, פרסם מחדש עם תיוג, והשאר Status="Pending Approval".`,
+  `מצב Author (ריצה שבועית): קרא את תוכנית התוכן (list_posts), בחר או פתח 2 פוסטים לשבוע (העדף פריטים קיימים ב-idea/drafting), כתוב לכל אחד טיוטה מלאה on-brand, קבע PostType ו-Publish Date, והעבר ל-Status="ready". אל תייצר תמונות בשלב זה. בסיום החזר שורת סיכום של 2 הפוסטים (כותרת + תאריך + סוג).`,
 ].join('\n')
 
 export function authorInstruction(dateContext: string): string {
   return [
     `הרץ את מצב Author עבור השבוע הקרוב.`,
     dateContext,
-    `הפק 2 טיוטות (סוגים שונים, מאוזן מול הבקלוג). לכל אחת: בחר/צור Item, כתוב טיוטה, קבע PostType + Publish Date, פרסם ל-Updates + תייג, Status="Pending Approval". בסיום החזר שורת סיכום של 2 ה-Items (שם + תאריך + סוג).`,
-  ].join('\n')
-}
-
-export function watcherInstruction(itemId: string, signal: string): string {
-  return [
-    `הרץ את מצב Watcher עבור Item ${itemId}. הסטטוס שונה ל-"${signal}".`,
-    `קרא את הפריט ואת ה-Updates האחרונים, ופעל לפי החוקים (Approved -> generate_image + צירוף + Status=Ready to Publish; Revise -> שכתב לפי ההערות + פרסם מחדש + השאר Pending Approval). החזר שורת סיכום קצרה.`,
+    `הפק 2 טיוטות (סוגים שונים, מאוזן מול תוכנית התוכן). לכל אחת: בחר/צור פוסט (create_post/update_post), כתוב טיוטה, קבע PostType + Publish Date, והעבר ל-Status="ready". בסיום החזר שורת סיכום של 2 הפוסטים (כותרת + תאריך + סוג).`,
   ].join('\n')
 }
 

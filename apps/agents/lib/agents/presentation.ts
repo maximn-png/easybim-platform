@@ -49,6 +49,8 @@ export interface AgentPresentation {
   /** Short "why this animal" note connecting the agent's job to the animal's trait. */
   why?: string
   hasChat?: boolean
+  /** render a full dashboard as the agent's landing (chat/about become overlays) */
+  hasDashboard?: boolean
   howItWorks?: HowItWorks
   chat?: ChatCopy
   about?: AgentAbout
@@ -61,49 +63,50 @@ const MAP: Record<string, AgentPresentation> = {
     tagline: 'LinkedIn & content',
     why: "Core trait: presence & shine. A peacock knows how to show up, stand out, and draw the eye — exactly the marketing brief: make EasyBIM impossible to scroll past, and turn every post into an event.",
     hasChat: true,
+    hasDashboard: true,
     howItWorks: {
       title: 'איך טווס עובד',
       rtl: true,
       steps: [
         { icon: 'PenLine', label: 'כותב טיוטה', sub: '2 פוסטים בשבוע', who: 'agent' },
-        { icon: 'Bell', label: 'ממתין לאישור', sub: 'מתייג אתכם במאנדיי', who: 'agent' },
+        { icon: 'Bell', label: 'ממתין לסקירה', sub: 'בדשבורד', who: 'agent' },
         { icon: 'Hand', label: 'אתם מחליטים', sub: 'לאשר או לבקש שינוי', who: 'you' },
-        { icon: 'ImageIcon', label: 'תמונה ממותגת', sub: 'אחרי האישור', who: 'agent' },
-        { icon: 'CheckCircle2', label: 'מוכן לפרסום', sub: 'חבילה מלאה', who: 'agent' },
+        { icon: 'ImageIcon', label: 'תמונה ממותגת', sub: 'לפי בקשה', who: 'agent' },
+        { icon: 'CheckCircle2', label: 'מוכן לפרסום', sub: 'אתם מפרסמים בלינקדאין', who: 'you' },
       ],
     },
     about: {
       intro:
-        'טווס הוא סוכן השיווק של EasyBIM — כותב טיוטות פוסטים ללינקדאין, מעביר אותן לאישורכם במאנדיי, ומכין תמונה ממותגת לכל פוסט שאושר.',
+        'טווס הוא סוכן השיווק של EasyBIM — כותב טיוטות פוסטים ללינקדאין, מנהל את תוכנית התוכן בדשבורד, ומכין תמונה ממותגת לכל פוסט לפי בקשה.',
       why:
         'הטווס יודע להופיע, לבלוט ולמשוך את העין — בדיוק התפקיד של סוכן השיווק: לגרום ל-EasyBIM לבלוט בפיד ולהפוך כל פוסט לאירוע.',
       autoTitle: 'מה טווס עושה אוטומטית',
       autoItems: [
-        'כותב שתי טיוטות פוסטים בשבוע ומעלה אותן ללוח התוכן במאנדיי בסטטוס Pending Approval.',
-        'מתייג אתכם על כל טיוטה חדשה כדי שתאשרו או תבקשו שינוי.',
-        'כשמאשרים טיוטה — מייצר לה תמונה ממותגת ומעביר את הפוסט ל-Ready to Publish.',
-        'כשמסמנים Revise עם הערות — כותב את הטיוטה מחדש לפי הפידבק.',
+        'כותב שתי טיוטות פוסטים בשבוע ומוסיף אותן לתוכנית התוכן בסטטוס "ready" (מוכן לסקירה).',
+        'מושך חומר אמיתי מהדרייב (תיקיות פרויקטים + נכסים שיווקיים) לפוסטים מסוג Project.',
+        'מייצר תמונה ממותגת לפוסט לפי בקשה ושומר אותה בדרייב.',
+        'משכתב טיוטות לפי הפידבק שלכם בצ׳אט.',
       ],
       userTitle: 'מה אתם עושים',
       userItems: [
-        'עוברים על הטיוטה במאנדיי — מאשרים, או כותבים הערות ומסמנים Revise.',
-        'מפרסמים בלינקדאין את החבילה המוכנה (טקסט + תמונה) מ-Ready to Publish.',
+        'סוקרים את תוכנית התוכן בדשבורד — מאשרים, עורכים, או מבקשים שינוי בצ׳אט.',
+        'מפרסמים בלינקדאין את הפוסט המוכן (טקסט + תמונה) בעצמכם.',
       ],
       chatTitle: 'מה אפשר לעשות בצ׳אט',
       chatItems: [
-        'לבקש ממנו לכתוב עכשיו טיוטה לרעיון שהוספתם ללוח.',
+        'לבקש ממנו לתכנן או לכתוב עכשיו טיוטה חדשה.',
         'לשאול מה הוא עשה בריצות האחרונות.',
         'לתת לו העדפות קבועות (למשל "פוסטים קצרים יותר") — הוא זוכר אותן לפוסטים הבאים, ואפשר לראות אותן בלשונית Improvements.',
       ],
     },
     chat: {
       title: 'Chat with Peacock',
-      subtitle: 'Ask questions · give feedback it remembers · ask it to draft an item now (→ Pending Approval)',
+      subtitle: 'Ask questions · give feedback it remembers · plan and draft posts',
       placeholder: 'Message Peacock…',
       emptyTitle: 'Ask Peacock anything',
       emptyHint: 'or give it a preference to remember',
       thinking: 'Peacock is thinking…',
-      suggestions: ['מה עשית בריצה האחרונה?', 'תקצר את הפוסטים לעתיד', 'פתח עכשיו את הרעיון שהוספתי ללוח'],
+      suggestions: ['מה עשית בריצה האחרונה?', 'תקצר את הפוסטים לעתיד', 'תכנן לי פוסט חדש לשבוע'],
     },
   },
 
