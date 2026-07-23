@@ -4,6 +4,8 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
+  // Clerk webhook — authenticated by its Svix signature, not a Clerk session.
+  '/api/webhooks/clerk',
 ])
 
 export default clerkMiddleware(async (auth, req) => {
