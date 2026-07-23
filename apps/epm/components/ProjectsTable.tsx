@@ -75,34 +75,38 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
 
   return (
     <div className="overflow-x-auto">
-      <div className="inline-block min-w-full md:min-w-0 mx-auto rounded-2xl border border-white/80 shadow-sm">
-      <table className="table-fixed border-collapse text-sm">
+      <div className="w-full rounded-2xl border border-white/80 shadow-sm">
+      {/* Percentage widths + w-full make the table stretch edge-to-edge and spread
+          every column proportionally as the viewport grows; min-w keeps columns
+          usable (and lets the wrapper scroll) on narrow screens. Project Name gets
+          the largest share so long Hebrew names have room. Percentages sum to 100. */}
+      <table className="table-fixed border-collapse text-sm w-full min-w-[900px]">
         <colgroup>
           {/* checkbox */}
-          <col className="w-8" />
+          <col className="w-[3%]" />
           {/* Milestone */}
-          <col className="w-[84px]" />
+          <col className="w-[8%]" />
           {/* Hours */}
-          <col className="w-[84px]" />
+          <col className="w-[8%]" />
           {/* BIM Mgmt */}
-          <col className="w-[60px]" />
+          <col className="w-[5.5%]" />
           {/* MEP Coord */}
-          <col className="w-[60px]" />
+          <col className="w-[5.5%]" />
           {/* BIM Modelling */}
-          <col className="w-[64px]" />
+          <col className="w-[6%]" />
           {/* Monday */}
-          <col className="w-[58px]" />
+          <col className="w-[5%]" />
           {/* Drive */}
-          <col className="w-[58px]" />
+          <col className="w-[5%]" />
           {/* ACC */}
-          <col className="w-[58px]" />
+          <col className="w-[5%]" />
           {/* Status */}
-          <col className="w-[92px]" />
+          <col className="w-[8%]" />
           {/* Proj # */}
-          <col className="w-[68px]" />
+          <col className="w-[5.5%]" />
           {/* Project Name — far right so Hebrew names anchor the RTL reading edge;
-              long names truncate (full name in the tooltip and on the detail page) */}
-          <col className="w-[180px]" />
+              largest share. Very long names still truncate at the column width. */}
+          <col className="w-[30.5%]" />
         </colgroup>
         <thead>
           <tr className="bg-gray-50/80 border-b border-gray-200">
@@ -290,7 +294,7 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                   <Link
                     href={`/dashboard/${project._id}`}
                     title={project.projectName}
-                    className="block truncate max-w-[180px] text-[#1e248c] hover:underline"
+                    className="block truncate text-[#1e248c] hover:underline"
                     onClick={e => e.stopPropagation()}
                   >
                     {project.projectName}

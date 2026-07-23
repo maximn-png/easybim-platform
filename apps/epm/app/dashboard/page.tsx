@@ -90,7 +90,7 @@ export default async function DashboardPage() {
       className="min-h-[calc(100vh-4rem)]"
       style={{ background: 'linear-gradient(135deg, #f0f3ff 0%, #e7eefe 100%)' }}
     >
-      <div className="max-w-[1400px] mx-auto px-4 py-8">
+      <div className="px-6 lg:px-10 py-8">
         {/* Page heading */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-[#1e248c]">Projects</h1>

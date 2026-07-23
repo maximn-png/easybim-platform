@@ -49,18 +49,25 @@ export async function GET(
       return NextResponse.json({ error: 'One of the reports has no issue snapshot' }, { status: 422 })
     }
 
-    // Disciplines are listed from the full snapshots (pre-filter) so the modal's
-    // dropdown is stable while filtering.
+    // Draft issues are excluded from the progress comparison everywhere (flow,
+    // disciplines, totals) — they aren't real tracked issues yet.
+    const notDraft = (i: ReportIssueSnapshot) =>
+      (i.status ?? '').trim().toLowerCase() !== 'draft'
+    const fromSnap = fromDoc.issuesSnapshot.filter(notDraft)
+    const toSnap = toDoc.issuesSnapshot.filter(notDraft)
+
+    // Disciplines are listed from the full snapshots (pre-discipline-filter) so the
+    // modal's dropdown is stable while filtering.
     const disciplines = [...new Set(
-      [...fromDoc.issuesSnapshot, ...toDoc.issuesSnapshot]
+      [...fromSnap, ...toSnap]
         .map(i => i.discipline?.trim())
         .filter(Boolean) as string[]
     )].sort((a, b) => a.localeCompare(b))
 
     const byDiscipline = (i: ReportIssueSnapshot) =>
       !discipline || (i.discipline?.trim() ?? '') === discipline
-    const fromIssues = fromDoc.issuesSnapshot.filter(byDiscipline)
-    const toIssues = toDoc.issuesSnapshot.filter(byDiscipline)
+    const fromIssues = fromSnap.filter(byDiscipline)
+    const toIssues = toSnap.filter(byDiscipline)
 
     const fromMap = new Map(fromIssues.map(i => [issueKey(i, fromId), i.status]))
     const toMap = new Map(toIssues.map(i => [issueKey(i, toId), i.status]))

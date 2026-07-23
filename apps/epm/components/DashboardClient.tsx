@@ -115,9 +115,9 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
   }, [projects, activeStatus, searchQuery, selectedPerson])
 
   return (
-    // w-fit: shrink the whole block to the table's width so the toolbar's right
-    // edge (sync button + search) lines up with the table instead of the page.
-    <div className="flex flex-col gap-5 w-fit max-w-full">
+    // w-full: the table stretches edge-to-edge, so the whole block (toolbar +
+    // table) spans the page width too.
+    <div className="flex flex-col gap-5 w-full">
       {/* Toolbar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between">
         <FilterTabs

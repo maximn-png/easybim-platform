@@ -328,7 +328,10 @@ export default function ProjectDetailClient({
                   <span dir="rtl" className="text-[10px] text-gray-400 font-mono">{reports.length} דוחות</span>
                 </div>
               </div>
-              <div className="flex flex-col gap-3">
+              {/* Cap the list at ~4 rows and scroll the rest, so a long report
+                  history doesn't stretch the card. pr-1 keeps rows clear of the
+                  scrollbar. */}
+              <div className="flex flex-col gap-3 max-h-[248px] overflow-y-auto pr-1">
                 {reports.length === 0 && (
                   <p dir="rtl" className="text-xs text-gray-400 py-2">עדיין לא נוצרו דוחות. צרו טיוטת מייל בעמוד הדוחות והם יופיעו כאן.</p>
                 )}
