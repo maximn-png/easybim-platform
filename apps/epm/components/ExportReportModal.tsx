@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useUser, useReverification } from '@clerk/nextjs'
 import { isReverificationCancelledError } from '@clerk/nextjs/errors'
 import { toPng } from 'html-to-image'
-import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink } from 'lucide-react'
+import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink, BarChart3 } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue, AccMember } from '@/lib/services/apsService'
-import { type GroupKey, buildGroupOptions, groupValue, statusLabel } from '@/lib/reportGrouping'
+import { type GroupKey, buildGroupOptions, groupValue, statusLabel, issueMonthKey, normalizeStatus, dropDraft } from '@/lib/reportGrouping'
 import {
   REPORT_TEMPLATES, pdfNameFor, matchHints, seedBodyLines, accIssuesUrl, segmentBodyText, resolveVariant,
   type ReportTemplate, type BodyLink,
@@ -50,6 +50,12 @@ function issueParamValue(i: AccIssue, key: string): string {
 const localizeGroup = (n: string) =>
   n === 'Unassigned' ? UNASSIGNED : n === 'No Discipline' ? 'ללא דיסציפלינה' : n === 'Other' ? 'אחר' : n
 
+// "YYYY-MM" → short Hebrew month label for the inherited month-filter chip.
+const monthLabelHe = (key: string) => {
+  const [y, m] = key.split('-').map(Number)
+  return new Date(y, m - 1).toLocaleDateString('he-IL', { month: 'short', year: '2-digit' })
+}
+
 const initials = (name: string) => name.split(' ').map(w => w[0]).join('').slice(0, 2)
 
 // Strip the "data:image/png;base64," prefix from a data URL.
@@ -64,6 +70,7 @@ const HIGHLIGHT_PREVIEW: React.CSSProperties = {
 export default function ExportReportModal({
   open, onClose, project, issues, issueTypes, disciplines, allStatuses, assignees,
   defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines,
+  defaultStatuses, defaultExtraFilters, defaultMonth,
 }: {
   open: boolean
   onClose: () => void
@@ -78,6 +85,9 @@ export default function ExportReportModal({
   defaultAssignees: string[]
   defaultTypes: string[]
   defaultDisciplines: string[]
+  defaultStatuses: string[]
+  defaultExtraFilters: { key: string; values: string[] }[]
+  defaultMonth: string | null
 }) {
   const { user } = useUser()
   // Connecting / reauthorizing a Google account is a Clerk-protected action: it
@@ -100,6 +110,8 @@ export default function ExportReportModal({
   const [selStatuses, setSelStatuses] = useState<string[]>([])
   // Ad-hoc "filter by any column" rows: { key, values }.
   const [extraFilters, setExtraFilters] = useState<{ key: string; values: string[] }[]>([])
+  // Month filter inherited from a reports-page month-chart click (YYYY-MM).
+  const [monthFilter, setMonthFilter] = useState<string | null>(null)
   const [groupBy, setGroupBy] = useState<GroupKey>(defaultGroupBy)
   const [bodyText, setBodyText] = useState('')
   // Manually-edited link to the ACC model (only for templates with needsModelLink).
@@ -118,9 +130,14 @@ export default function ExportReportModal({
   const [draftUrl, setDraftUrl] = useState<string | null>(null)
   const [needsGoogle, setNeedsGoogle] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Internal (analytics-only) save — no email.
+  const [savingInternal, setSavingInternal] = useState(false)
+  const [savedInternal, setSavedInternal] = useState(false)
 
   const fetchedRef = useRef(false)
+  // Email chart = status-filtered issues; doc chart = all statuses (analytics).
   const emailChartRef = useRef<HTMLDivElement>(null)
+  const docChartRef = useRef<HTMLDivElement>(null)
 
   const template = REPORT_TEMPLATES.find(t => t.id === templateId)!
   // Effective title / body config for the selected variant (or the template itself).
@@ -133,7 +150,9 @@ export default function ExportReportModal({
   const needsModelLink = linkKinds.includes('model')
   const links: BodyLink[] = linkKinds.map(kind =>
     kind === 'model'
-      ? { href: modelLink.trim() || undefined, highlight: true }
+      // Amber only while empty — a flag to fill it in. Once a URL is pasted it
+      // renders as a normal link (no highlight), for every report template.
+      ? { href: modelLink.trim() || undefined, highlight: !modelLink.trim() }
       : { href: accLink }
   )
 
@@ -227,46 +246,64 @@ export default function ExportReportModal({
       setSelAssignees(defaultAssignees)
       setSelIssueTypes(defaultTypes)
       setSelDisciplines(defaultDisciplines)
-      setSelStatuses([]) // Status is an export-only extra; starts unfiltered.
-      setExtraFilters([])
+      // Inherit the reports page's status / any-parameter / month filters so the
+      // user doesn't re-apply them here. (seedFilters, which runs first, clears
+      // Status — this override runs after and wins.)
+      setSelStatuses(defaultStatuses.filter(s => normalizeStatus(s) !== 'draft'))
+      setExtraFilters(defaultExtraFilters)
+      setMonthFilter(defaultMonth)
     } else if (!open) {
       wasOpen.current = false
     }
-  }, [open, defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines])
+  }, [open, defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines, defaultStatuses, defaultExtraFilters, defaultMonth])
 
   // "Final summary" templates (forceAllIssues) reset to ALL issues, grouped by
   // discipline — overriding the page-seeded defaults when such a template is picked.
   useEffect(() => {
     if (!open || !template.forceAllIssues) return
-    setSelAssignees([]); setSelIssueTypes([]); setSelDisciplines([]); setSelStatuses([]); setExtraFilters([])
+    setSelAssignees([]); setSelIssueTypes([]); setSelDisciplines([]); setSelStatuses([]); setExtraFilters([]); setMonthFilter(null)
     const disc = groupOptions.find(o => o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase()))
     setGroupBy(disc?.value ?? 'discipline')
   }, [templateId, open, template.forceAllIssues, groupOptions])
 
-  // Issues after the modal's own assignee / status / issue-type / discipline selections
-  const effectiveIssues = useMemo(() => issues.filter(i => {
+  // Statuses selectable in the modal never include Draft (Draft is never reported).
+  const statusOptions = useMemo(() => allStatuses.filter(s => normalizeStatus(s) !== 'draft'), [allStatuses])
+
+  // ── Two issue sets ──────────────────────────────────────────────────────────
+  // docIssues  → the PDF, Excel, and issue snapshot. Reflects every filter EXCEPT
+  //   status (and never Draft): the attachments always carry the full status
+  //   distribution so the analytics stay meaningful regardless of the status filter.
+  // imageIssues → the email chart image only. docIssues additionally narrowed by
+  //   the status selection, so the emailed picture can focus on chosen statuses.
+  const docIssues = useMemo(() => dropDraft(issues).filter(i => {
     if (selAssignees.length && !selAssignees.includes(i.assignedTo?.trim() || 'Unassigned')) return false
-    if (selStatuses.length && !selStatuses.includes(i.status)) return false
     if (selIssueTypes.length && !selIssueTypes.includes(i.issueType)) return false
     const disc = i.discipline?.trim() || 'No Discipline'
     if (selDisciplines.length && !selDisciplines.includes(disc)) return false
-    // Ad-hoc "any column" filters
     for (const f of extraFilters) {
       if (f.values.length && !f.values.includes(issueParamValue(i, f.key))) return false
     }
+    if (monthFilter && issueMonthKey(i.createdAt) !== monthFilter) return false
     return true
-  }), [issues, selAssignees, selStatuses, selIssueTypes, selDisciplines, extraFilters])
+  }), [issues, selAssignees, selIssueTypes, selDisciplines, extraFilters, monthFilter])
+
+  const imageIssues = useMemo(
+    () => (selStatuses.length ? docIssues.filter(i => selStatuses.includes(i.status)) : docIssues),
+    [docIssues, selStatuses]
+  )
 
   const subject = `${resolved.title} — ${project.projectName}`
   const pdfName = pdfNameFor(template, project.projectName, project.projectNumber)
   const xlsxName = pdfName.replace(/\.pdf$/i, '.xlsx')
-  const pdfPages = Math.max(1, Math.ceil(effectiveIssues.length / 15))
+  const pdfPages = Math.max(1, Math.ceil(docIssues.length / 15))
+  // Status is intentionally omitted — it only narrows the email image, not the
+  // PDF/Excel, so listing it in the document header would be misleading.
   const filtersSummary = [
     selAssignees.length ? `משויך: ${selAssignees.map(a => (a === 'Unassigned' ? UNASSIGNED : a)).join(', ')}` : '',
-    selStatuses.length ? `סטטוס: ${selStatuses.map(statusLabel).join(', ')}` : '',
     selIssueTypes.length ? `סוג: ${selIssueTypes.join(', ')}` : '',
     selDisciplines.length ? `דיסציפלינה: ${selDisciplines.join(', ')}` : '',
     ...extraFilters.filter(f => f.values.length).map(f => `${groupLabelHe(f.key)}: ${f.values.join(', ')}`),
+    monthFilter ? `חודש: ${monthLabelHe(monthFilter)}` : '',
   ].filter(Boolean).join(' · ') || 'ללא סינון'
 
   // Payload the server uses to render the PDF + Excel.
@@ -301,7 +338,7 @@ export default function ExportReportModal({
       const res = await fetch(`/api/projects/${project._id}/report-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ meta: reportMeta, issues: effectiveIssues, pdfName }),
+        body: JSON.stringify({ meta: reportMeta, issues: docIssues, pdfName }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string }
@@ -324,7 +361,7 @@ export default function ExportReportModal({
       const res = await fetch(`/api/projects/${project._id}/report-xlsx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issues: effectiveIssues, xlsxName }),
+        body: JSON.stringify({ issues: docIssues, xlsxName }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string }
@@ -415,10 +452,12 @@ export default function ExportReportModal({
         body: JSON.stringify({
           to: recipients.map(r => r.email),
           subject, emailParts, pdfName, xlsxName,
-          meta: reportMeta, issues: effectiveIssues,
+          // PDF/Excel/snapshot use docIssues (all statuses); the chart PNG above is
+          // the status-narrowed image chart.
+          meta: reportMeta, issues: docIssues,
           chartPngBase64, screenshotPngBase64,
           title: resolved.title, previewHtml,
-          issueCount: effectiveIssues.length, filtersSummary, groupBy,
+          issueCount: docIssues.length, filtersSummary, groupBy,
         }),
       })
       const data = await res.json() as { draftId?: string; needsGoogleAuth?: boolean; error?: string }
@@ -433,6 +472,57 @@ export default function ExportReportModal({
       setActionError('שגיאה ביצירת הטיוטה: ' + String(e))
     } finally {
       setCreating(false)
+    }
+  }
+
+  // ── Save an internal (analytics-only) report — no email ───────────────────
+  const handleSaveInternal = async () => {
+    if (savingInternal) return
+    setSavingInternal(true); setActionError(null); setSavedInternal(false)
+    try {
+      // Chart PNG from the doc-chart node (all statuses — the analytics picture).
+      let chartPngBase64: string | undefined
+      if (docChartRef.current) {
+        if (document.fonts?.ready) { try { await document.fonts.ready } catch { /* ignore */ } }
+        const dataUrl = await toPng(docChartRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' })
+        chartPngBase64 = stripDataUrl(dataUrl)
+      }
+      let screenshotPngBase64: string | undefined
+      if (template.bodyImage) {
+        try {
+          const res = await fetch(template.bodyImage)
+          const blob = await res.blob()
+          const dataUrl: string = await new Promise((resolve, reject) => {
+            const fr = new FileReader()
+            fr.onload = () => resolve(fr.result as string)
+            fr.onerror = reject
+            fr.readAsDataURL(blob)
+          })
+          screenshotPngBase64 = stripDataUrl(dataUrl)
+        } catch { /* screenshot optional */ }
+      }
+      const previewHtml = buildEmailHtml({
+        bodyText, links, highlightPhrases: resolved.highlightPhrases,
+        hasChart: true, hasScreenshot: !!template.bodyImage,
+        inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
+      })
+      const res = await fetch(`/api/projects/${project._id}/reports`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meta: reportMeta, issues: docIssues,
+          title: resolved.title, previewHtml,
+          chartPngBase64, screenshotPngBase64,
+          issueCount: docIssues.length, filtersSummary, groupBy,
+        }),
+      })
+      const data = await res.json() as { reportId?: string; error?: string }
+      if (data.error) { setActionError(data.error); return }
+      setSavedInternal(true)
+    } catch (e) {
+      setActionError('שגיאה בשמירת הדוח: ' + String(e))
+    } finally {
+      setSavingInternal(false)
     }
   }
 
@@ -542,9 +632,21 @@ export default function ExportReportModal({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[10px] font-mono uppercase text-gray-400">סטטוס</span>
-                  <MultiSelect placeholder="כל הסטטוסים" options={allStatuses} selected={selStatuses} onChange={setSelStatuses} renderLabel={statusLabel} />
+                  <MultiSelect placeholder="כל הסטטוסים" options={statusOptions} selected={selStatuses} onChange={setSelStatuses} renderLabel={statusLabel} />
                 </div>
               </div>
+              <p className="text-[10px] text-gray-400 mt-1">סינון הסטטוס משפיע רק על התמונה במייל · ה-PDF וה-Excel כוללים תמיד את כל הסטטוסים (למעט טיוטה)</p>
+
+              {/* Month inherited from a reports-page month-chart click */}
+              {monthFilter && (
+                <div className="flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-3 mt-2">
+                  <span className="text-[10px] font-mono uppercase text-[#1e248c]">חודש</span>
+                  <span className="inline-flex items-center gap-1.5 bg-[#e7eefe] border border-[#c7caea] text-[#1e248c] rounded-full px-2.5 py-1 text-xs font-medium">
+                    {monthLabelHe(monthFilter)}
+                    <button onClick={() => setMonthFilter(null)} title="הסר סינון חודש" className="text-[#9094c4] hover:text-red-500"><X size={11} /></button>
+                  </span>
+                </div>
+              )}
 
               {/* Filter by any other column/attribute */}
               <div className="flex flex-col gap-2 mt-2">
@@ -689,9 +791,9 @@ export default function ExportReportModal({
                 <div className="rounded-xl border border-gray-100 bg-white p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-bold text-[#1e248c]">נושאים לפי {groupLabelHe(groupBy)}</span>
-                    <span className="text-[10px] text-gray-400 font-mono">{effectiveIssues.length} נושאים</span>
+                    <span className="text-[10px] text-gray-400 font-mono">{imageIssues.length} נושאים</span>
                   </div>
-                  <AnalyticsBars issues={effectiveIssues} groupBy={groupBy} renderName={localizeGroup} />
+                  <AnalyticsBars issues={imageIssues} groupBy={groupBy} renderName={localizeGroup} />
                 </div>
                 {/* Screenshot (after analytics) */}
                 {template.bodyImage && (
@@ -709,7 +811,7 @@ export default function ExportReportModal({
                   </span>
                   <span className="min-w-0">
                     <b className="block text-xs text-gray-800 truncate">{pdfName}</b>
-                    <span className="block text-[11px] text-gray-500 truncate">לחץ לתצוגה · {effectiveIssues.length} נושאים · ~{pdfPages} עמ׳</span>
+                    <span className="block text-[11px] text-gray-500 truncate">לחץ לתצוגה · {docIssues.length} נושאים · ~{pdfPages} עמ׳</span>
                   </span>
                   <ExternalLink size={13} className="text-gray-400 shrink-0" />
                 </button>
@@ -724,42 +826,54 @@ export default function ExportReportModal({
                   </span>
                   <span className="min-w-0">
                     <b className="block text-xs text-gray-800 truncate">{xlsxName}</b>
-                    <span className="block text-[11px] text-gray-500 truncate">לחץ להורדה · {effectiveIssues.length} נושאים</span>
+                    <span className="block text-[11px] text-gray-500 truncate">לחץ להורדה · {docIssues.length} נושאים</span>
                   </span>
                   <Download size={13} className="text-gray-400 shrink-0" />
                 </button>
               </div>
             </div>
 
-            {/* Action area */}
+            {/* Action area — two paths: email (Gmail draft) or internal analytics save. */}
             <div className="mt-4 flex flex-col gap-2">
-              {needsGoogle ? (
-                <div className="flex flex-col gap-2 bg-[#fff7ed] border border-[#fed7aa] rounded-xl p-3">
-                  <p className="text-xs text-[#9a3412]">כדי ליצור טיוטה ב-Gmail יש לחבר את חשבון ה-Google שלך.</p>
-                  <button onClick={connectGoogle} className="self-start inline-flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-bold hover:bg-[#44b8d3] transition">
-                    <Mail size={15} /> חבר חשבון Google
-                  </button>
-                </div>
-              ) : draftUrl ? (
-                <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                {draftUrl ? (
                   <a href={draftUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1e248c] text-white rounded-xl text-sm font-bold hover:bg-[#44b8d3] transition shadow-md">
                     <ExternalLink size={15} /> פתח טיוטה ב-Gmail
                   </a>
-                  <span className="text-[11px] text-emerald-600 flex items-center gap-1"><Check size={13} /> הטיוטה נוצרה</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
+                ) : (
                   <button
                     onClick={handleCreateDraft}
                     disabled={creating}
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1e248c] text-white rounded-xl text-sm font-bold hover:bg-[#44b8d3] transition shadow-md disabled:opacity-60"
                   >
                     {creating ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
-                    {creating ? 'יוצר טיוטה…' : 'אשר ופתח ב-Gmail'}
+                    {creating ? 'יוצר טיוטה…' : 'שלח במייל'}
                   </button>
-                  <span className="text-[11px] text-gray-400">תיווצר טיוטה עם קבצי ה-PDF וה-Excel מצורפים</span>
+                )}
+                <button
+                  onClick={handleSaveInternal}
+                  disabled={savingInternal}
+                  title="שומר דוח לניתוח בעמוד ההתקדמות, ללא שליחת מייל"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition shadow-md disabled:opacity-60"
+                >
+                  {savingInternal ? <Loader2 size={15} className="animate-spin" /> : <BarChart3 size={15} />}
+                  {savingInternal ? 'שומר…' : 'שמור לניתוח'}
+                </button>
+              </div>
+
+              {draftUrl && <span className="text-[11px] text-emerald-600 flex items-center gap-1"><Check size={13} /> הטיוטה נוצרה</span>}
+              {savedInternal && <span className="text-[11px] text-emerald-600 flex items-center gap-1"><Check size={13} /> נשמר לכרטיס ״פעילות ודוחות״ (ניתוח פנימי)</span>}
+
+              {needsGoogle && (
+                <div className="flex flex-col gap-2 bg-[#fff7ed] border border-[#fed7aa] rounded-xl p-3">
+                  <p className="text-xs text-[#9a3412]">כדי ליצור טיוטה ב-Gmail יש לחבר את חשבון ה-Google שלך.</p>
+                  <button onClick={connectGoogle} className="self-start inline-flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-bold hover:bg-[#44b8d3] transition">
+                    <Mail size={15} /> חבר חשבון Google
+                  </button>
                 </div>
               )}
+
+              <p className="text-[11px] text-gray-400">״שלח במייל״ יוצר טיוטה עם PDF ו-Excel מצורפים · ״שמור לניתוח״ שומר דוח פנימי (PDF/Excel) ללא שליחה</p>
               {actionError && <p className="text-[11px] text-red-500">{actionError}</p>}
             </div>
           </div>
@@ -771,11 +885,19 @@ export default function ExportReportModal({
           set dir="rtl" itself — otherwise the rasterized chart comes out LTR
           (labels on the left) while the in-modal preview renders RTL. */}
       <div style={{ position: 'fixed', top: 0, left: -10000, zIndex: -1 }} aria-hidden>
+        {/* Email image chart — status-narrowed (imageIssues). */}
         <div ref={emailChartRef} dir="rtl" style={{ width: 600, background: '#fff', padding: 12, fontFamily: 'Arial, Assistant, sans-serif', direction: 'rtl' }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#1e248c', marginBottom: 8, textAlign: 'right' }}>
             נושאים לפי {groupLabelHe(groupBy)}
           </div>
-          <AnalyticsBars issues={effectiveIssues} groupBy={groupBy} renderName={localizeGroup} width={576} />
+          <AnalyticsBars issues={imageIssues} groupBy={groupBy} renderName={localizeGroup} width={576} />
+        </div>
+        {/* Internal-report chart — all statuses (docIssues). */}
+        <div ref={docChartRef} dir="rtl" style={{ width: 600, background: '#fff', padding: 12, fontFamily: 'Arial, Assistant, sans-serif', direction: 'rtl' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#1e248c', marginBottom: 8, textAlign: 'right' }}>
+            נושאים לפי {groupLabelHe(groupBy)}
+          </div>
+          <AnalyticsBars issues={docIssues} groupBy={groupBy} renderName={localizeGroup} width={576} />
         </div>
       </div>
     </div>

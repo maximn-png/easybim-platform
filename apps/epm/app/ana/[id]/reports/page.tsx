@@ -4,10 +4,11 @@ import { mockProjects } from '@/lib/mockProjects'
 import BimReportClient from '@/components/BimReportClient'
 import { resolveAccUrl } from '@/lib/services/apsService'
 import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
+import { getAnaNumberMap } from '@/lib/server/anaAcc'
 
 export const dynamic = 'force-dynamic'
 
-async function fetchAnaProject(id: string): Promise<ProjectRow | null> {
+async function fetchAnaProject(id: string, numberMap: Map<string, string>): Promise<ProjectRow | null> {
   if (!process.env.MONGODB_URI) {
     return mockProjects.find(p => p._id === id && p.accHubName === 'ANA') ?? null
   }
@@ -24,10 +25,17 @@ async function fetchAnaProject(id: string): Promise<ProjectRow | null> {
     if (hub?.key !== 'ana') return null   // ANA area serves ANA-hub projects only
 
     const snap = (doc.snapshot ?? {}) as Record<string, unknown>
+    const ana  = (doc.ana ?? {}) as Record<string, string>
+    const accProjectId = ext.accProjectId as string | undefined
     return {
       _id: String(doc._id),
       projectName: String(doc.projectName),
       projectNumber: String(doc.projectNumber),
+      ana: {
+        number: (accProjectId && numberMap.get(accProjectId)) || '',
+        status: ana.status ?? '',
+        projectType: ana.projectType ?? '',
+      },
       links: {
         mondayBoard: String(ext.mondayBoardUrl ?? ''),
         dedicatedBoard: ext.dedicatedBoardUrl as string | undefined,
@@ -67,7 +75,8 @@ export default async function AnaReportsPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const project = await fetchAnaProject(id)
+  const numberMap = await getAnaNumberMap()
+  const project = await fetchAnaProject(id, numberMap)
   if (!project) notFound()
 
   return <BimReportClient project={project} anaView />

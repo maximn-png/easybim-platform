@@ -23,13 +23,14 @@ export async function GET(
     await connectDB()
 
     const d = await Report.findOne({ _id: reportId, projectId: id })
-      .select('title subject recipients previewHtml pdfName draftId gmailUrl issueCount filtersSummary createdByName createdAt')
+      .select('kind title subject recipients previewHtml pdfName draftId gmailUrl issueCount filtersSummary createdByName createdAt')
       .lean() as Record<string, unknown> | null
     if (!d) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     return NextResponse.json({
       report: {
         _id: String(d._id),
+        kind: (d.kind as 'email' | 'internal') ?? (((d.recipients as string[])?.length ?? 0) > 0 ? 'email' : 'internal'),
         title: d.title as string,
         subject: d.subject as string,
         recipients: (d.recipients as string[]) ?? [],

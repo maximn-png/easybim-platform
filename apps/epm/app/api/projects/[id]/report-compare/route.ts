@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import type { ReportIssueSnapshot } from '@/app/models/Report'
+import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 
 // Compares the issue snapshots of two saved reports of the same project and
 // returns the status-flow matrix consumed by the Progress modal's Sankey.
@@ -20,6 +21,11 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id: projectId } = await ctx.params
+
+  // ANA-only clients may compare reports, but only for ANA-hub projects.
+  const denied = await guardSharedProjectForAna('GET', projectId)
+  if (denied) return denied
+
   const fromId = req.nextUrl.searchParams.get('from')
   const toId = req.nextUrl.searchParams.get('to')
   const discipline = req.nextUrl.searchParams.get('discipline')

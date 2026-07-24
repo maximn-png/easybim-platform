@@ -51,7 +51,7 @@ function LinkPill({
   )
 }
 
-export default function ProjectLinksBar({ project }: { project: ProjectRow }) {
+export default function ProjectLinksBar({ project, anaView = false }: { project: ProjectRow; anaView?: boolean }) {
   const { links, accExternalHub, accHubName } = project
   // Partner hubs (accHubName, e.g. ANA) are reachable live — only unreachable
   // external hubs keep the amber import-mode styling.
@@ -83,22 +83,27 @@ export default function ProjectLinksBar({ project }: { project: ProjectRow }) {
         }
         dot={importHub}
       />
-      <LinkPill
-        href={mondayHref}
-        label="Monday"
-        title={mondayTitle}
-        disabledTitle="No Monday board linked"
-        icon={<LayoutGrid size={13} />}
-        className="text-[#1e248c] bg-blue-50 hover:bg-blue-100"
-      />
-      <LinkPill
-        href={links.driveFolder || undefined}
-        label="Drive"
-        title="Open Google Drive folder"
-        disabledTitle="No Google Drive folder linked"
-        icon={<FolderOpen size={13} />}
-        className="text-[#00687a] bg-teal-50 hover:bg-teal-100"
-      />
+      {/* Monday + Drive are internal-only links — hidden in the ANA client view. */}
+      {!anaView && (
+        <>
+          <LinkPill
+            href={mondayHref}
+            label="Monday"
+            title={mondayTitle}
+            disabledTitle="No Monday board linked"
+            icon={<LayoutGrid size={13} />}
+            className="text-[#1e248c] bg-blue-50 hover:bg-blue-100"
+          />
+          <LinkPill
+            href={links.driveFolder || undefined}
+            label="Drive"
+            title="Open Google Drive folder"
+            disabledTitle="No Google Drive folder linked"
+            icon={<FolderOpen size={13} />}
+            className="text-[#00687a] bg-teal-50 hover:bg-teal-100"
+          />
+        </>
+      )}
     </div>
   )
 }

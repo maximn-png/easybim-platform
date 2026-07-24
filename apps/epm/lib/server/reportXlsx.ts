@@ -4,7 +4,7 @@
 import 'server-only'
 import ExcelJS from 'exceljs'
 import type { AccIssue } from '@/lib/services/apsService'
-import { statusColor, statusLabel, segmentTextColor } from '@/lib/reportGrouping'
+import { statusColor, statusLabel, segmentTextColor, dropDraft } from '@/lib/reportGrouping'
 
 // EasyBIM brand colours as ARGB.
 const NAVY      = 'FF1E248C'
@@ -24,7 +24,9 @@ const fmtDate = (iso: string | null | undefined): string => {
 const thin = { style: 'thin' as const, color: { argb: BORDER } }
 const allBorders = { top: thin, left: thin, bottom: thin, right: thin }
 
-export async function generateReportXlsx(issues: AccIssue[]): Promise<Buffer> {
+export async function generateReportXlsx(allIssues: AccIssue[]): Promise<Buffer> {
+  // Draft issues never appear in the report.
+  const issues = dropDraft(allIssues)
   const wb = new ExcelJS.Workbook()
   wb.creator = 'EasyBIM'
 

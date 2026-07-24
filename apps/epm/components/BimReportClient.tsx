@@ -1,15 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
 import {
   ChevronRight, Filter, X, FileDown, AlertCircle, Loader2,
-  ArrowUp, ArrowDown, ArrowUpDown,
+  ArrowUp, ArrowDown, ArrowUpDown, Settings2,
 } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue } from '@/lib/services/apsService'
 import {
-  buildGroupOptions, groupLabelFor, type GroupKey, groupValue,
+  buildGroupOptions, groupLabelFor, type GroupKey, groupValue, paramValue, issueMonthKey,
   statusColor, statusLabel, segmentTextColor,
 } from '@/lib/reportGrouping'
 
@@ -17,6 +17,9 @@ import {
 // dimension (as it was before). These labels identify it across ACC naming
 // conventions, incl. the Hebrew "תחום" used on imported projects.
 const DISCIPLINE_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסציפלינה', 'משמעת']
+// The dedicated Discipline column already surfaces the "Discipline" attribute, so
+// it isn't repeated as an extra table column / any-param filter option.
+const DISCIPLINE_FIELD_TITLES = ['discipline', 'disciplines']
 import IssuesByMonthChart from './IssuesByMonthChart'
 import MultiSelect from './MultiSelect'
 import ExportReportModal from './ExportReportModal'
@@ -31,6 +34,9 @@ function badgeTextColor(s: string) {
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   return luminance > 0.6 ? '#4b5563' : statusColor(s)
 }
+
+const fmtDate = (v?: string | null) =>
+  v ? new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -83,11 +89,11 @@ function GroupCard({ name, count, total }: { name: string; count: number; total:
   )
 }
 
-// Readable text colour for a count label sitting on a status segment.
-// Picks dark text on light backgrounds and white text on dark ones (luminance-based).
 // Stacked bar row — one per group, sub-stacked by status.
 // Bar length is proportional to the group's share of the largest group (maxTotal),
-// so groups with more issues render visibly longer.
+// so groups with more issues render visibly longer. Every non-empty status segment
+// shows its count: centred inside the colour, overflowing slightly when the segment
+// is too narrow (a dark halo keeps it legible over any neighbouring colour).
 function GroupBar({
   name, issues, allStatuses, maxTotal, selected, onSelect,
 }: {
@@ -101,9 +107,18 @@ function GroupBar({
   const total = issues.length
   if (total === 0) return null
 
-  const countByStatus = Object.fromEntries(
-    allStatuses.map(s => [s, issues.filter(i => i.status === s).length])
-  )
+  // Only non-empty status segments, with cumulative centre for label placement.
+  let acc = 0
+  const segs = allStatuses
+    .map(s => ({ s, c: issues.filter(i => i.status === s).length }))
+    .filter(x => x.c > 0)
+    .map(({ s, c }) => {
+      const w = (c / total) * 100
+      const center = acc + w / 2
+      acc += w
+      return { s, c, w, center }
+    })
+
   const fillPct = maxTotal > 0 ? (total / maxTotal) * 100 : 0
   const isGroupSel = selected?.group === name
   const dim = selected != null && !isGroupSel // fade non-selected groups
@@ -118,40 +133,70 @@ function GroupBar({
         {name}
       </button>
       {/* Track spans full width; the filled portion scales with group size */}
-      <div className="flex-1 h-5 rounded-full bg-gray-100 overflow-hidden">
-        <div className="flex h-full gap-px rounded-full overflow-hidden" style={{ width: `${fillPct}%` }}>
-          {allStatuses.map(s => {
-            const c = countByStatus[s] ?? 0
-            if (c === 0) return null
-            const segPct = (c / total) * 100
+      <div className="relative flex-1 h-5 rounded-full bg-gray-100">
+        {/* Colour layer (clipped, rounded) */}
+        <div className="flex h-full rounded-full overflow-hidden" style={{ width: `${fillPct}%` }}>
+          {segs.map(({ s, w }) => {
             const segSel = isGroupSel && selected?.status === s
             return (
               <div
                 key={s}
                 onClick={() => onSelect(name, s)}
-                className="flex items-center justify-center overflow-hidden cursor-pointer"
+                className="h-full cursor-pointer"
                 style={{
-                  width: `${segPct}%`, background: statusColor(s),
+                  width: `${w}%`, background: statusColor(s),
                   outline: segSel ? '2px solid #1e248c' : 'none', outlineOffset: '-2px',
                 }}
-                title={`${statusLabel(s)}: ${c} — click to filter the table`}
-              >
-                {/* Show the count when the segment is wide enough to fit it.
-                    White + dark halo stays legible on any status colour. */}
-                {segPct >= 9 && (
-                  <span className="text-[9px] font-bold leading-none" style={{ color: '#fff', textShadow: '0 0 2px rgba(0,0,0,0.75)' }}>
-                    {c}
-                  </span>
-                )}
-              </div>
+                title={`${statusLabel(s)}: ${issues.filter(i => i.status === s).length} — click to filter the table`}
+              />
             )
           })}
+        </div>
+        {/* Label overlay — aligned to the filled portion; overflow-visible so narrow
+            segments still show their count just aside. pointer-events-none lets
+            clicks fall through to the colour segments underneath. */}
+        <div className="absolute top-0 left-0 h-full pointer-events-none" style={{ width: `${fillPct}%` }}>
+          {segs.map(({ s, c, center }) => (
+            <span
+              key={s}
+              className="absolute top-1/2 text-[9px] font-bold leading-none whitespace-nowrap"
+              style={{ left: `${center}%`, transform: 'translate(-50%,-50%)', color: '#fff', textShadow: '0 0 2px rgba(0,0,0,0.85)' }}
+            >
+              {c}
+            </span>
+          ))}
         </div>
       </div>
       <span className="text-xs text-gray-500 w-7 text-right shrink-0 font-medium tabular-nums">{total}</span>
     </div>
   )
 }
+
+// ── Table column model ──────────────────────────────────────────────────────
+// A column knows how to sort, render, and (optionally) filter itself, so the
+// table body/header/filter row can be driven entirely by the visible-column list.
+type ColFilter =
+  | { type: 'text'; rtl?: boolean; placeholder?: string }
+  | { type: 'multiselect'; options: string[]; optionValue: (i: AccIssue) => string; renderLabel?: (v: string) => string }
+
+interface ColDef {
+  key: string
+  label: string
+  align?: 'left' | 'center' | 'right'
+  optional?: boolean          // hidden by default; toggled via the gear menu
+  cellClass?: string
+  rtl?: boolean
+  sortValue: (i: AccIssue) => string
+  render: (i: AccIssue) => ReactNode
+  cellTitle?: (i: AccIssue) => string
+  filter?: ColFilter
+}
+
+// Columns shown out of the box (order matters).
+const DEFAULT_COLS = [
+  'displayId', 'title', 'assignedTo', 'discipline', 'description',
+  'status', 'issueType', 'createdAt', 'createdBy',
+]
 
 // ── Main component ────────────────────────────────────────────────────────
 
@@ -170,16 +215,24 @@ export default function BimReportClient({ project, anaView = false }: { project:
   const [filterAssignees, setFilterAssignees] = useState<string[]>([])
   const [filterTypes, setFilterTypes] = useState<string[]>([])
   const [filterDisciplines, setFilterDisciplines] = useState<string[]>([])
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([])
+  // Ad-hoc "filter by any parameter" rows (Due Date, Created By, custom attrs).
+  const [extraFilters, setExtraFilters] = useState<{ key: string; values: string[] }[]>([])
   const [selectedIssue, setSelectedIssue] = useState<AccIssue | null>(null)
   const [groupBy, setGroupBy] = useState<GroupKey>('discipline')
-  // Click-to-filter from the chart: a chosen group (+ optional status segment).
+  // Click-to-filter from the discipline bars: a chosen group (+ optional status).
   const [chartSel, setChartSel] = useState<{ group: string; status?: string } | null>(null)
+  // Click-to-filter from the month chart: a page-wide month filter (YYYY-MM).
+  const [monthSel, setMonthSel] = useState<string | null>(null)
 
-  // Per-column table filters (affect table only)
-  const [colText, setColText] = useState<{ title: string; description: string }>({ title: '', description: '' })
-  const [colSel, setColSel] = useState<{ assignedTo: string[]; discipline: string[]; status: string[]; issueType: string[] }>({
-    assignedTo: [], discipline: [], status: [], issueType: [],
-  })
+  // Per-column table filters (affect table only) — keyed by column key.
+  const [colText, setColText] = useState<Record<string, string>>({})
+  const [colSel, setColSel] = useState<Record<string, string[]>>({})
+
+  // Visible table columns (persisted per project via localStorage).
+  const [visibleKeys, setVisibleKeys] = useState<string[]>(DEFAULT_COLS)
+  const [gearOpen, setGearOpen] = useState(false)
+  const gearRef = useRef<HTMLDivElement>(null)
 
   // Table sorting — default to the ACC issue number, ascending.
   const [sortCol, setSortCol] = useState<string | null>('displayId')
@@ -209,6 +262,32 @@ export default function BimReportClient({ project, anaView = false }: { project:
       .finally(() => setLoading(false))
   }, [project._id])
 
+  // Load / persist the visible-column choice per project.
+  const colsInited = useRef(false)
+  useEffect(() => {
+    if (colsInited.current) return
+    colsInited.current = true
+    try {
+      const raw = localStorage.getItem(`epm.reportCols.${project._id}`)
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr) && arr.length) setVisibleKeys(arr)
+      }
+    } catch { /* ignore */ }
+  }, [project._id])
+  useEffect(() => {
+    try { localStorage.setItem(`epm.reportCols.${project._id}`, JSON.stringify(visibleKeys)) } catch { /* ignore */ }
+  }, [visibleKeys, project._id])
+
+  // Close the gear menu on outside click.
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (gearRef.current && !gearRef.current.contains(e.target as Node)) setGearOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
   // Normalize assignedTo — null/empty → 'Unassigned'
   const normalizedIssues = useMemo(() =>
     issues.map(i => ({ ...i, assignedTo: i.assignedTo?.trim() || 'Unassigned' })),
@@ -226,9 +305,6 @@ export default function BimReportClient({ project, anaView = false }: { project:
   // only if a project genuinely has no discipline attribute.
   const stackInited = useRef(false)
   useEffect(() => {
-    // Wait until issues have actually loaded — the base options exist even with
-    // zero issues, so gating on groupOptions would fire before the custom
-    // attributes (incl. Discipline) are known and lock onto the wrong default.
     if (stackInited.current || normalizedIssues.length === 0) return
     stackInited.current = true
     const discipline = groupOptions.find(o =>
@@ -255,16 +331,53 @@ export default function BimReportClient({ project, anaView = false }: { project:
     [normalizedIssues]
   )
 
+  // Custom-attribute titles present on the issues (excluding the one that already
+  // feeds the dedicated Discipline column), for extra table columns + any-param filters.
+  const attrTitles = useMemo(() => {
+    const s = new Set<string>()
+    for (const i of normalizedIssues) {
+      if (i.attributes) for (const k of Object.keys(i.attributes)) {
+        const t = k.trim()
+        if (t && !DISCIPLINE_FIELD_TITLES.includes(t.toLowerCase())) s.add(t)
+      }
+    }
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [normalizedIssues])
+
+  // "Filter by any parameter" — every dimension not already a fixed filter row.
+  const allParamOptions = useMemo(
+    () => [...groupOptions, { value: 'createdBy', label: 'Created By' }],
+    [groupOptions]
+  )
+  const FIXED_PARAM_KEYS = new Set(['assignedTo', 'status', 'issueType'])
+  const extraParamOptions = useMemo(() =>
+    allParamOptions.filter(o =>
+      !FIXED_PARAM_KEYS.has(o.value) &&
+      !(o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase())) &&
+      !extraFilters.some(f => f.key === o.value)
+    ),
+    [allParamOptions, extraFilters]
+  )
+  const paramLabel = (key: string) => allParamOptions.find(o => o.value === key)?.label
+    ?? (key.startsWith('attr:') ? key.slice(5) : key)
+  const valuesForParam = (key: string): string[] =>
+    [...new Set(normalizedIssues.map(i => paramValue(i, key)))].filter(Boolean).sort((a, b) => a.localeCompare(b))
+
   // Global-filtered issues (drive charts + table). Empty selection = no filter.
   const filtered = useMemo(() => normalizedIssues.filter(i => {
     if (filterAssignees.length && !filterAssignees.includes(i.assignedTo!)) return false
     if (filterTypes.length && !filterTypes.includes(i.issueType)) return false
     if (filterDisciplines.length && !filterDisciplines.includes(i.discipline?.trim() || 'No Discipline')) return false
+    if (filterStatuses.length && !filterStatuses.includes(i.status)) return false
+    for (const f of extraFilters) {
+      if (f.values.length && !f.values.includes(paramValue(i, f.key))) return false
+    }
+    if (monthSel && issueMonthKey(i.createdAt) !== monthSel) return false
     return true
-  }), [normalizedIssues, filterAssignees, filterTypes, filterDisciplines])
+  }), [normalizedIssues, filterAssignees, filterTypes, filterDisciplines, filterStatuses, extraFilters, monthSel])
 
-  // A chart selection is only meaningful for the current grouping / global filters.
-  useEffect(() => { setChartSel(null) }, [groupBy, filterAssignees, filterTypes, filterDisciplines])
+  // A discipline-bar selection is only meaningful for the current grouping / filters.
+  useEffect(() => { setChartSel(null) }, [groupBy, filterAssignees, filterTypes, filterDisciplines, filterStatuses, extraFilters, monthSel])
 
   // Group by the chosen dimension for bars + top cards
   const grouped = useMemo(() => {
@@ -282,47 +395,141 @@ export default function BimReportClient({ project, anaView = false }: { project:
   // Largest group size — used to scale the bar lengths proportionally
   const maxGroupTotal = grouped.length > 0 ? grouped[0][1].length : 0
 
-  // ── Table: per-column filters + sorting (applied on top of global filters) ──
-  const sortValueOf = (i: AccIssue, col: string): string => {
-    switch (col) {
-      // Zero-pad the ACC number so it sorts numerically as a string (2 before 14).
-      case 'displayId':   return String(parseInt(i.displayId ?? '', 10) || 0).padStart(12, '0')
-      case 'title':       return i.title.toLowerCase()
-      case 'assignedTo':  return (i.assignedTo ?? '').toLowerCase()
-      case 'discipline':  return (i.discipline ?? '').toLowerCase()
-      case 'description': return (i.description ?? '').toLowerCase()
-      case 'status':      return statusLabel(i.status).toLowerCase()
-      case 'issueType':   return (i.issueType ?? '').toLowerCase()
-      case 'createdAt':   return i.createdAt
-      case 'createdBy':   return (i.createdBy ?? '').toLowerCase()
-      default:            return ''
-    }
-  }
+  // ── Column registry ────────────────────────────────────────────────────────
+  const columns: ColDef[] = useMemo(() => {
+    const base: ColDef[] = [
+      {
+        key: 'displayId', label: '#', cellClass: 'font-mono whitespace-nowrap',
+        sortValue: i => String(parseInt(i.displayId ?? '', 10) || 0).padStart(12, '0'),
+        render: i => (
+          i.url
+            ? <a href={i.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="Open this issue in ACC" className="text-[#1e248c] hover:text-[#44b8d3] hover:underline">#{i.displayId ?? '—'}</a>
+            : <span className="text-gray-500">#{i.displayId ?? '—'}</span>
+        ),
+      },
+      {
+        key: 'title', label: 'Title', cellClass: 'font-medium text-gray-800 max-w-[200px] truncate',
+        cellTitle: i => i.title,
+        sortValue: i => i.title.toLowerCase(),
+        render: i => i.title,
+        filter: { type: 'text' },
+      },
+      {
+        key: 'assignedTo', label: 'Assigned To', cellClass: 'text-gray-600',
+        sortValue: i => (i.assignedTo ?? '').toLowerCase(),
+        render: i => i.assignedTo ?? '—',
+        filter: { type: 'multiselect', options: assignees, optionValue: i => i.assignedTo ?? 'Unassigned' },
+      },
+      {
+        key: 'discipline', label: 'Discipline', cellClass: 'text-gray-600',
+        sortValue: i => (i.discipline ?? '').toLowerCase(),
+        render: i => i.discipline || '—',
+        filter: { type: 'multiselect', options: disciplines, optionValue: i => i.discipline?.trim() || 'No Discipline' },
+      },
+      {
+        key: 'description', label: 'Description', align: 'right', rtl: true,
+        cellClass: 'text-gray-500 max-w-[240px] truncate text-right',
+        cellTitle: i => i.description,
+        sortValue: i => (i.description ?? '').toLowerCase(),
+        render: i => i.description || '—',
+        filter: { type: 'text', rtl: true, placeholder: 'סינון…' },
+      },
+      {
+        key: 'status', label: 'Status', align: 'center', cellClass: 'text-center',
+        sortValue: i => statusLabel(i.status).toLowerCase(),
+        render: i => (
+          <span className="inline-block text-[10px] rounded-full px-2.5 py-0.5 font-semibold whitespace-nowrap"
+            style={{ background: statusColor(i.status), color: segmentTextColor(i.status) }}>
+            {statusLabel(i.status)}
+          </span>
+        ),
+        filter: { type: 'multiselect', options: allStatuses, optionValue: i => i.status, renderLabel: statusLabel },
+      },
+      {
+        key: 'issueType', label: 'Type', cellClass: 'text-gray-600',
+        sortValue: i => (i.issueType ?? '').toLowerCase(),
+        render: i => i.issueType,
+        filter: { type: 'multiselect', options: issueTypes, optionValue: i => i.issueType },
+      },
+      {
+        key: 'createdAt', label: 'Created', cellClass: 'text-gray-400 whitespace-nowrap',
+        sortValue: i => i.createdAt,
+        render: i => fmtDate(i.createdAt),
+      },
+      {
+        key: 'createdBy', label: 'Created By', cellClass: 'text-gray-600 whitespace-nowrap',
+        sortValue: i => (i.createdBy ?? '').toLowerCase(),
+        render: i => i.createdBy ?? '—',
+      },
+      // ── Optional (hidden by default) ──
+      {
+        key: 'dueDate', label: 'Due Date', optional: true, cellClass: 'text-gray-400 whitespace-nowrap',
+        sortValue: i => i.dueDate ?? '',
+        render: i => fmtDate(i.dueDate),
+      },
+      {
+        key: 'updatedAt', label: 'Updated', optional: true, cellClass: 'text-gray-400 whitespace-nowrap',
+        sortValue: i => i.updatedAt ?? '',
+        render: i => fmtDate(i.updatedAt),
+      },
+      {
+        key: 'closedAt', label: 'Closed', optional: true, cellClass: 'text-gray-400 whitespace-nowrap',
+        sortValue: i => i.closedAt ?? '',
+        render: i => fmtDate(i.closedAt),
+      },
+    ]
+    // One optional column per custom ACC attribute present on the issues.
+    const attrCols: ColDef[] = attrTitles.map(t => ({
+      key: `attr:${t}`, label: t, optional: true, cellClass: 'text-gray-600',
+      sortValue: i => (i.attributes?.[t] ?? '').toLowerCase(),
+      render: i => i.attributes?.[t] || '—',
+      filter: {
+        type: 'multiselect',
+        options: [...new Set(normalizedIssues.map(i => i.attributes?.[t]?.trim()).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b)),
+        optionValue: i => i.attributes?.[t]?.trim() || '',
+      },
+    }))
+    return [...base, ...attrCols]
+  }, [assignees, disciplines, allStatuses, issueTypes, attrTitles, normalizedIssues])
 
+  const visibleColumns = useMemo(
+    () => columns.filter(c => visibleKeys.includes(c.key)),
+    [columns, visibleKeys]
+  )
+
+  // ── Table: per-column filters + sorting (applied on top of global filters) ──
   const tableRows = useMemo(() => {
     const rows = filtered.filter(i => {
-      // Chart click-to-filter: restrict to the selected group (+ status segment).
+      // Discipline-bar click-to-filter: restrict to the selected group (+ status).
       if (chartSel) {
         if (groupValue(i, groupBy) !== chartSel.group) return false
         if (chartSel.status && i.status !== chartSel.status) return false
       }
-      if (colText.title && !i.title.toLowerCase().includes(colText.title.toLowerCase())) return false
-      if (colText.description && !(i.description ?? '').toLowerCase().includes(colText.description.toLowerCase())) return false
-      if (colSel.assignedTo.length && !colSel.assignedTo.includes(i.assignedTo ?? 'Unassigned')) return false
-      if (colSel.discipline.length && !colSel.discipline.includes(i.discipline?.trim() || 'No Discipline')) return false
-      if (colSel.status.length && !colSel.status.includes(i.status)) return false
-      if (colSel.issueType.length && !colSel.issueType.includes(i.issueType)) return false
+      for (const col of columns) {
+        const f = col.filter
+        if (!f) continue
+        if (f.type === 'text') {
+          const q = (colText[col.key] ?? '').toLowerCase()
+          if (q && !col.sortValue(i).includes(q)) return false
+        } else {
+          const sel = colSel[col.key] ?? []
+          if (sel.length && !sel.includes(f.optionValue(i))) return false
+        }
+      }
       return true
     })
     if (sortCol) {
-      rows.sort((a, b) => {
-        const av = sortValueOf(a, sortCol), bv = sortValueOf(b, sortCol)
-        const cmp = av < bv ? -1 : av > bv ? 1 : 0
-        return sortDir === 'asc' ? cmp : -cmp
-      })
+      const col = columns.find(c => c.key === sortCol)
+      if (col) {
+        rows.sort((a, b) => {
+          const av = col.sortValue(a), bv = col.sortValue(b)
+          const cmp = av < bv ? -1 : av > bv ? 1 : 0
+          return sortDir === 'asc' ? cmp : -cmp
+        })
+      }
     }
     return rows
-  }, [filtered, colText, colSel, sortCol, sortDir, chartSel, groupBy])
+  }, [filtered, columns, colText, colSel, sortCol, sortDir, chartSel, groupBy])
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
@@ -332,16 +539,18 @@ export default function BimReportClient({ project, anaView = false }: { project:
     }
   }
 
-  const hasGlobalFilters = filterAssignees.length > 0 || filterTypes.length > 0 || filterDisciplines.length > 0
+  const hasGlobalFilters =
+    filterAssignees.length > 0 || filterTypes.length > 0 || filterDisciplines.length > 0 ||
+    filterStatuses.length > 0 || extraFilters.some(f => f.values.length > 0) || monthSel != null
   const hasColFilters =
-    !!colText.title || !!colText.description ||
-    colSel.assignedTo.length > 0 || colSel.discipline.length > 0 ||
-    colSel.status.length > 0 || colSel.issueType.length > 0
+    Object.values(colText).some(Boolean) || Object.values(colSel).some(v => v.length > 0)
 
-  const clearColFilters = () => {
-    setColText({ title: '', description: '' })
-    setColSel({ assignedTo: [], discipline: [], status: [], issueType: [] })
+  const clearGlobalFilters = () => {
+    setFilterAssignees([]); setFilterTypes([]); setFilterDisciplines([])
+    setFilterStatuses([]); setExtraFilters([]); setMonthSel(null); setSelectedIssue(null)
   }
+  const clearColFilters = () => { setColText({}); setColSel({}) }
+  const selectMonth = (mk: string) => { setMonthSel(prev => (prev === mk ? null : mk)); setSelectedIssue(null) }
 
   // Sortable column header button
   const SortHeader = ({ col, label, align = 'left' }: { col: string; label: string; align?: 'left' | 'center' | 'right' }) => (
@@ -376,12 +585,12 @@ export default function BimReportClient({ project, anaView = false }: { project:
                 <span dir="rtl" className="inline-block">{project.projectName}</span>
               </h1>
               <span className="text-sm font-bold px-2.5 py-1 rounded-full bg-white/70 border border-[#1e248c]/15 text-[#1e248c] whitespace-nowrap">
-                #{project.projectNumber}
+                #{anaView ? (project.ana?.number || '—') : project.projectNumber}
               </span>
             </div>
             <p className="text-sm text-gray-500 mt-1">Project Status Update · Generated {today}</p>
             <div className="mt-3">
-              <ProjectLinksBar project={project} />
+              <ProjectLinksBar project={project} anaView={anaView} />
             </div>
           </div>
           {/* Internal-only actions — hidden for the ANA client view. */}
@@ -448,9 +657,48 @@ export default function BimReportClient({ project, anaView = false }: { project:
             onChange={v => { setFilterDisciplines(v); setSelectedIssue(null) }}
           />
 
+          <MultiSelect
+            placeholder="All Statuses"
+            options={allStatuses}
+            renderLabel={statusLabel}
+            selected={filterStatuses}
+            onChange={v => { setFilterStatuses(v); setSelectedIssue(null) }}
+          />
+
+          {/* Ad-hoc "filter by any parameter" rows */}
+          {extraFilters.map((f, idx) => (
+            <span key={f.key} className="flex items-center gap-1.5 bg-[#e7eefe]/50 border border-[#1e248c]/15 rounded-lg pl-2 pr-1 py-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#1e248c]">{paramLabel(f.key)}</span>
+              <MultiSelect
+                size="sm"
+                placeholder="Any"
+                options={valuesForParam(f.key)}
+                selected={f.values}
+                onChange={vals => { setExtraFilters(prev => prev.map((x, i) => (i === idx ? { ...x, values: vals } : x))); setSelectedIssue(null) }}
+              />
+              <button
+                onClick={() => { setExtraFilters(prev => prev.filter((_, i) => i !== idx)); setSelectedIssue(null) }}
+                title="Remove this filter"
+                className="text-gray-400 hover:text-red-500"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          {extraParamOptions.length > 0 && (
+            <select
+              value=""
+              onChange={e => { if (e.target.value) setExtraFilters(prev => [...prev, { key: e.target.value, values: [] }]) }}
+              className="border border-dashed border-[#1e248c]/40 rounded-lg px-2.5 py-1.5 text-xs bg-white text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
+            >
+              <option value="">+ Add filter…</option>
+              {extraParamOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
+
           {hasGlobalFilters && (
             <button
-              onClick={() => { setFilterAssignees([]); setFilterTypes([]); setFilterDisciplines([]); setSelectedIssue(null) }}
+              onClick={clearGlobalFilters}
               className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
             >
               <X size={12} /> Clear All
@@ -583,7 +831,13 @@ export default function BimReportClient({ project, anaView = false }: { project:
                 </div>
 
                 {/* Issues created per month, stacked by the chosen dimension */}
-                <IssuesByMonthChart issues={filtered} groupBy={groupBy} groupLabel={groupLabel} />
+                <IssuesByMonthChart
+                  issues={filtered}
+                  groupBy={groupBy}
+                  groupLabel={groupLabel}
+                  selectedMonth={monthSel}
+                  onSelectMonth={selectMonth}
+                />
               </div>
             )}
 
@@ -610,72 +864,92 @@ export default function BimReportClient({ project, anaView = false }: { project:
                       </button>
                     )}
                   </div>
-                  {hasColFilters && (
-                    <button
-                      onClick={clearColFilters}
-                      className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                    >
-                      <X size={12} /> Clear column filters
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3">
+                    {hasColFilters && (
+                      <button
+                        onClick={clearColFilters}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                      >
+                        <X size={12} /> Clear column filters
+                      </button>
+                    )}
+                    {/* Column picker (gear) */}
+                    <div className="relative" ref={gearRef}>
+                      <button
+                        onClick={() => setGearOpen(o => !o)}
+                        title="Choose columns"
+                        className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border transition-colors ${gearOpen ? 'border-[#1e248c] text-[#1e248c] bg-[#e7eefe]/60' : 'border-gray-200 text-gray-500 hover:text-[#1e248c] hover:border-[#1e248c]/40'}`}
+                      >
+                        <Settings2 size={14} /> Columns
+                      </button>
+                      {gearOpen && (
+                        <div className="absolute right-0 z-50 mt-1 w-60 max-h-80 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg py-1">
+                          <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 mb-1">
+                            <span className="text-[11px] font-semibold text-gray-500">Visible columns</span>
+                            <button
+                              onClick={() => setVisibleKeys(DEFAULT_COLS)}
+                              className="text-[10px] text-[#1e248c] hover:underline"
+                            >Reset</button>
+                          </div>
+                          {columns.map(col => (
+                            <label key={col.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-blue-50/60 cursor-pointer text-xs">
+                              <input
+                                type="checkbox"
+                                checked={visibleKeys.includes(col.key)}
+                                onChange={() =>
+                                  setVisibleKeys(v =>
+                                    v.includes(col.key) ? v.filter(k => k !== col.key) : [...v, col.key]
+                                  )
+                                }
+                                className="accent-[#1e248c]"
+                              />
+                              <span className="truncate" title={col.label}>{col.label === '#' ? 'Issue #' : col.label}</span>
+                              {col.optional && <span className="ml-auto text-[9px] text-gray-300 uppercase">ACC</span>}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="bg-gray-50/80 border-b border-gray-100">
-                        <SortHeader col="displayId" label="#" />
-                        <SortHeader col="title" label="Title" />
-                        <SortHeader col="assignedTo" label="Assigned To" />
-                        <SortHeader col="discipline" label="Discipline" />
-                        <SortHeader col="description" label="Description" align="right" />
-                        <SortHeader col="status" label="Status" align="center" />
-                        <SortHeader col="issueType" label="Type" />
-                        <SortHeader col="createdAt" label="Created" />
-                        <SortHeader col="createdBy" label="Created By" />
+                        {visibleColumns.map(col => (
+                          <SortHeader key={col.key} col={col.key} label={col.label} align={col.align} />
+                        ))}
                       </tr>
                       {/* Per-column filter row */}
                       <tr className="bg-white border-b border-gray-100 align-top">
-                        <th />
-                        <th className="px-2 py-2">
-                          <input
-                            value={colText.title}
-                            onChange={e => setColText(c => ({ ...c, title: e.target.value }))}
-                            placeholder="Filter…"
-                            className="w-full min-w-[120px] border border-gray-200 rounded-md px-2 py-1 text-[11px] font-normal focus:outline-none focus:ring-1 focus:ring-[#1e248c]/30"
-                          />
-                        </th>
-                        <th className="px-2 py-2">
-                          <MultiSelect size="sm" placeholder="All" options={assignees}
-                            selected={colSel.assignedTo}
-                            onChange={v => setColSel(c => ({ ...c, assignedTo: v }))} />
-                        </th>
-                        <th className="px-2 py-2">
-                          <MultiSelect size="sm" placeholder="All" options={disciplines}
-                            selected={colSel.discipline}
-                            onChange={v => setColSel(c => ({ ...c, discipline: v }))} />
-                        </th>
-                        <th className="px-2 py-2">
-                          <input
-                            dir="rtl"
-                            value={colText.description}
-                            onChange={e => setColText(c => ({ ...c, description: e.target.value }))}
-                            placeholder="סינון…"
-                            className="w-full min-w-[120px] border border-gray-200 rounded-md px-2 py-1 text-[11px] font-normal text-right focus:outline-none focus:ring-1 focus:ring-[#1e248c]/30"
-                          />
-                        </th>
-                        <th className="px-2 py-2 text-center">
-                          <MultiSelect size="sm" placeholder="All" options={allStatuses}
-                            renderLabel={statusLabel}
-                            selected={colSel.status}
-                            onChange={v => setColSel(c => ({ ...c, status: v }))} />
-                        </th>
-                        <th className="px-2 py-2">
-                          <MultiSelect size="sm" placeholder="All" options={issueTypes}
-                            selected={colSel.issueType}
-                            onChange={v => setColSel(c => ({ ...c, issueType: v }))} />
-                        </th>
-                        <th />
-                        <th />
+                        {visibleColumns.map(col => {
+                          const f = col.filter
+                          if (!f) return <th key={col.key} />
+                          if (f.type === 'text') {
+                            return (
+                              <th key={col.key} className="px-2 py-2">
+                                <input
+                                  dir={f.rtl ? 'rtl' : undefined}
+                                  value={colText[col.key] ?? ''}
+                                  onChange={e => setColText(c => ({ ...c, [col.key]: e.target.value }))}
+                                  placeholder={f.placeholder ?? 'Filter…'}
+                                  className={`w-full min-w-[120px] border border-gray-200 rounded-md px-2 py-1 text-[11px] font-normal focus:outline-none focus:ring-1 focus:ring-[#1e248c]/30 ${f.rtl ? 'text-right' : ''}`}
+                                />
+                              </th>
+                            )
+                          }
+                          return (
+                            <th key={col.key} className={`px-2 py-2 ${col.align === 'center' ? 'text-center' : ''}`}>
+                              <MultiSelect
+                                size="sm" placeholder="All"
+                                options={f.options}
+                                renderLabel={f.renderLabel}
+                                selected={colSel[col.key] ?? []}
+                                onChange={v => setColSel(c => ({ ...c, [col.key]: v }))}
+                              />
+                            </th>
+                          )
+                        })}
                       </tr>
                     </thead>
                     <tbody>
@@ -691,48 +965,22 @@ export default function BimReportClient({ project, anaView = false }: { project:
                                 : i % 2 === 0 ? 'bg-white hover:bg-blue-50/40' : 'bg-blue-50/20 hover:bg-blue-50/50'
                             }`}
                           >
-                            <td className="px-4 py-2.5 font-mono whitespace-nowrap">
-                              {issue.url ? (
-                                <a
-                                  href={issue.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={e => e.stopPropagation()}
-                                  title="Open this issue in ACC"
-                                  className="text-[#1e248c] hover:text-[#44b8d3] hover:underline"
-                                >
-                                  #{issue.displayId ?? '—'}
-                                </a>
-                              ) : (
-                                <span className="text-gray-500">#{issue.displayId ?? '—'}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 font-medium text-gray-800 max-w-[200px] truncate" title={issue.title}>{issue.title}</td>
-                            <td className="px-4 py-2.5 text-gray-600">{issue.assignedTo ?? '—'}</td>
-                            <td className="px-4 py-2.5 text-gray-600">{issue.discipline || '—'}</td>
-                            <td dir="rtl" className="px-4 py-2.5 text-gray-500 max-w-[240px] truncate text-right" title={issue.description}>{issue.description || '—'}</td>
-                            <td className="px-4 py-2.5 text-center">
-                              <span
-                                className="inline-block text-[10px] rounded-full px-2.5 py-0.5 font-semibold whitespace-nowrap"
-                                style={{
-                                  background: statusColor(issue.status),
-                                  color: segmentTextColor(issue.status),
-                                }}
+                            {visibleColumns.map(col => (
+                              <td
+                                key={col.key}
+                                dir={col.rtl ? 'rtl' : undefined}
+                                title={col.cellTitle?.(issue)}
+                                className={`px-4 py-2.5 ${col.cellClass ?? 'text-gray-600'}`}
                               >
-                                {statusLabel(issue.status)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2.5 text-gray-600">{issue.issueType}</td>
-                            <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap">
-                              {new Date(issue.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                            </td>
-                            <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{issue.createdBy ?? '—'}</td>
+                                {col.render(issue)}
+                              </td>
+                            ))}
                           </tr>
                         )
                       })}
                       {tableRows.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
+                          <td colSpan={visibleColumns.length} className="px-4 py-8 text-center text-gray-400">
                             No issues match the column filters.
                           </td>
                         </tr>
@@ -794,6 +1042,9 @@ export default function BimReportClient({ project, anaView = false }: { project:
         defaultAssignees={filterAssignees}
         defaultTypes={filterTypes}
         defaultDisciplines={filterDisciplines}
+        defaultStatuses={filterStatuses}
+        defaultExtraFilters={extraFilters}
+        defaultMonth={monthSel}
       />
     </div>
   )

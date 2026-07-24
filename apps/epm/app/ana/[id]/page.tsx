@@ -3,7 +3,8 @@ import type { ProjectRow, ReportListItem } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import { resolveAccUrl } from '@/lib/services/apsService'
 import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
-import AnaProjectDetailClient from '@/components/ana/AnaProjectDetailClient'
+import { getAnaNumberMap } from '@/lib/server/anaAcc'
+import ProjectDetailClient from '@/components/ProjectDetailClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,12 +15,13 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
     const Report = (await import('@/app/models/Report')).default
     await connectDB()
     const docs = await Report.find({ projectId: id })
-      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
+      .select('kind title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean() as unknown as Array<Record<string, unknown>>
     return docs.map(d => ({
       _id: String(d._id),
+      kind: (d.kind as 'email' | 'internal') ?? (((d.recipients as string[])?.length ?? 0) > 0 ? 'email' : 'internal'),
       title: d.title as string,
       subject: d.subject as string,
       recipients: (d.recipients as string[]) ?? [],
@@ -35,7 +37,7 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
   }
 }
 
-async function fetchAnaProject(id: string): Promise<ProjectRow | null> {
+async function fetchAnaProject(id: string, numberMap: Map<string, string>): Promise<ProjectRow | null> {
   if (!process.env.MONGODB_URI) {
     const p = mockProjects.find(m => m._id === id && m.accHubName === 'ANA')
     return p ?? null
@@ -55,12 +57,14 @@ async function fetchAnaProject(id: string): Promise<ProjectRow | null> {
 
     const snap = (doc.snapshot ?? {}) as Record<string, unknown>
     const ana  = (doc.ana ?? {}) as Record<string, string>
+    const accProjectId = ext.accProjectId as string | undefined
     return {
       _id: String(doc._id),
       projectName: String(doc.projectName),
       projectNumber: String(doc.projectNumber),
       ana: {
-        number: ana.number ?? '',
+        // Number is the ACC jobNumber, resolved live from the ANA hub.
+        number: (accProjectId && numberMap.get(accProjectId)) || '',
         status: ana.status ?? '',
         projectType: ana.projectType ?? '',
       },
@@ -71,7 +75,7 @@ async function fetchAnaProject(id: string): Promise<ProjectRow | null> {
         driveFolder: String(ext.driveFolderUrl ?? ''),
         acc: resolveAccUrl(ext),
       },
-      accProjectId: ext.accProjectId as string | undefined,
+      accProjectId,
       accExternalHub: ext.accExternalHub as boolean | undefined,
       accHubName: hub.name,
       accHubKey: hub.key,
@@ -103,8 +107,9 @@ export default async function AnaProjectDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [project, reports] = await Promise.all([fetchAnaProject(id), fetchReports(id)])
+  const [reports, numberMap] = await Promise.all([fetchReports(id), getAnaNumberMap()])
+  const project = await fetchAnaProject(id, numberMap)
   if (!project) notFound()
 
-  return <AnaProjectDetailClient project={project} reports={reports} />
+  return <ProjectDetailClient project={project} reports={reports} anaView />
 }

@@ -8,6 +8,7 @@ import { X, Mail, Download, ExternalLink, Loader2, Trash2 } from 'lucide-react'
 
 interface ReportDetail {
   _id: string
+  kind?: 'email' | 'internal'
   title: string
   subject: string
   recipients: string[]
@@ -116,10 +117,14 @@ export default function ReportViewModal({
             {/* Recipients + actions */}
             <div className="px-6 py-3 border-b border-gray-100 flex flex-wrap items-center gap-2">
               {!external && (
-                <>
-                  <span className="text-[10px] font-mono text-gray-400">אל</span>
-                  <span className="text-xs text-gray-700">{report.recipients.join(', ') || '—'}</span>
-                </>
+                report.kind === 'internal' ? (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">ניתוח פנימי · לא נשלח במייל</span>
+                ) : (
+                  <>
+                    <span className="text-[10px] font-mono text-gray-400">אל</span>
+                    <span className="text-xs text-gray-700">{report.recipients.join(', ') || '—'}</span>
+                  </>
+                )
               )}
               <div className="ms-auto flex items-center gap-2">
                 {!external && report.gmailUrl && (

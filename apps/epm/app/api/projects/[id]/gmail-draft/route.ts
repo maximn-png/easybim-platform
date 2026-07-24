@@ -62,6 +62,7 @@ async function createReport(
 
     const doc = await Report.create({
       projectId,
+      kind: 'email',
       title: d.title,
       subject: d.subject,
       recipients: d.to,

@@ -2,6 +2,7 @@ import type { ProjectRow } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import { resolveAccUrl } from '@/lib/services/apsService'
 import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
+import { getAnaNumberMap } from '@/lib/server/anaAcc'
 import AnaProjectsClient from '@/components/ana/AnaProjectsClient'
 
 // Render on request so the list reflects the latest sync + client edits.
@@ -18,10 +19,13 @@ async function fetchAnaProjects(): Promise<ProjectRow[]> {
     const Project = (await import('@/app/models/Project')).default
     await connectDB()
 
-    const docs = await Project
-      .find({ isActive: true })
-      .sort({ displayOrder: 1, projectName: 1 })
-      .lean() as unknown as Record<string, unknown>[]
+    const [docs, numberMap] = await Promise.all([
+      Project
+        .find({ isActive: true })
+        .sort({ displayOrder: 1, projectName: 1 })
+        .lean() as unknown as Promise<Record<string, unknown>[]>,
+      getAnaNumberMap(),
+    ])
 
     const rows: ProjectRow[] = []
     for (const doc of docs) {
@@ -31,12 +35,14 @@ async function fetchAnaProjects(): Promise<ProjectRow[]> {
 
       const snap = (doc.snapshot ?? {}) as Record<string, unknown>
       const ana  = (doc.ana ?? {}) as Record<string, string>
+      const accProjectId = ext.accProjectId as string | undefined
       rows.push({
         _id: String(doc._id),
         projectName: String(doc.projectName),
         projectNumber: String(doc.projectNumber),
         ana: {
-          number: ana.number ?? '',
+          // Number is the ACC jobNumber, resolved live from the ANA hub.
+          number: (accProjectId && numberMap.get(accProjectId)) || '',
           status: ana.status ?? '',
           projectType: ana.projectType ?? '',
         },
@@ -47,7 +53,7 @@ async function fetchAnaProjects(): Promise<ProjectRow[]> {
           driveFolder: String(ext.driveFolderUrl ?? ''),
           acc: resolveAccUrl(ext),
         },
-        accProjectId: ext.accProjectId as string | undefined,
+        accProjectId,
         accExternalHub: ext.accExternalHub as boolean | undefined,
         accHubName: hub.name,
         accHubKey: hub.key,
@@ -84,7 +90,7 @@ export default async function AnaProjectsPage() {
       className="min-h-[calc(100vh-4rem)]"
       style={{ background: 'linear-gradient(135deg, #f0f6fb 0%, #e7f1fe 100%)' }}
     >
-      <div className="max-w-[1200px] mx-auto px-4 py-8">
+      <div className="px-6 lg:px-10 py-8">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-[#1e248c]">ANA Projects</h1>
           <p className="text-gray-500 text-sm mt-1">{projects.length} projects</p>
