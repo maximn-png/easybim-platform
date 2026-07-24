@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const [
       { connectDB },
       ProjectModule,
-      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject },
+      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject, fetchAllTimesheetHours },
       { driveEnabled, findProjectFolders },
     ] = await Promise.all([
       import('@easybim/db'),
@@ -64,13 +64,14 @@ export async function POST(req: NextRequest) {
       Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
     ])
 
-    // Done projects only get a status refresh on their existing docs (below) —
-    // they're excluded from the heavy per-project lookups, and long-finished
-    // projects that were never in EPM are not created.
-    const ma004Projects = allMa004Projects.filter(p => p.status !== 'Done')
-    const doneNumbers = allMa004Projects
-      .filter(p => p.status === 'Done' && p.projectNumber)
-      .map(p => p.projectNumber)
+    // Active projects always sync. Done projects also get the full per-project
+    // lookups (Drive, milestones, MA-003 team, ACC) — but ONLY when they already
+    // exist in EPM, so long-finished projects that were never in EPM are still not
+    // created. A Done project's upsert therefore runs update-only (see loop below).
+    const existingNumbers = new Set(existingDocs.map(d => d.projectNumber))
+    const ma004Projects = allMa004Projects.filter(
+      p => !!p.projectNumber && (p.status !== 'Done' || existingNumbers.has(p.projectNumber))
+    )
 
     // Map projectNumber → stored ma003ItemId as fallback when board_relation is empty
     const storedMa003Map = new Map(
@@ -165,6 +166,17 @@ export async function POST(req: NextRequest) {
       errors.push(`Milestones: ${err instanceof Error ? err.message : String(err)}`)
     }
 
+    // 1f. Actual hours per project from TS-001/003/004/005, keyed by MA-003 item
+    // id — one bulk pass across all timesheet boards; best-effort. This is the
+    // same live figure the project page's Hours Analytics card computes, so the
+    // dashboard hours column now matches it (replaces the manual updateHours.ts).
+    let timesheetHours = new Map<string, import('@/lib/services/mondayService').TS001HoursSummary>()
+    try {
+      timesheetHours = await fetchAllTimesheetHours()
+    } catch (err) {
+      errors.push(`Timesheet hours: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
     // 2. Collect all MA-003 item IDs — live from board_relation + stored fallbacks
     const allMa003Ids = [...new Set([
       ...ma004Projects.flatMap(p => p.ma003ItemIds),
@@ -185,8 +197,6 @@ export async function POST(req: NextRequest) {
     const photoMap = await fetchUserPhotos(allMondayIds)
 
     // 5. Upsert each project
-    // NOTE: actualHours / hoursProgress are intentionally NOT updated here —
-    // they are managed by updateHours.ts and preserved across syncs.
     for (const p of ma004Projects) {
       try {
         if (!p.projectNumber) continue
@@ -197,6 +207,15 @@ export async function POST(req: NextRequest) {
 
         // Milestone completion (joined by MA-004 item id). Absent → leave null/[].
         const milestones = milestoneStats.get(p.itemId)
+
+        // Actual hours (joined by MA-003 item id) + derived progress vs budget.
+        // Only overwrite when a value resolved, so a transient empty read can't
+        // wipe good stored hours. Progress mirrors deriveHoursProgress().
+        const actualHours   = ma003Id ? timesheetHours.get(ma003Id)?.actualHours ?? null : null
+        const hoursProgress =
+          actualHours != null && p.budgetHours && p.budgetHours > 0
+            ? Math.min(999, Math.max(0, Math.round((actualHours / p.budgetHours) * 100)))
+            : null
 
         // ACC link resolution. Only act when the ACC account list loaded — see
         // accListOk note above. Priority:
@@ -285,6 +304,13 @@ export async function POST(req: NextRequest) {
               // Total budget = שכט סופי ÷ 300 (formula8). Only overwrite when the
               // formula resolved, so a transient empty read can't wipe a good value.
               ...(p.budgetHours != null ? { 'snapshot.budgetHours': p.budgetHours } : {}),
+              // Live actual hours from the timesheet boards. Only written when a
+              // value resolved (see actualHours above) so an empty read never
+              // clobbers good data; progress recomputed alongside it.
+              ...(actualHours != null ? {
+                'snapshot.actualHours':   Math.round(actualHours * 100) / 100,
+                'snapshot.hoursProgress': hoursProgress,
+              } : {}),
               'snapshot.bimManager':         toMember(ma003?.bimManager),
               'snapshot.mepCoordinator':     toMember(ma003?.mepCoordinator),
               'snapshot.bimModeller':        toMember(ma003?.bimModeller),
@@ -294,7 +320,9 @@ export async function POST(req: NextRequest) {
               'snapshot.syncError':          undefined,
             },
           },
-          { upsert: true, new: true, runValidators: false }
+          // Active projects may be created; Done projects are update-only so we
+          // never create a long-finished project that was never in EPM.
+          { upsert: p.status !== 'Done', new: true, runValidators: false }
         )
         synced++
       } catch (err) {
@@ -302,28 +330,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Refresh status on projects finished in Monday since the last sync.
-    let markedDone = 0
-    if (doneNumbers.length > 0) {
-      try {
-        const res = await Project.updateMany(
-          { projectNumber: { $in: doneNumbers }, 'snapshot.status': { $ne: 'Done' } },
-          {
-            $set: {
-              'snapshot.status':             'Done',
-              'snapshot.lastSyncedAt':       new Date(),
-              'snapshot.mondayLastSyncedAt': new Date(),
-              'snapshot.syncStatus':         'ok',
-            },
-          }
-        )
-        markedDone = res.modifiedCount
-      } catch (err) {
-        errors.push(`Mark done: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    }
+    // Done projects now flow through the main upsert loop above (update-only),
+    // so their status + full snapshot is refreshed there — no separate pass needed.
 
-    return NextResponse.json({ synced, markedDone, errors, durationMs: Date.now() - start })
+    return NextResponse.json({ synced, errors, durationMs: Date.now() - start })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err), synced, errors },
