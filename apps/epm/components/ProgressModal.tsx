@@ -28,9 +28,17 @@ const NEW_KEY = '(new)'
 const REMOVED_KEY = '(removed)'
 
 const bucketLabel = (key: string) =>
-  key === NEW_KEY ? 'New' : key === REMOVED_KEY ? 'Removed' : statusLabel(key)
+  key === NEW_KEY ? 'New since baseline' : key === REMOVED_KEY ? 'Removed since baseline' : statusLabel(key)
 const bucketColor = (key: string) =>
   key === NEW_KEY || key === REMOVED_KEY ? '#9CA3AF' : statusColor(key)
+// Explanation shown on hover for the synthetic buckets — these aren't statuses,
+// they mark issues that didn't line up between the two reports.
+const bucketTooltip = (key: string): string | undefined =>
+  key === NEW_KEY
+    ? "These issues didn't exist in the baseline report — they were created after it, so they have no earlier status. Their current status is shown on the right."
+    : key === REMOVED_KEY
+    ? 'These issues existed in the baseline report but are gone from the newer one (resolved, deleted, or filtered out).'
+    : undefined
 
 const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -44,6 +52,7 @@ interface NodePayload {
   side: 'left' | 'right'
   pct: number | null
   value?: number
+  tooltip?: string
 }
 
 function SankeyNode(props: unknown) {
@@ -54,9 +63,12 @@ function SankeyNode(props: unknown) {
   const isLeft = payload.side === 'left'
   const textX = isLeft ? x - 8 : x + width + 8
   const anchor = isLeft ? 'end' : 'start'
-  const label = `${payload.label} · ${payload.value ?? 0}${payload.pct !== null ? ` (${payload.pct}%)` : ''}`
+  // A synthetic bucket (New/Removed since baseline) gets a "ⓘ" cue + hover tooltip.
+  const info = payload.tooltip
+  const label = `${payload.label}${info ? ' ⓘ' : ''} · ${payload.value ?? 0}${payload.pct !== null ? ` (${payload.pct}%)` : ''}`
   return (
-    <g>
+    <g style={info ? { cursor: 'help' } : undefined}>
+      {info && <title>{info}</title>}
       <rect x={x} y={y} width={width} height={height} fill={payload.color} rx={2} />
       <text
         x={textX} y={y + height / 2} dominantBaseline="middle" textAnchor={anchor}
@@ -173,11 +185,11 @@ export default function ProgressModal({
     const index = new Map<string, number>()
     for (const key of order(leftCounts)) {
       index.set(`L:${key}`, nodes.length)
-      nodes.push({ name: `L:${key}`, label: bucketLabel(key), color: bucketColor(key), side: 'left', pct: pct(key, leftCounts.get(key)!, data.from.total) })
+      nodes.push({ name: `L:${key}`, label: bucketLabel(key), color: bucketColor(key), side: 'left', pct: pct(key, leftCounts.get(key)!, data.from.total), tooltip: bucketTooltip(key) })
     }
     for (const key of order(rightCounts)) {
       index.set(`R:${key}`, nodes.length)
-      nodes.push({ name: `R:${key}`, label: bucketLabel(key), color: bucketColor(key), side: 'right', pct: pct(key, rightCounts.get(key)!, data.to.total) })
+      nodes.push({ name: `R:${key}`, label: bucketLabel(key), color: bucketColor(key), side: 'right', pct: pct(key, rightCounts.get(key)!, data.to.total), tooltip: bucketTooltip(key) })
     }
     const links = data.flows.map(f => ({
       source: index.get(`L:${f.from}`)!,

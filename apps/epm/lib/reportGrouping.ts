@@ -47,6 +47,12 @@ export const STATUS_LABELS: Record<string, string> = {
   void:         'Void',
 }
 
+// Draft issues are never shown in any generated report (email image, PDF, Excel,
+// or the analytics snapshot) — they're work-in-progress and skew the analytics.
+export const isDraftIssue = (status: string) => normalizeStatus(status) === 'draft'
+export const dropDraft = <T extends { status: string }>(issues: T[]): T[] =>
+  issues.filter(i => !isDraftIssue(i.status))
+
 export function statusColor(s: string) { return STATUS_COLORS[normalizeStatus(s)] ?? '#d1d5db' }
 export function statusLabel(s: string) {
   const k = normalizeStatus(s)
@@ -126,6 +132,13 @@ export function groupLabelFor(groupBy: string, options: GroupOption[]): string {
   return groupBy.startsWith('attr:') ? groupBy.slice(5) : groupBy
 }
 
+// Canonical "YYYY-MM" bucket for an ISO timestamp. Shared by the month chart
+// and the reports page's click-to-filter so both agree on which month a click hits.
+export const issueMonthKey = (iso: string) => {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
 // Bucket a due date relative to today, for stacking by "Due Date".
 export function dueDateBucket(due: string | null | undefined): string {
   if (!due) return 'No Due Date'
@@ -137,6 +150,15 @@ export function dueDateBucket(due: string | null | undefined): string {
   if (diffDays <= 7) return 'Due This Week'
   if (diffDays <= 30) return 'Due This Month'
   return 'Later'
+}
+
+// Value of any filterable/groupable parameter for an issue: the base dimensions,
+// Created By, or a custom "attr:*" attribute. Mirrors groupValue but adds
+// createdBy (which isn't a stack-by dimension). Used by the reports page's
+// "filter by any parameter" rows, matching the Export modal's behaviour.
+export function paramValue(issue: AccIssue, key: string): string {
+  if (key === 'createdBy') return issue.createdBy?.trim() || 'Unknown'
+  return groupValue(issue, key)
 }
 
 // Returns the group label for an issue under the chosen dimension.

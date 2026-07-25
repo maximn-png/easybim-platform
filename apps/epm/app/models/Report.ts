@@ -16,6 +16,9 @@ export interface ReportIssueSnapshot {
 
 export interface IReport extends Document {
   projectId:       Types.ObjectId
+  // 'email'    = created to be sent to recipients (Gmail draft).
+  // 'internal' = produced for analytics/Progress only, never emailed.
+  kind:            'email' | 'internal'
   title:           string          // resolved template/variant title
   subject:         string          // email subject line
   recipients:      string[]        // recipient email addresses
@@ -51,6 +54,8 @@ const ReportIssueSnapshotSchema = new Schema<ReportIssueSnapshot>(
 const ReportSchema = new Schema<IReport>(
   {
     projectId:       { type: Schema.Types.ObjectId, ref: 'Project', required: true, index: true },
+    // Legacy rows predate this field → default to 'email' (they were all sent).
+    kind:            { type: String, enum: ['email', 'internal'], default: 'email' },
     title:           { type: String, required: true },
     subject:         { type: String, required: true },
     recipients:      { type: [String], default: [] },

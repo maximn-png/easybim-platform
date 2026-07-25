@@ -5,7 +5,7 @@
 // route handler without a DOM.
 import type { AccIssue } from '@/lib/services/apsService'
 import {
-  type GroupKey, GROUP_OPTIONS, groupValue, statusColor, statusLabel, segmentTextColor,
+  type GroupKey, GROUP_OPTIONS, groupValue, statusColor, statusLabel, segmentTextColor, dropDraft,
 } from '@/lib/reportGrouping'
 
 export interface ReportMeta {
@@ -39,18 +39,24 @@ function buildAnalytics(issues: AccIssue[], groupBy: GroupKey): string {
   const rows = groups.map(([gname, iss]) => {
     const total = iss.length
     const fill = maxTotal > 0 ? (total / maxTotal) * 100 : 0
-    const segs = statuses.map(s => {
+    const parts = statuses.map(s => {
       const c = iss.filter(i => i.status === s).length
-      if (c === 0) return ''
-      const seg = (c / total) * 100
-      return `<div style="width:${seg}%;background:${statusColor(s)};display:flex;align-items:center;justify-content:center;overflow:hidden">${
-        seg >= 9 ? `<span style="font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 2px rgba(0,0,0,0.75);line-height:1">${c}</span>` : ''
-      }</div>`
-    }).join('')
+      return c > 0 ? { s, c, w: (c / total) * 100 } : null
+    }).filter(Boolean) as { s: string; c: number; w: number }[]
+    const colorSegs = parts.map(p =>
+      `<div style="width:${p.w}%;height:100%;background:${statusColor(p.s)}"></div>`
+    ).join('')
+    // Label cells mirror the colour segments (same flex + widths) so each count sits
+    // over its segment; overflow:visible lets narrow ones spill slightly aside.
+    const labels = parts.map(p =>
+      `<div style="width:${p.w}%;height:100%;display:flex;align-items:center;justify-content:center;overflow:visible"><span style="font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 2px rgba(0,0,0,0.9);line-height:1;white-space:nowrap">${p.c}</span></div>`
+    ).join('')
+    // direction:ltr keeps bar + labels aligned inside the RTL document.
     return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span style="font-size:11px;color:#4b5563;width:110px;flex-shrink:0;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(gname)}</span>
-      <div style="flex:1;height:16px;border-radius:8px;background:#f3f4f6;overflow:hidden">
-        <div style="display:flex;height:100%;width:${fill}%;border-radius:8px;overflow:hidden">${segs}</div>
+      <div style="position:relative;flex:1;height:16px;border-radius:8px;background:#f3f4f6;direction:ltr">
+        <div style="display:flex;height:100%;width:${fill}%;border-radius:8px;overflow:hidden">${colorSegs}</div>
+        <div style="position:absolute;top:0;left:0;height:100%;width:${fill}%;display:flex">${labels}</div>
       </div>
       <span style="font-size:11px;color:#6b7280;width:24px;text-align:left;flex-shrink:0;font-weight:500">${total}</span>
     </div>`
@@ -94,9 +100,11 @@ function issueRows(issues: AccIssue[]): string {
 
 export function buildReportHtml(
   meta: ReportMeta,
-  issues: AccIssue[],
+  allIssues: AccIssue[],
   opts: { fontCss: string; logoSrc: string },
 ): string {
+  // Draft issues never appear in the report (analytics, table, or the count).
+  const issues = dropDraft(allIssues)
   const today = new Date().toLocaleDateString('he-IL', { day: '2-digit', month: 'long', year: 'numeric' })
   const groupLabel = meta.groupLabel
     || GROUP_OPTIONS.find(o => o.value === meta.groupBy)?.label

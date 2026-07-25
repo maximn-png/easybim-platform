@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import type { ReportIssueSnapshot } from '@/app/models/Report'
+import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 
 // Compares the issue snapshots of two saved reports of the same project and
 // returns the status-flow matrix consumed by the Progress modal's Sankey.
@@ -20,6 +21,11 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id: projectId } = await ctx.params
+
+  // ANA-only clients may compare reports, but only for ANA-hub projects.
+  const denied = await guardSharedProjectForAna('GET', projectId)
+  if (denied) return denied
+
   const fromId = req.nextUrl.searchParams.get('from')
   const toId = req.nextUrl.searchParams.get('to')
   const discipline = req.nextUrl.searchParams.get('discipline')
@@ -49,18 +55,25 @@ export async function GET(
       return NextResponse.json({ error: 'One of the reports has no issue snapshot' }, { status: 422 })
     }
 
-    // Disciplines are listed from the full snapshots (pre-filter) so the modal's
-    // dropdown is stable while filtering.
+    // Draft issues are excluded from the progress comparison everywhere (flow,
+    // disciplines, totals) — they aren't real tracked issues yet.
+    const notDraft = (i: ReportIssueSnapshot) =>
+      (i.status ?? '').trim().toLowerCase() !== 'draft'
+    const fromSnap = fromDoc.issuesSnapshot.filter(notDraft)
+    const toSnap = toDoc.issuesSnapshot.filter(notDraft)
+
+    // Disciplines are listed from the full snapshots (pre-discipline-filter) so the
+    // modal's dropdown is stable while filtering.
     const disciplines = [...new Set(
-      [...fromDoc.issuesSnapshot, ...toDoc.issuesSnapshot]
+      [...fromSnap, ...toSnap]
         .map(i => i.discipline?.trim())
         .filter(Boolean) as string[]
     )].sort((a, b) => a.localeCompare(b))
 
     const byDiscipline = (i: ReportIssueSnapshot) =>
       !discipline || (i.discipline?.trim() ?? '') === discipline
-    const fromIssues = fromDoc.issuesSnapshot.filter(byDiscipline)
-    const toIssues = toDoc.issuesSnapshot.filter(byDiscipline)
+    const fromIssues = fromSnap.filter(byDiscipline)
+    const toIssues = toSnap.filter(byDiscipline)
 
     const fromMap = new Map(fromIssues.map(i => [issueKey(i, fromId), i.status]))
     const toMap = new Map(toIssues.map(i => [issueKey(i, toId), i.status]))

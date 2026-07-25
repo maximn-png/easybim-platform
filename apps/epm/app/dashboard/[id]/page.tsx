@@ -17,12 +17,15 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
     const Report = (await import('@/app/models/Report')).default
     await connectDB()
     const docs = await Report.find({ projectId: id })
-      .select('title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
+      .select('kind title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean() as unknown as Array<Record<string, unknown>>
     return docs.map(d => ({
       _id: String(d._id),
+      // Fallback for rows saved before `kind` existed: internal reports have no
+      // recipients (the email flow always has ≥1), so empty ⇒ internal.
+      kind: (d.kind as 'email' | 'internal') ?? (((d.recipients as string[])?.length ?? 0) > 0 ? 'email' : 'internal'),
       title: d.title as string,
       subject: d.subject as string,
       recipients: (d.recipients as string[]) ?? [],

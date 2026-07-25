@@ -15,12 +15,13 @@ Visual vision board: [Agent Kingdom (Artifact)](https://claude.ai/code/artifact/
 |--------|-----|-------|--------|---------|
 | 🦚 Peacock | LinkedIn / content | Content | **LIVE** | Keep improving (more channels) |
 | 🐿️ Squirrel | Price-quote setup + index | Treasury | **LIVE** | Deepen (draft-from-past) before anything new |
-| 🦁 Lion | Orchestrator / CEO | Crown | Not built | **Reframe** → control tower first, router later |
+| 🦁 Lion | CEO / executive advisor | Crown | Not built | **Capstone — build last**; only as smart as the spines beneath it (absorbs Eagle) |
+| 🦫 Beaver | Technical governance: health, standards, QA | Crown | Not built | Runtime health now (plain infra); full animal Phase C |
 | 🐕 Dog | Collections / contracts | Treasury | Not built | **Build next** — cleanest money-loop agent |
 | 🐜 Ant | Finance / cashflow | Treasury | Not built | Build after Dog (needs accounting data source) |
 | 🐆 Tiger | Sales | Treasury | Not built | Gated on a real lead/CRM source |
-| 🦉 Owl | Data / analytics | Clients | Not built | Medium — absorbs Eagle |
-| 🦅 Eagle | Strategy / big-picture | Crown | Not built | **Merge into Owl** — too fuzzy to stand alone |
+| 🦉 Owl | Data / analytics | Clients | Not built | Pure analytics — the Lion's data feed |
+| 🦅 Eagle | Strategy / big-picture | Crown | Not built | **Merge into Lion** — the Lion is the strategic brain |
 | 🐬 Dolphin | Client retention | Clients | Not built | Defer — needs defined signals |
 | 🐙 Octopus | Technical support | Clients | Not built | Defer — needs a real support channel |
 | 🐝 Bee | HR & onboarding | Hive | Not built | Planned — gated on a staff data source (start with onboarding) |
@@ -39,7 +40,7 @@ These are the rules the roadmap is built on. When a new idea conflicts with one,
 
 1. **Depth over breadth.** A 3rd mediocre animal is worth less than making Squirrel or Peacock excellent. We do not "collect animals." Each new agent must clear a real ROI bar (§3).
 2. **Every agent automates *existing* recurring manual work** with a clear data source (Monday board / Drive / Gmail) and a human-in-the-loop approval so mistakes are cheap. No agent invented to fill a slot in the metaphor.
-3. **The Lion is a control tower, not a mandatory orchestrator.** An LLM router only earns its place when one request could belong to several agents, or agents hand work to each other. Until then, orchestration is over-engineering. What we *do* need at 3+ agents is operational visibility.
+3. **Two kinds of governance, kept separate.** The **Lion governs the business** (a CEO advisor you consult on running the company); the **Beaver governs the tech** (runtime health, standards, QA). Don't conflate them — a strategy advisor and a health monitor are different animals. And the Lion is a **capstone, not a foundation**: a CEO advisor is only as good as the data spines beneath it, so build Owl + the money loop first and crown the Lion last.
 4. **Declarative agents, shared core.** Adding an animal should be *config + tools*, not copy-pasted routes. The shared `agent-core` is the real scaling lever — more than any single agent.
 5. **Tiered models.** Routing/classification → Haiku; drafting → Sonnet; hard reasoning → Opus. Deterministic work (Squirrel's sync) uses no LLM at all. Cost scales with agent count; the model choice must too.
 6. **Trust is a feature.** Runs are logged, guidance is remembered, and a failing scheduled pass must be *loud*. Silent breakage is the fastest way to lose confidence in the kingdom.
@@ -66,7 +67,7 @@ The point of Phase A is to make the *next* five agents cheap to build, and to sq
 
 1. **Squirrel: draft-from-past quotes.** Retrieve similar historical quotes (by usage type / area / client) from the content cache and compose a draft `ToQuote` / doc. The content cache was built precisely as this feature's data layer — highest value-per-effort in the whole kingdom.
 2. **Extract `agent-core`.** Make `AgentDefinition` declarative: triggers, cron schedules, webhook handlers, passes, guidance injection, and chat tools become *config*, not ad-hoc route files. Trigger condition ("once a 2nd animal lands") already fired.
-3. **Lion as control tower.** Kingdom-wide ops view + alerting: which agents ran today, aggregate token cost (already persisted per run, never surfaced), and a loud signal when a scheduled pass errors.
+3. **Kingdom health dashboard (proto-Beaver).** Plain infra, *not* the Lion: which agents ran today, aggregate token cost (already persisted per run, never surfaced), and a loud signal when a scheduled pass errors. This is the runtime seed the 🦫 Beaver grows from later.
 
 ### Phase B — Next (close the money loop)
 Squirrel owns the *front* of the money spine (quote → contract → invoice → payment). Extend backward down that spine, sharing one "deals/money" data layer.
@@ -82,13 +83,15 @@ The kingdom was all outward-facing; this is the internal house. These share a li
 - **🐝 Bee — HR & onboarding.** Start narrow with onboarding — the repo already has an `ONBOARDING.md` seed — then expand to leave/policies once a real staff board exists.
 - **🐘 Elephant — people development.** *Later.* Mentorship/growth reminders, 1:1 and review prep. Lowest frequency at current team size — fold "growth nudges" into Bee until the team is bigger.
 
-### Phase C — Later (insight, then reconsider the rest)
-7. **🦉 Owl — analytics.** Cross-board insights over the money + content spines. Absorbs 🦅 Eagle's "big picture" job — one analytics animal, not two.
-8. **Reconsider 🐬 Dolphin / 🐙 Octopus** against §3. Each is *Defer* until a concrete data source or channel exists (retention signals / support inbox). Do not build on the strength of the metaphor alone.
+### Phase C — Later (insight, governance, then the crown)
+7. **🦉 Owl — analytics.** Pure data layer: cross-board insights over the money + content spines. This is what feeds the Lion — answers *"what does the data say,"* not *"what should I do."*
+8. **🦫 Beaver — technical governance.** Grow the Phase-A health dashboard into a real animal: conformance checks (does every agent honour the `agent-core` contract?), QA passes, and drift reports. Value scales with agent count — worth it once new animals land often.
+9. **🦁 Lion — CEO / executive advisor (the capstone).** Reads across every spine (money, quotes, marketing, people, Owl's analytics) and advises *you* on running the company: where to focus, what cashflow is signalling, when to hire. Build it **last** — a CEO advisor with no numbers underneath is just generic chat. Absorbs 🦅 Eagle's big-picture strategy — one strategic head, not two.
+10. **Reconsider 🐬 Dolphin / 🐙 Octopus** against §3. Each is *Defer* until a concrete data source or channel exists (retention signals / support inbox). Do not build on the strength of the metaphor alone.
 
-### The Lion, over time
-- **v1 (Phase A):** control tower — ops, cost, alerting. No LLM needed.
-- **v2 (only if earned):** chat router — a single "ask the kingdom" entry point that dispatches to the right animal. Justified only once cross-agent handoffs are real (e.g. Squirrel closes a quote → Dog starts watching the contract).
+### The two heads of the Crown
+- **🦁 Lion — business governance.** The CEO advisor. Capstone; needs the data spines first. A future "ask the kingdom" chat router could live here too, but only once cross-agent handoffs are real (e.g. Squirrel closes a quote → Dog watches the contract).
+- **🦫 Beaver — technical governance.** The engineer/QA. Ensures agents are *built* correctly and *run* correctly; the runtime half starts now as plain infra (Phase A item 3), the judgment half (reviewing new animals) comes in Phase C.
 
 ---
 
@@ -100,7 +103,7 @@ What the declarative core must own so animals are data, not plumbing:
 - **Runtime:** tiered model selection per pass; today everything is `claude-opus-4-8` @ 16k (`lib/core/agentRuntime.ts`).
 - **Integrations:** Monday (typed mirror/formula/relation columns — see the `display_value` gotcha), Google Drive/Sheets/Docs, Gmail (future), all shared and cross-agent.
 - **Memory:** per-agent `AgentGuidance` (already shared), plus domain caches like Squirrel's `QuoteRecord` / `QuoteContent` as the pattern for future spines.
-- **Observability:** `AgentRun` cost/status → the Lion control tower.
+- **Observability:** `AgentRun` cost/status → the kingdom health dashboard (the 🦫 Beaver's runtime layer), *not* the Lion.
 
 ---
 
@@ -109,15 +112,18 @@ What the declarative core must own so animals are data, not plumbing:
 > The Hebrew narrative below is the *brand* layer — the kingdom's story, kept intact. It describes the aspirational cast, not what's built. See §1 for real status.
 
 כל חיה נושאת **תכונת ליבה אחת ברורה** — כך שברגע ששומעים את שם החיה, כבר יודעים מי אחראי על מה.
-ההיררכיה: **האריה מנתב, שאר החיות מתמחות.** כל סוכן מדווח לאריה.
+ההיררכיה: **שני ראשים לכתר** — האריה מנהל את העסק, הבונה שומר על הטכנולוגיה. שאר החיות מתמחות.
 
-### 👑 בית הכתר — הנהגה ואסטרטגיה
+### 👑 בית הכתר — הנהגה וממשל
 
-**🦁 אריה — מנכ״ל / אורקסטרטור** · תכונת ליבה: הנהגה
-מלך הג׳ונגל. לא מבצע את העבודה בעצמו — מנתב משימות, קובע סדרי עדיפויות ומקבל את ההחלטות הגדולות. כל החצר מדווחת אליו.
+**🦁 אריה — מנכ״ל / יועץ בכיר** · תכונת ליבה: הנהגה
+מלך הג׳ונגל. היועץ שמתייעצים איתו על ניהול החברה — קורא את כל התמונה (כסף, הצעות, שיווק, אנשים) וממליץ על מה להתמקד, מתי לגייס, ומה תזרים המזומנים מספר. רואה את כל השדה מלמעלה (בולע את תפקיד הנשר). נבנה **אחרון** — יועץ בלי נתונים מתחתיו הוא סתם פטפוט.
+
+**🦫 בונה — הנדסה, תקינה ובקרת איכות** · תכונת ליבה: דייקנות
+המהנדס של הממלכה. דואג שכל סוכן **בנוי נכון** (לפי אותו סטנדרט) ו**רץ נכון** (בלי תקלות שקטות) — בדיקות תקינות, QA, והתראות. הראש הטכני של הכתר, לצד האריה.
 
 **🦅 נשר — אסטרטגיה / ראייה רחבה** · תכונת ליבה: ראייה מגובה
-רואה את כל השדה מלמעלה. מזהה מגמות והזדמנויות מרחוק, חושב לטווח ארוך.
+מוזג אל תוך האריה — הראייה־מלמעלה היא חלק מהמוח האסטרטגי של המנכ״ל, לא חיה נפרדת.
 
 ### 🦚 בית התוכן — שיווק ונוכחות
 
@@ -144,7 +150,7 @@ What the declarative core must own so animals are data, not plumbing:
 שמונה זרועות. מטפל בכמה פניות במקביל ופותר בעיות מורכבות בלי לאבד אף חוט.
 
 **🦉 ינשוף — דאטה / אנליטיקס** · תכונת ליבה: חוכמה
-חכם ושקט, רואה גם בחושך של הנתונים. מנתח בלי רעש ומחזיר תובנות שמכוונות את כל החצר.
+חכם ושקט, רואה גם בחושך של הנתונים. מנתח בלי רעש ומחזיר תובנות — שכבת הנתונים שמזינה את האריה ("מה הנתונים אומרים", לא "מה לעשות").
 
 ### 🐝 בית הכוורת — אנשים ותרבות
 
@@ -163,8 +169,9 @@ What the declarative core must own so animals are data, not plumbing:
 
 | חיה | סוכן | תכונת ליבה | בית |
 |-----|------|------------|-----|
-| 🦁 אריה | מנכ״ל / אורקסטרטור | הנהגה | הכתר |
-| 🦅 נשר | אסטרטגיה | ראייה מגובה | הכתר |
+| 🦁 אריה | מנכ״ל / יועץ בכיר (בולע את הנשר) | הנהגה | הכתר |
+| 🦫 בונה | הנדסה, תקינה ו-QA | דייקנות | הכתר |
+| 🦅 נשר | ← מוזג אל האריה | ראייה מגובה | הכתר |
 | 🦚 טווס | תוכן / לינקדאין | נוכחות | התוכן |
 | 🐆 נמר | מכירות | מהירות | האוצר |
 | 🐜 נמלה | כספים | סדר וחיסכון | האוצר |

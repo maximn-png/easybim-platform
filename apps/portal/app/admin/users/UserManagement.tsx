@@ -233,7 +233,7 @@ function CardChip({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="text-xs px-2.5 py-1 rounded-full font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+      className="text-[11px] leading-none px-2 py-1 rounded-full font-semibold whitespace-nowrap transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       style={style}
     >
       {label}
@@ -365,6 +365,17 @@ export default function UserManagement({
     })
   }
 
+  // Grant every card at once (or clear them all). Not the same as Admin —
+  // this hands over all cards without user-management powers.
+  function toggleAllApps(user: AdminUser) {
+    const allIds = CARDS.map((c) => c.id)
+    const hasAll = allIds.every((id) => user.apps.includes(id))
+    void call(`${user.id}:all`, `/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ apps: hasAll ? [] : allIds }),
+    })
+  }
+
   function toggleAdmin(user: AdminUser) {
     void call(`${user.id}:admin`, `/api/admin/users/${user.id}`, {
       method: 'PATCH',
@@ -440,7 +451,7 @@ export default function UserManagement({
   }
 
   return (
-    <main className="max-w-5xl mx-auto px-6 py-8">
+    <main className="max-w-[1400px] mx-auto px-6 py-8">
       {/* Header row */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
@@ -559,6 +570,16 @@ export default function UserManagement({
           )}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold" style={{ color: '#6b7280' }}>Cards:</span>
+            <CardChip
+              label="All cards"
+              active={inviteApps.length === CARDS.length}
+              mixed={inviteApps.length > 0 && inviteApps.length < CARDS.length}
+              onClick={() =>
+                setInviteApps((prev) =>
+                  prev.length === CARDS.length ? [] : CARDS.map((c) => c.id)
+                )
+              }
+            />
             {CARDS.map((card) => (
               <CardChip
                 key={card.id}
@@ -640,7 +661,7 @@ export default function UserManagement({
 
       {/* Users table */}
       <div className="bg-white/70 backdrop-blur-sm border border-white/90 rounded-2xl shadow-sm overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 1080 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1240 }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide" style={{ color: '#9ca3af' }}>
               <th className="px-5 py-3 font-semibold">User</th>
@@ -662,6 +683,7 @@ export default function UserManagement({
                   drawer={drawer}
                   busy={busy}
                   onToggleApp={toggleApp}
+                  onToggleAllApps={toggleAllApps}
                   onToggleAdmin={toggleAdmin}
                   onSaveField={saveField}
                   onDelete={deleteUser}
@@ -684,12 +706,13 @@ export default function UserManagement({
 }
 
 function FragmentRow({
-  user, drawer, busy, onToggleApp, onToggleAdmin, onSaveField, onDelete, onToggleDrawer, onShowMore,
+  user, drawer, busy, onToggleApp, onToggleAllApps, onToggleAdmin, onSaveField, onDelete, onToggleDrawer, onShowMore,
 }: {
   user: AdminUser
   drawer: DrawerState | undefined
   busy: string | null
   onToggleApp: (user: AdminUser, appId: string) => void
+  onToggleAllApps: (user: AdminUser) => void
   onToggleAdmin: (user: AdminUser) => void
   onSaveField: (user: AdminUser, field: 'name' | 'company', value: string) => void
   onDelete: (user: AdminUser) => void
@@ -738,19 +761,29 @@ function FragmentRow({
           />
         </td>
         <td className="px-5 py-4">
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap" style={{ width: 430 }}>
             {user.admin ? (
               <span className="text-xs" style={{ color: '#6b7280' }}>All cards (admin)</span>
             ) : (
-              CARDS.map((card) => (
+              <>
                 <CardChip
-                  key={card.id}
-                  label={card.title}
-                  active={user.apps.includes(card.id)}
-                  disabled={busy === `${user.id}:${card.id}`}
-                  onClick={() => onToggleApp(user, card.id)}
+                  label="All"
+                  active={CARDS.every((c) => user.apps.includes(c.id))}
+                  mixed={user.apps.length > 0 && !CARDS.every((c) => user.apps.includes(c.id))}
+                  disabled={busy === `${user.id}:all`}
+                  onClick={() => onToggleAllApps(user)}
+                  title="Grant every card (without admin powers)"
                 />
-              ))
+                {CARDS.map((card) => (
+                  <CardChip
+                    key={card.id}
+                    label={card.title}
+                    active={user.apps.includes(card.id)}
+                    disabled={busy === `${user.id}:${card.id}` || busy === `${user.id}:all`}
+                    onClick={() => onToggleApp(user, card.id)}
+                  />
+                ))}
+              </>
             )}
           </div>
         </td>

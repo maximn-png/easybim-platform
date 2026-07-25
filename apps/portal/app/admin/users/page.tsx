@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { clerkClient } from '@clerk/nextjs/server'
 import { getActivityEventModel } from '@easybim/db'
 import { requireAdmin } from '@/lib/access'
+import { deriveName, deriveCompany } from '@/lib/deriveIdentity'
 import AppHeader from '@/components/AppHeader'
 import UserManagement, { type AdminUser, type PendingInvitation } from './UserManagement'
 
@@ -50,11 +51,37 @@ export default async function AdminUsersPage() {
     getLastEvents(),
   ])
 
+  // Fill in a default name/company for any user missing them, so the admin
+  // always sees something sensible (derived from the Clerk name + email).
+  // Persisted back to Clerk best-effort, in parallel — a failed write just
+  // means we retry the derivation next load.
+  const backfills: Promise<unknown>[] = []
+
   const serializedUsers: AdminUser[] = users.map((u) => {
     const primaryEmail =
       u.emailAddresses.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ??
       u.emailAddresses[0]?.emailAddress ??
       ''
+
+    let metaName = typeof u.publicMetadata?.name === 'string' ? u.publicMetadata.name : ''
+    let company = typeof u.publicMetadata?.company === 'string' ? u.publicMetadata.company : ''
+    const patch: { name?: string; company?: string } = {}
+    if (!metaName) {
+      metaName = deriveName(u.firstName, u.lastName, primaryEmail)
+      if (metaName) patch.name = metaName
+    }
+    if (!company) {
+      company = deriveCompany(primaryEmail)
+      if (company) patch.company = company
+    }
+    if (Object.keys(patch).length > 0) {
+      backfills.push(
+        client.users
+          .updateUserMetadata(u.id, { publicMetadata: patch })
+          .catch((err) => console.error(`[admin/users] backfill failed for ${u.id}:`, err))
+      )
+    }
+
     return {
       id: u.id,
       name: [u.firstName, u.lastName].filter(Boolean).join(' ') || primaryEmail,
@@ -64,11 +91,13 @@ export default async function AdminUsersPage() {
       lastEvent: lastEvents.get(u.id) ?? null,
       admin: u.publicMetadata?.admin === true,
       apps: Array.isArray(u.publicMetadata?.apps) ? (u.publicMetadata.apps as string[]) : [],
-      metaName: typeof u.publicMetadata?.name === 'string' ? u.publicMetadata.name : '',
-      company: typeof u.publicMetadata?.company === 'string' ? u.publicMetadata.company : '',
+      metaName,
+      company,
       isSelf: u.id === adminId,
     }
   })
+
+  if (backfills.length > 0) await Promise.allSettled(backfills)
 
   const serializedInvitations: PendingInvitation[] = invitations.map((inv) => ({
     id: inv.id,

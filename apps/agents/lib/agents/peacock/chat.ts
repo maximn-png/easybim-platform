@@ -2,52 +2,22 @@ import { betaZodTool } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 import { connectDB } from '@/lib/db/mongoose'
 import AgentRun from '@/lib/models/AgentRun'
-import { runAgent } from '@/lib/core/agentRuntime'
 import { BRAND_VOICE, CADENCE } from './brand'
 import { addGuidance, getGuidance, guidanceBlock } from './guidance'
-import { AUTHOR_SYSTEM, buildDateContext } from './prompts'
-import { peacockTools, getBacklog, readItem } from './tools'
+import { driveTools } from './driveTools'
+import { makePostTools } from './posts'
 
 export const AGENT_KEY = 'peacock'
 
-/**
- * Draft a SPECIFIC item into a post on demand (off the weekly schedule), as a
- * focused manual author pass. Writes only up to Pending Approval — never
- * publishes. Creates its own AgentRun (trigger 'manual'), so it shows in the
- * dashboard run history.
- */
-export async function draftItemOnDemand(itemId: string, note: string | undefined, userId?: string) {
-  const guidance = await getGuidance(AGENT_KEY)
-  const dateContext = buildDateContext(new Date())
-  const userMessage = [
-    `מקסים ביקש לפתח Item ספציפי לפוסט עכשיו, מחוץ למחזור השבועי.`,
-    `מזהה ה-Item: ${itemId}.`,
-    note ? `הערת מקסים: ${note}` : '',
-    dateContext,
-    `קרא את ה-Item (read_item), כתוב טיוטה מלאה on-brand, קבע PostType ו-Publish Date (הסלוט הקרוב הפנוי, שני או חמישי), פרסם את הטיוטה ל-Updates עם תיוג מקסים, וקבע Status="Pending Approval". אל תפרסם ואל תעבור מעבר ל-Pending Approval. החזר שורת סיכום קצרה.`,
-  ]
-    .filter(Boolean)
-    .join('\n')
-
-  return runAgent({
-    agentKey: AGENT_KEY,
-    pass: 'author',
-    trigger: 'manual',
-    system: AUTHOR_SYSTEM + guidanceBlock(guidance),
-    tools: peacockTools,
-    userMessage,
-    context: { itemId, onDemand: true, requestedBy: userId },
-  })
-}
-
 const CHAT_BASE = `
 אתה 🦚 Peacock, סוכן השיווק של EasyBIM ללינקדאין, בשיחה עם מקסים (המפעיל שלך).
-תפקידך כאן: לעזור למקסים להבין מה אתה עושה, להסביר ריצות אחרונות, לענות על שאלות על הפוסטים ועל אופן העבודה, ולקבל ממנו הנחיות לשיפור.
+תפקידך כאן: לעזור למקסים לתכנן ולכתוב פוסטים, למשוך חומר רלוונטי מהדרייב, להסביר ריצות אחרונות, ולקבל ממנו הנחיות לשיפור.
 
 כללים:
 - ענה בשפת המשתמש (עברית או אנגלית), בקצרה וקונקרטית. בלי פתיחות מנופחות.
-- אינך מפרסם, אינך מקדם סטטוס מעבר ל-Pending Approval, ואינך עורך פריטים קיימים אחרים. אם מבקשים אישור/פרסום, הסבר שזה נעשה דרך תהליך האישור בלוח.
-- פעולת הכתיבה היחידה המותרת לך: כשמקסים מבקש לפתח Item ספציפי לפוסט עכשיו (מחוץ למחזור השבועי), השתמש ב-draft_item_now כדי לפתח אותו לטיוטה ולהעביר ל-Pending Approval. אם מקסים מתאר Item לפי שם ("הוספתי רעיון על X"), מצא אותו עם get_backlog, אמת עם read_item, ואז draft_item_now. אם לא מצאת, בקש את מזהה ה-Item.
+- תוכנית התוכן נשמרת אצלך (לא במאנדיי). נהל אותה עם הכלים: list_posts (הצג), create_post (הוסף רעיון/טיוטה), update_post (פתח טיוטה, קבע תאריך/סוג, קדם סטטוס).
+- טיוטה מוכנה: העבר ל-Status="ready". אל תסמן "published" — מקסים מפרסם בלינקדאין ידנית.
+- לפוסט מסוג "4. Project": משוך חומר אמיתי מהדרייב (list_project_files / read_project_doc), וצרף תמונה קיימת אם צריך (list_marketing_images). אפשר גם לייצר תמונה ממותגת עם generate_image.
 - כשמקסים נותן העדפה או הנחיה קבועה לאופן הכתיבה/ההתנהגות בפוסטים עתידיים (למשל "תקצר את הפוסטים", "יותר Case Studies", "הימנע מנושא X") קרא ל-save_guidance עם ניסוח תמציתי בשורה אחת, ואשר ששמרת. אל תשמור שאלות חד פעמיות או שיחת חולין כהנחיה.
 `.trim()
 
@@ -70,7 +40,7 @@ export async function buildChatSystem(): Promise<string> {
   return [
     CHAT_BASE,
     '',
-    'מה אתה עושה: כל שבוע (cron) אתה כותב 2 טיוטות פוסטים ללוח EasyBIM_Posts ומעביר ל-Pending Approval. כשמקסים מאשר, אתה מייצר תמונה מותגת ומעביר ל-Ready to Publish. כשהוא מבקש Revise, אתה משכתב לפי ההערות.',
+    'מה אתה עושה: כל שבוע (cron) אתה כותב 2 טיוטות פוסטים לתוכנית התוכן ומעביר ל-Status="ready" לסקירת מקסים. מקסים סוקר בדשבורד, מבקש שינויים בצ׳אט, ומפרסם בלינקדאין ידנית.',
     '',
     BRAND_VOICE,
     '',
@@ -81,10 +51,7 @@ export async function buildChatSystem(): Promise<string> {
   ].join('\n')
 }
 
-/**
- * Chat tools: read-only board lookups + save_guidance + one scoped write
- * (draft_item_now → Pending Approval). No publish/approve/edit of other items.
- */
+/** Chat tools: content-plan CRUD + Drive lookups + image gen + save_guidance. */
 export function makeChatTools(userId?: string) {
   const saveGuidance = betaZodTool({
     name: 'save_guidance',
@@ -97,20 +64,5 @@ export function makeChatTools(userId?: string) {
     },
   })
 
-  const draftItemNow = betaZodTool({
-    name: 'draft_item_now',
-    description:
-      'Draft a SPECIFIC Monday item into a post right now, off the weekly schedule, when Maxim asks. Drafts to Pending Approval only — never publishes. Needs the item id (use get_backlog/read_item first to find it by name).',
-    inputSchema: z.object({
-      itemId: z.string(),
-      note: z.string().optional().describe("any angle/instruction Maxim gave for this post"),
-    }),
-    run: async ({ itemId, note }) => {
-      const { summary } = await draftItemOnDemand(itemId, note, userId)
-      return `drafted item ${itemId} → Pending Approval. ${summary.slice(0, 400)}`
-    },
-  })
-
-  // get_backlog + read_item are read-only — safe for the advisor to locate items.
-  return [getBacklog, readItem, saveGuidance, draftItemNow]
+  return [...driveTools, ...makePostTools(userId), saveGuidance]
 }

@@ -32,6 +32,16 @@ export interface ExternalIds {
 export type ProjectStatus = 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck'
 export type SyncStatus = 'ok' | 'partial' | 'error' | 'never'
 
+// Client-editable fields for partner-hub (e.g. ANA) projects. These are owned by
+// the client user in the ANA portal area and live OUTSIDE the Monday-driven
+// snapshot so the sync never overwrites them (and vice-versa). projectName still
+// comes from MA-004; only these three are client-entered.
+export interface AnaFields {
+  number?:      string   // ANA-internal project number
+  status?:      string   // ANA-entered status (free text)
+  projectType?: string   // ANA-entered project type
+}
+
 // Per-discipline milestone completion, computed from MI-001-MilestonesProjects.
 // progress = round(completed / total * 100), where completed = bills whose
 // submission status is "Submitted" or "Work completed".
@@ -82,6 +92,7 @@ export interface IProject extends Document {
   externalIds:   ExternalIds
   snapshot:      ProjectSnapshot
   hoursConfig?:  HoursConfig
+  ana?:          AnaFields
   isActive:      boolean
   displayOrder?: number
   createdAt:     Date
@@ -165,6 +176,15 @@ const SnapshotSchema = new Schema<ProjectSnapshot>(
   { _id: false }
 )
 
+const AnaFieldsSchema = new Schema<AnaFields>(
+  {
+    number:      String,
+    status:      String,
+    projectType: String,
+  },
+  { _id: false }
+)
+
 const HoursConfigSchema = new Schema<HoursConfig>(
   {
     // Record<subjectLabel, 'modelMgmt' | 'superposition' | 'none'>. Stored as a
@@ -183,6 +203,7 @@ const ProjectSchema = new Schema<IProject>(
     externalIds:   { type: ExternalIdsSchema, required: true },
     snapshot:      { type: SnapshotSchema, default: () => ({}) },
     hoursConfig:   { type: HoursConfigSchema, default: undefined },
+    ana:           { type: AnaFieldsSchema, default: undefined },
     isActive:      { type: Boolean, default: true },
     displayOrder:  Number,
   },

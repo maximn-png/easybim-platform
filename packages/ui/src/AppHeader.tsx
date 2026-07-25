@@ -17,7 +17,7 @@ export default function AppHeader({
   rightSlot,
 }: AppHeaderProps) {
   return (
-    <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-[#e8eaff] px-6 py-3 flex items-center justify-between">
+    <header className="sticky top-0 z-50 bg-white/80 backdrop-blur border-b border-[#e8eaff] px-6 py-3 flex items-center justify-between">
       <Link href={dashboardHref}>
         <Image
           src={logoSrc}

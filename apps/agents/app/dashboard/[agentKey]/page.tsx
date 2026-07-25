@@ -6,6 +6,7 @@ import { getPresentation } from '@/lib/agents/presentation'
 import RunHistory from './RunHistory'
 import HowItWorks from './HowItWorks'
 import ChatShell from './ChatShell'
+import PeacockDashboard from './PeacockDashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,12 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
   const agent = getAgent(agentKey)
   if (!agent) notFound()
   const p = getPresentation(agentKey)
+
+  // Dashboard-first agents (Peacock): the dashboard is the landing; chat/about
+  // open as overlays from it.
+  if (p.hasDashboard) {
+    return <PeacockDashboard agentKey={agentKey} agentName={agent.name} description={agent.description} presentation={p} />
+  }
 
   // Chat-enabled agents get the full-page chat workspace (chat is the hero;
   // about / improvements live in the collapsible right panel).
