@@ -2,15 +2,21 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Cloud, Loader2, Search } from 'lucide-react'
+import { Cloud, Loader2, Search, Lock } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue } from '@/lib/services/apsService'
 import { normalizeStatus } from '@/lib/reportGrouping'
 import TeamMemberCell from '@/components/TeamMemberCell'
 
-// Issue tallies for a project. `null` while loading; `undefined` when
-// unavailable (no ACC link / not authenticated / no issues).
-type IssueStat = { open: number; closed: number; total: number; pct: number } | null | undefined
+// Issue tally state for a project — a discriminated union so the cell can show
+// WHY there's no bar (needs ACC login vs. no issues vs. error) rather than a
+// blank "—" for every case.
+type IssueStat =
+  | { kind: 'loading' }
+  | { kind: 'ok'; open: number; closed: number; total: number; pct: number }
+  | { kind: 'auth' }     // ACC Issues API needs a 3-legged ANA login
+  | { kind: 'empty' }    // reachable, but no issues / no ACC project
+  | { kind: 'error' }
 
 function sortByProjectName(a: ProjectRow, b: ProjectRow): number {
   return a.projectName.localeCompare(b.projectName, 'he')
@@ -50,10 +56,24 @@ function EditableCell({
 }
 
 // Issue status cell: closed / total and the completion % (closed ÷ total),
-// e.g. "20/100 · 20%", with a slim progress bar.
+// e.g. "20/100 · 20%", with a slim progress bar. Other states are labeled.
 function IssueStatusCell({ stat }: { stat: IssueStat }) {
-  if (stat === null) return <Loader2 size={13} className="animate-spin text-gray-300 mx-auto" />
-  if (stat === undefined) return <span className="text-gray-300 text-xs">—</span>
+  if (stat.kind === 'loading') return <Loader2 size={13} className="animate-spin text-gray-300 mx-auto" />
+  if (stat.kind === 'auth') {
+    // ACC's Issues API only answers a logged-in (3-legged) ANA token.
+    return (
+      <a
+        href="/api/auth/autodesk?returnTo=/ana&hub=ana"
+        onClick={e => e.stopPropagation()}
+        title="Connect Autodesk (ANA) to load issue status"
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 hover:text-amber-700"
+      >
+        <Lock size={12} /> Connect ACC
+      </a>
+    )
+  }
+  if (stat.kind === 'empty') return <span className="text-gray-300 text-xs">—</span>
+  if (stat.kind === 'error') return <span title="Failed to load issues" className="text-red-400 text-xs">!</span>
   const { closed, total, pct } = stat
   const color = pct >= 80 ? '#00c875' : pct >= 40 ? '#fdab3d' : '#ba1a1a'
   return (
@@ -79,7 +99,7 @@ export default function AnaProjectsClient({ projects }: { projects: ProjectRow[]
   )
   const [saving, setSaving] = useState<string | null>(null)
   const [issueStat, setIssueStat] = useState<Record<string, IssueStat>>(
-    () => Object.fromEntries(projects.map(p => [p._id, null]))
+    () => Object.fromEntries(projects.map(p => [p._id, { kind: 'loading' } as IssueStat]))
   )
 
   // Fetch each project's issues once to derive open / closed / completion %.
@@ -88,21 +108,20 @@ export default function AnaProjectsClient({ projects }: { projects: ProjectRow[]
     for (const p of projects) {
       fetch(`/api/projects/${p._id}/issues`)
         .then(r => r.json())
-        .then((data: { issues?: AccIssue[]; count?: number }) => {
+        .then((data: { issues?: AccIssue[]; count?: number; needsApsAuth?: boolean; noAccProject?: boolean; error?: string }) => {
           if (!alive) return
+          if (data.needsApsAuth) { setIssueStat(prev => ({ ...prev, [p._id]: { kind: 'auth' } })); return }
+          if (data.error) { setIssueStat(prev => ({ ...prev, [p._id]: { kind: 'error' } })); return }
           const issues = data.issues ?? []
-          if (issues.length === 0) {
-            setIssueStat(prev => ({ ...prev, [p._id]: undefined }))
-            return
-          }
+          if (issues.length === 0) { setIssueStat(prev => ({ ...prev, [p._id]: { kind: 'empty' } })); return }
           const closed = issues.filter(i => normalizeStatus(i.status) === 'closed').length
           const total = issues.length
           setIssueStat(prev => ({
             ...prev,
-            [p._id]: { open: total - closed, closed, total, pct: Math.round((closed / total) * 100) },
+            [p._id]: { kind: 'ok', open: total - closed, closed, total, pct: Math.round((closed / total) * 100) },
           }))
         })
-        .catch(() => { if (alive) setIssueStat(prev => ({ ...prev, [p._id]: undefined })) })
+        .catch(() => { if (alive) setIssueStat(prev => ({ ...prev, [p._id]: { kind: 'error' } })) })
     }
     return () => { alive = false }
   }, [projects])
