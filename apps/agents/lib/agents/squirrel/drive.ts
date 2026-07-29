@@ -16,7 +16,14 @@ const DRIVE_NAME = process.env.PQ_DRIVE_NAME || 'Finance'
 export const ROOT_FOLDER_ID = process.env.PQ_ROOT_FOLDER_ID || '10Mf8vlNrOdBvi1WN9SpSpL5Wx_0-YpQy'
 
 // Work-plan sheet templates per סוג פרויקט. Types without a template get folders only.
-const TEMPLATE_C_ID = process.env.PQ_TEMPLATE_SHEET_ID || '1aKTp7HN1Y5plb6LBPdXEm16WV0Xt0-WNW7HWYPrlXXM'
+// Both live under Finance / Price Quotes / 001 - Templates & Standards / 02 - PQ Templates.
+// Keep the canonical ids here (not just in .env) so a missing env var can't silently
+// fall back to some unrelated sheet — that is exactly how Type C ended up copying a
+// live project's work plan ("פארק שפרינצק- תכנון עבודה") instead of the template.
+//
+//   Type C   → "Type C - ניהול בים ותאום מערכות" / "TYPE C_EasyBIM - תכנון עבודה"
+//   Type A*  → "Type A - הקמת מודל ותאום מערכות" / "A-PlannedWork Template"
+const TEMPLATE_C_ID = process.env.PQ_TEMPLATE_SHEET_ID || '1z67wf1VuUszAAGriGY6xiSFZod7jCub0y7nbOigIyg0'
 const TEMPLATE_A_ID = process.env.PQ_TEMPLATE_SHEET_A_ID || '1sJZNxFu9d9hDignfgMs-1_TKZQtD4pVvpXepionpnlU'
 
 export interface SheetTemplate {
@@ -25,11 +32,14 @@ export interface SheetTemplate {
   prefix: string
 }
 
-/** Template for a סוג פרויקט label, or null when the type has no work-plan template. */
+/**
+ * Template for a סוג פרויקט label, or null when the type has no work-plan template.
+ * Board labels on dropdown8 are: A, B, C, D, E, M3, A.1, A.2 — B/D/E/M3 get folders only.
+ */
 export function templateForType(projectType: string | null | undefined): SheetTemplate | null {
   const t = (projectType ?? '').trim()
   if (t === 'C') return { templateId: TEMPLATE_C_ID, prefix: 'TYPE C - תכנון עבודה' }
-  if (t === 'A' || t === 'A.1') return { templateId: TEMPLATE_A_ID, prefix: 'A-PlannedWork' }
+  if (t === 'A' || t === 'A.1' || t === 'A.2') return { templateId: TEMPLATE_A_ID, prefix: 'A-PlannedWork' }
   return null
 }
 

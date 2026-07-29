@@ -76,7 +76,9 @@ NEXT_PUBLIC_PORTAL_URL=http://localhost:3000
 GOOGLE_SERVICE_ACCOUNT_JSON=   # base64 (or raw JSON) of the Finance service_account.json
 SHEET_COPIER_URL=              # SheetCopier.gs /exec web-app URL (from the PriceQuotes config.json)
 SHEET_COPIER_SECRET=           # matching SheetCopier secret
-PQ_TEMPLATE_SHEET_ID=1aKTp7HN1Y5plb6LBPdXEm16WV0Xt0-WNW7HWYPrlXXM
+# Work-plan templates — Price Quotes/001 - Templates & Standards/02 - PQ Templates
+PQ_TEMPLATE_SHEET_ID=1z67wf1VuUszAAGriGY6xiSFZod7jCub0y7nbOigIyg0    # Type C  → "TYPE C_EasyBIM - תכנון עבודה"
+PQ_TEMPLATE_SHEET_A_ID=1sJZNxFu9d9hDignfgMs-1_TKZQtD4pVvpXepionpnlU  # A/A.1/A.2 → "A-PlannedWork Template"
 PQ_DRIVE_NAME=Finance
 PQ_CLIENTS_ROOT=Clients
 # MONDAY_API_TOKEN (write scope) is reused for the board writes AND written into each project's _meta sheet.
