@@ -93,6 +93,8 @@ export interface ReportListItem {
   createdByName?: string
   createdAt: string | null
   hasSnapshot?: boolean   // has issuesSnapshot → usable in the Progress comparison
+  scheduleName?: string   // set when a report schedule produced this report
+  sentAt?: string | null  // actually delivered (auto-send), not just drafted
 }
 
 export interface ProjectsApiResponse {

@@ -38,7 +38,10 @@ export default async function RootLayout({
       >
         <body className="min-h-full flex flex-col">
           <AppHeader dashboardHref="/dashboard" />
-          <main className="flex-1 px-6 py-6">
+          {/* min-h-0 + flex lets a page opt into filling exactly the space left
+              below the header (see the project detail page, which locks to one
+              screen). Pages that grow past it still scroll the window as before. */}
+          <main className="flex-1 min-h-0 flex flex-col px-6 py-6">
             {children}
           </main>
         </body>

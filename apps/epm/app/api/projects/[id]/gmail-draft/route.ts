@@ -6,6 +6,7 @@ import { normalizeStatus, issueDiscipline } from '@/lib/reportGrouping'
 import type { BodyLink } from '@/lib/reportTemplates'
 import type { AccIssue } from '@/lib/services/apsService'
 import type { ReportMeta } from '@/lib/server/reportHtml'
+import { buildReportMime, toBase64Url } from '@/lib/server/reportMime'
 
 // PDF generation runs headless Chromium → needs Node runtime + time to paginate.
 export const runtime = 'nodejs'
@@ -104,94 +105,6 @@ async function attachDraftId(reportId: string, draftId: string) {
   }
 }
 
-// Wrap base64 at 76 chars per RFC 2045.
-function wrap76(s: string): string {
-  return s.replace(/.{76}/g, '$&\r\n')
-}
-const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64')
-const encodeHeader = (s: string) => `=?UTF-8?B?${b64(s)}?=` // RFC 2047 for non-ASCII headers
-
-const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-
-// Build the RFC 2822 message. When `inlineImages` is set the chart/screenshot are
-// embedded as cid: related parts (fallback); otherwise the HTML references hosted
-// https image URLs and the message is a simple mixed bundle of html + attachments.
-function buildMime(
-  d: DraftBody, bodyHtml: string, pdfB64: string, xlsxB64: string,
-  inlineImages: boolean,
-): string {
-  const MIXED = 'mixed_easybim_boundary'
-  const REL = 'rel_easybim_boundary'
-  const NL = '\r\n'
-
-  let htmlBlock: string[]
-  if (inlineImages && (d.chartPngBase64 || d.screenshotPngBase64)) {
-    const related: string[] = [
-      `--${REL}`,
-      'Content-Type: text/html; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64',
-      'Content-ID: <html@easybim>',
-      '',
-      wrap76(b64(bodyHtml)),
-    ]
-    if (d.chartPngBase64) {
-      related.push(`--${REL}`, 'Content-Type: image/png', 'Content-Transfer-Encoding: base64',
-        'Content-ID: <chart@easybim>', 'Content-Disposition: inline; filename="chart.png"', '', wrap76(d.chartPngBase64))
-    }
-    if (d.screenshotPngBase64) {
-      related.push(`--${REL}`, 'Content-Type: image/png', 'Content-Transfer-Encoding: base64',
-        'Content-ID: <screenshot@easybim>', 'Content-Disposition: inline; filename="screenshot.png"', '', wrap76(d.screenshotPngBase64))
-    }
-    related.push(`--${REL}--`)
-    htmlBlock = [
-      `--${MIXED}`,
-      `Content-Type: multipart/related; type="text/html"; start="<html@easybim>"; boundary="${REL}"`,
-      '',
-      ...related,
-    ]
-  } else {
-    // Hosted https images → plain HTML part, no inline attachments.
-    htmlBlock = [
-      `--${MIXED}`,
-      'Content-Type: text/html; charset="UTF-8"',
-      'Content-Transfer-Encoding: base64',
-      '',
-      wrap76(b64(bodyHtml)),
-    ]
-  }
-
-  const lines: string[] = [
-    `To: ${d.to.join(', ')}`,
-    `Subject: ${encodeHeader(d.subject)}`,
-    'MIME-Version: 1.0',
-    `Content-Type: multipart/mixed; boundary="${MIXED}"`,
-    '',
-    ...htmlBlock,
-    // PDF attachment
-    `--${MIXED}`,
-    'Content-Type: application/pdf',
-    'Content-Transfer-Encoding: base64',
-    `Content-Disposition: attachment; filename="${d.pdfName}"`,
-    '',
-    wrap76(pdfB64),
-    // Excel attachment
-    `--${MIXED}`,
-    `Content-Type: ${XLSX_MIME}`,
-    'Content-Transfer-Encoding: base64',
-    `Content-Disposition: attachment; filename="${d.xlsxName}"`,
-    '',
-    wrap76(xlsxB64),
-    `--${MIXED}--`,
-  ]
-
-  return lines.join(NL)
-}
-
-function toBase64Url(mime: string): string {
-  return Buffer.from(mime, 'utf8').toString('base64')
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
 export async function POST(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
@@ -243,7 +156,13 @@ export async function POST(
     const bodyHtml = buildEmailHtml({ ...body.emailParts, urls })
 
     // 4. Assemble + create the draft.
-    const raw = toBase64Url(buildMime(body, bodyHtml, pdf.toString('base64'), xlsx.toString('base64'), !useHosted))
+    const raw = toBase64Url(buildReportMime({
+      to: body.to, subject: body.subject, bodyHtml,
+      pdf, pdfName: body.pdfName, xlsx, xlsxName: body.xlsxName,
+      chartPngBase64: body.chartPngBase64,
+      screenshotPngBase64: body.screenshotPngBase64,
+      inlineImages: !useHosted,
+    }))
     const { id } = await gmailCreateDraft(token, raw)
     if (reportId) await attachDraftId(reportId, id)
 

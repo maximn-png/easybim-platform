@@ -22,7 +22,7 @@ const DISCIPLINE_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסצי�
 const DISCIPLINE_FIELD_TITLES = ['discipline', 'disciplines']
 import IssuesByMonthChart from './IssuesByMonthChart'
 import MultiSelect from './MultiSelect'
-import ExportReportModal from './ExportReportModal'
+import ReportsDrawer from './reports/ReportsDrawer'
 import ProjectLinksBar from './ProjectLinksBar'
 
 // Readable pill text colour: light pastels get a dark gray, saturated colours keep their hue.
@@ -48,7 +48,7 @@ function Breadcrumb({ project, anaView = false }: { project: ProjectRow; anaView
         <ChevronRight size={12} />
         <Link href={`/ana/${project._id}`} className="hover:text-[#1e248c]" dir="rtl">{project.projectName}</Link>
         <ChevronRight size={12} />
-        <span className="text-[#1e248c] font-medium">Reports</span>
+        <span className="text-[#1e248c] font-medium">Forma Issues Status</span>
       </nav>
     )
   }
@@ -60,7 +60,7 @@ function Breadcrumb({ project, anaView = false }: { project: ProjectRow; anaView
       <ChevronRight size={12} />
       <Link href={`/dashboard/${project._id}`} className="hover:text-[#1e248c]" dir="rtl">{project.projectName}</Link>
       <ChevronRight size={12} />
-      <span className="text-[#1e248c] font-medium">Reports</span>
+      <span className="text-[#1e248c] font-medium">Forma Issues Status</span>
     </nav>
   )
 }
@@ -238,8 +238,8 @@ export default function BimReportClient({ project, anaView = false }: { project:
   const [sortCol, setSortCol] = useState<string | null>('displayId')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  // Export Report modal
-  const [exportOpen, setExportOpen] = useState(false)
+  // Reports drawer (Export · Schedule · Activity)
+  const [reportsOpen, setReportsOpen] = useState(false)
 
   useEffect(() => {
     fetch(`/api/projects/${project._id}/issues`)
@@ -581,7 +581,7 @@ export default function BimReportClient({ project, anaView = false }: { project:
             <Breadcrumb project={project} anaView={anaView} />
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               <h1 className="text-3xl font-bold text-[#1e248c]">
-                Reports –{' '}
+                Forma Issues Status –{' '}
                 <span dir="rtl" className="inline-block">{project.projectName}</span>
               </h1>
               <span className="text-sm font-bold px-2.5 py-1 rounded-full bg-white/70 border border-[#1e248c]/15 text-[#1e248c] whitespace-nowrap">
@@ -606,10 +606,11 @@ export default function BimReportClient({ project, anaView = false }: { project:
                 </a>
               )}
               <button
-                onClick={() => setExportOpen(true)}
+                onClick={() => setReportsOpen(true)}
+                title="Export, schedule, and review this project's reports"
                 className="flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-medium hover:bg-[#44b8d3] transition-colors shadow-sm"
               >
-                <FileDown size={15} /> Export Report
+                <FileDown size={15} /> Reports
               </button>
             </div>
           )}
@@ -1029,22 +1030,22 @@ export default function BimReportClient({ project, anaView = false }: { project:
         )}
       </div>
 
-      <ExportReportModal
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
+      <ReportsDrawer
+        open={reportsOpen}
+        onClose={() => setReportsOpen(false)}
         project={project}
         issues={normalizedIssues}
         allStatuses={allStatuses}
         issueTypes={issueTypes}
         disciplines={disciplines}
         assignees={assignees}
-        defaultGroupBy={groupBy}
-        defaultAssignees={filterAssignees}
-        defaultTypes={filterTypes}
-        defaultDisciplines={filterDisciplines}
-        defaultStatuses={filterStatuses}
-        defaultExtraFilters={extraFilters}
-        defaultMonth={monthSel}
+        groupBy={groupBy}
+        filterAssignees={filterAssignees}
+        filterTypes={filterTypes}
+        filterDisciplines={filterDisciplines}
+        filterStatuses={filterStatuses}
+        extraFilters={extraFilters}
+        monthSel={monthSel}
       />
     </div>
   )
