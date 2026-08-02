@@ -17,6 +17,25 @@ export async function getUserGoogleToken(userId: string): Promise<string | null>
   }
 }
 
+// Sends a message immediately (used by scheduled reports set to auto-send).
+// The gmail.compose scope already granted for drafts also permits sending.
+export async function gmailSendMessage(accessToken: string, rawBase64Url: string): Promise<{ id: string; threadId?: string }> {
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: rawBase64Url }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`Gmail messages.send ${res.status}: ${body.slice(0, 300)}`)
+  }
+  const json = await res.json() as { id: string; threadId?: string }
+  return { id: json.id, threadId: json.threadId }
+}
+
 // Creates a Gmail draft from a base64url-encoded RFC 2822 message.
 export async function gmailCreateDraft(accessToken: string, rawBase64Url: string): Promise<{ id: string }> {
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {

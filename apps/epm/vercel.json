@@ -3,6 +3,10 @@
     {
       "path": "/api/sync/projects",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/report-schedules",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

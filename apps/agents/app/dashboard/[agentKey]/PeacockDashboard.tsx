@@ -34,6 +34,12 @@ const STATUS_META: Record<PostStatus, { label: string; color: string }> = {
   published: { label: 'Published', color: '#22c55e' },
 }
 
+// Neutral fallback so an unrecognized status (e.g. legacy/migrated data) never
+// crashes the render — the dashboard degrades to an "Other" chip instead.
+const UNKNOWN_META = { label: 'Other', color: '#c8cdd8' }
+const metaFor = (status: string): { label: string; color: string } =>
+  STATUS_META[status as PostStatus] ?? UNKNOWN_META
+
 export default function PeacockDashboard({
   agentKey, agentName, description, presentation: p,
 }: {
@@ -256,7 +262,7 @@ export default function PeacockDashboard({
 }
 
 function StatusPill({ status }: { status: PostStatus }) {
-  const m = STATUS_META[status]
+  const m = metaFor(status)
   return <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, background: `${m.color}1f`, padding: '4px 10px', borderRadius: 999 }}>{m.label}</span>
 }
 
@@ -296,7 +302,7 @@ function WeekPreview({ posts }: { posts: PostDTO[] }) {
             <span style={{ fontSize: 11, fontWeight: 700, color: d.isToday ? PURPLE : '#9aa0ac' }}>{d.label}</span>
             <div className="flex flex-col gap-1.5 w-full">
               {d.posts.map((post) => (
-                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${STATUS_META[post.status].color}22`, borderLeft: `3px solid ${STATUS_META[post.status].color}` }} />
+                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${metaFor(post.status).color}22`, borderLeft: `3px solid ${metaFor(post.status).color}` }} />
               ))}
             </div>
           </div>

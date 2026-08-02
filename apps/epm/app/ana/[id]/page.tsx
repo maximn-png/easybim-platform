@@ -15,7 +15,7 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
     const Report = (await import('@/app/models/Report')).default
     await connectDB()
     const docs = await Report.find({ projectId: id })
-      .select('kind title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
+      .select('kind title subject recipients draftId gmailUrl scheduleName sentAt issueCount createdByName createdAt issuesSnapshot._id')
       .sort({ createdAt: -1 })
       .limit(100)
       .lean() as unknown as Array<Record<string, unknown>>
@@ -31,6 +31,8 @@ async function fetchReports(id: string): Promise<ReportListItem[]> {
       createdByName: d.createdByName as string | undefined,
       createdAt: d.createdAt ? new Date(d.createdAt as string).toISOString() : null,
       hasSnapshot: Array.isArray(d.issuesSnapshot) && d.issuesSnapshot.length > 0,
+      scheduleName: d.scheduleName as string | undefined,
+      sentAt: d.sentAt ? new Date(d.sentAt as string).toISOString() : null,
     }))
   } catch {
     return []

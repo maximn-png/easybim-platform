@@ -749,3 +749,292 @@ export async function fetchDedicatedBoardUrls(
 
   return { urls, ambiguous }
 }
+
+// ── Updates (combined activity feed) ────────────────────────────────────────
+// A read-only, aggregated Monday "updates" feed for a single project, pulled
+// live (see /api/projects/[id]/updates). Three sources feed it:
+//   • project-board — every item on the project's dedicated board (e.g. 22125_…)
+//   • milestone     — MI-001 items that link to the project + their subitem "bills"
+//   • master        — the project's single MA-004 master item
+// The board sweep (fetchBoardUpdates) is the expensive call: it pages the whole
+// board pulling updates inline, so per-item `updates(limit)` is kept small to
+// stay well under Monday's per-query complexity budget.
+
+export type UpdateSourceKind = 'project-board' | 'milestone' | 'master'
+
+export interface MondayUpdateCreator {
+  id:    string | null
+  name:  string | null
+  photo: string | null   // photo_thumb_small
+}
+
+export interface MondayUpdateAsset {
+  id:      string
+  name:    string
+  url:     string | null   // public_url ?? url
+  isImage: boolean
+}
+
+export interface MondayUpdateReply {
+  id:        string
+  body:      string        // HTML — replies can carry tables/lists too
+  textBody:  string        // plain text
+  createdAt: string
+  creator:   MondayUpdateCreator
+}
+
+export interface MondayUpdate {
+  id:        string
+  body:      string        // HTML
+  textBody:  string        // plain text
+  createdAt: string
+  creator:   MondayUpdateCreator
+  replies:   MondayUpdateReply[]
+  assets:    MondayUpdateAsset[]
+  source: {
+    kind:     UpdateSourceKind
+    label:    string       // e.g. 'Project board', 'Milestones (MI-001)', 'Master (MA-004)'
+    itemName: string       // the pulse the update lives on
+    itemUrl:  string | null
+  }
+}
+
+// Shared GraphQL selection for an `updates { … }` node.
+const UPDATE_FIELDS = `
+  id
+  body
+  text_body
+  created_at
+  creator { id name photo_thumb_small }
+  replies { id body text_body created_at creator { id name photo_thumb_small } }
+  assets  { id name public_url url file_extension }
+`
+
+const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'heic', 'heif', 'tif', 'tiff'])
+
+interface RawAsset { id: string; name: string; public_url: string | null; url: string | null; file_extension: string | null }
+interface RawCreator { id: string; name: string; photo_thumb_small: string | null }
+
+interface RawUpdateNode {
+  id:         string
+  body:       string
+  text_body:  string
+  created_at: string
+  creator:    RawCreator | null
+  replies:    Array<{ id: string; body: string; text_body: string; created_at: string; creator: RawCreator | null }> | null
+  assets:     RawAsset[] | null
+}
+
+function mapCreator(c: RawCreator | null): MondayUpdateCreator {
+  return { id: c?.id ?? null, name: c?.name ?? null, photo: c?.photo_thumb_small ?? null }
+}
+
+function mapAsset(a: RawAsset): MondayUpdateAsset {
+  const ext = (a.file_extension ?? '').replace(/^\./, '').toLowerCase()
+  return { id: a.id, name: a.name, url: a.public_url ?? a.url ?? null, isImage: IMAGE_EXTS.has(ext) }
+}
+
+/** Build a deep link to a pulse (item/subitem) on a board. */
+function pulseUrl(boardId: string | null, itemId: string): string | null {
+  if (!boardId) return null
+  return `https://${MONDAY_SUBDOMAIN}.monday.com/boards/${boardId}/pulses/${itemId}`
+}
+
+/** Extract the board id from a Monday board URL (…/boards/<digits>). */
+export function boardIdFromUrl(url: string | undefined | null): string | null {
+  if (!url) return null
+  const m = url.match(/\/boards\/(\d+)/)
+  return m ? m[1] : null
+}
+
+function normalizeUpdate(u: RawUpdateNode, source: MondayUpdate['source']): MondayUpdate {
+  return {
+    id:        u.id,
+    body:      u.body ?? '',
+    textBody:  u.text_body ?? '',
+    createdAt: u.created_at,
+    creator:   mapCreator(u.creator),
+    replies:   (u.replies ?? []).map(r => ({
+      id:        r.id,
+      body:      r.body ?? '',
+      textBody:  r.text_body ?? '',
+      createdAt: r.created_at,
+      creator:   mapCreator(r.creator),
+    })),
+    assets:    (u.assets ?? []).map(mapAsset),
+    source,
+  }
+}
+
+/** Updates on a single item (used for the MA-004 master item). */
+export async function fetchItemUpdates(
+  itemId: string,
+  source: { kind: UpdateSourceKind; label: string },
+  limit = 25,
+): Promise<MondayUpdate[]> {
+  const query = `
+    query ($ids: [ID!], $limit: Int!) {
+      items(ids: $ids) {
+        id
+        name
+        board { id }
+        updates(limit: $limit) { ${UPDATE_FIELDS} }
+      }
+    }
+  `
+  const data = await mondayQuery(query, { ids: [itemId], limit }) as {
+    items: Array<{ id: string; name: string; board: { id: string } | null; updates: RawUpdateNode[] | null }> | null
+  }
+  const item = data.items?.[0]
+  if (!item) return []
+  const boardId = item.board?.id ?? null
+  return (item.updates ?? []).map(u => normalizeUpdate(u, {
+    kind: source.kind, label: source.label, itemName: item.name, itemUrl: pulseUrl(boardId, item.id),
+  }))
+}
+
+/** Updates across a board: the board's own "Board Discussion" feed PLUS every
+ *  item's updates (used for the dedicated project board). */
+export async function fetchBoardUpdates(
+  boardId: string,
+  source: { kind: UpdateSourceKind; label: string },
+  opts: { perItemLimit?: number; pageSize?: number; maxItems?: number; boardLimit?: number } = {},
+): Promise<MondayUpdate[]> {
+  const perItemLimit = opts.perItemLimit ?? 5
+  const pageSize     = opts.pageSize ?? 25
+  const maxItems     = opts.maxItems ?? 200
+  const boardLimit   = opts.boardLimit ?? 25
+
+  const out: MondayUpdate[] = []
+
+  // Board-level updates — Monday's "Board Discussion", posted to the board itself
+  // and not attached to any item. Skipped (not fatal) if the board has none.
+  try {
+    const bd = await mondayQuery(`
+      query ($boardId: ID!, $uLimit: Int!) {
+        boards(ids: [$boardId]) { name updates(limit: $uLimit) { ${UPDATE_FIELDS} } }
+      }
+    `, { boardId, uLimit: boardLimit }) as { boards: Array<{ name: string; updates: RawUpdateNode[] | null }> }
+    for (const u of bd.boards?.[0]?.updates ?? []) {
+      out.push(normalizeUpdate(u, {
+        kind: source.kind, label: source.label,
+        itemName: 'Board Discussion',
+        itemUrl: `https://${MONDAY_SUBDOMAIN}.monday.com/boards/${boardId}`,
+      }))
+    }
+  } catch (err) {
+    console.error(`[fetchBoardUpdates] board-level updates skipped for ${boardId}:`, err)
+  }
+
+  const query = `
+    query ($boardId: ID!, $limit: Int!, $cursor: String, $uLimit: Int!) {
+      boards(ids: [$boardId]) {
+        items_page(limit: $limit, cursor: $cursor) {
+          cursor
+          items {
+            id
+            name
+            updates(limit: $uLimit) { ${UPDATE_FIELDS} }
+          }
+        }
+      }
+    }
+  `
+  let cursor: string | null = null
+  let seen = 0
+
+  do {
+    const data = await mondayQuery(query, { boardId, limit: pageSize, cursor, uLimit: perItemLimit }) as {
+      boards: Array<{ items_page: { cursor: string | null; items: Array<{ id: string; name: string; updates: RawUpdateNode[] | null }> } }>
+    }
+    const page  = data.boards?.[0]?.items_page
+    const items = page?.items ?? []
+    cursor = page?.cursor ?? null
+
+    for (const item of items) {
+      seen++
+      for (const u of item.updates ?? []) {
+        out.push(normalizeUpdate(u, {
+          kind: source.kind, label: source.label, itemName: item.name, itemUrl: pulseUrl(boardId, item.id),
+        }))
+      }
+    }
+    if (seen >= maxItems) break
+  } while (cursor)
+
+  return out
+}
+
+/** Updates from MI-001 milestones (items + subitem "bills") linked to a project. */
+export async function fetchMilestoneUpdatesForProject(
+  masterItemId: string,
+  source: { kind: UpdateSourceKind; label: string } = { kind: 'milestone', label: 'Milestones (MI-001)' },
+  perItemLimit = 10,
+): Promise<MondayUpdate[]> {
+  const query = `
+    query ($boardId: ID!, $limit: Int!, $cursor: String, $uLimit: Int!, $queryParams: ItemsQuery) {
+      boards(ids: [$boardId]) {
+        items_page(limit: $limit, cursor: $cursor, query_params: $queryParams) {
+          cursor
+          items {
+            id
+            name
+            updates(limit: $uLimit) { ${UPDATE_FIELDS} }
+            subitems {
+              id
+              name
+              board { id }
+              updates(limit: $uLimit) { ${UPDATE_FIELDS} }
+            }
+          }
+        }
+      }
+    }
+  `
+  // board_relation filtering requires the linked item id as a NUMBER — a string yields zero matches.
+  const queryParams = {
+    rules: [{ column_id: 'board_relation_mkywzj9x', compare_value: [Number(masterItemId)], operator: 'any_of' }],
+  }
+
+  const out: MondayUpdate[] = []
+  let cursor: string | null = null
+  let first = true
+
+  do {
+    // query_params can only be sent on the first request; later pages use the cursor alone.
+    const variables = first
+      ? { boardId: MILESTONES_BOARD_ID, limit: 50, uLimit: perItemLimit, queryParams }
+      : { boardId: MILESTONES_BOARD_ID, limit: 50, cursor, uLimit: perItemLimit }
+
+    const data = await mondayQuery(query, variables) as {
+      boards: Array<{ items_page: { cursor: string | null; items: Array<{
+        id: string; name: string; updates: RawUpdateNode[] | null
+        subitems: Array<{ id: string; name: string; board: { id: string } | null; updates: RawUpdateNode[] | null }> | null
+      }> } }>
+    }
+    const page  = data.boards?.[0]?.items_page
+    const items = page?.items ?? []
+    cursor = page?.cursor ?? null
+    first  = false
+
+    for (const item of items) {
+      for (const u of item.updates ?? []) {
+        out.push(normalizeUpdate(u, {
+          kind: source.kind, label: source.label, itemName: item.name,
+          itemUrl: pulseUrl(MILESTONES_BOARD_ID, item.id),
+        }))
+      }
+      for (const sub of item.subitems ?? []) {
+        const subBoardId = sub.board?.id ?? null
+        for (const u of sub.updates ?? []) {
+          out.push(normalizeUpdate(u, {
+            kind: source.kind, label: source.label, itemName: `${item.name} › ${sub.name}`,
+            itemUrl: pulseUrl(subBoardId, sub.id),
+          }))
+        }
+      }
+    }
+  } while (cursor)
+
+  return out
+}

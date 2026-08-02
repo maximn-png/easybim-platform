@@ -3,12 +3,13 @@ import { NextResponse } from 'next/server'
 import { canAccessApp, resolveAccess } from '@easybim/auth'
 
 // Public to Clerk middleware:
-//  - the cron sync endpoint self-guards with CRON_SECRET (otherwise the Vercel
-//    hourly cron, which has no session, gets redirected to sign-in)
+//  - the cron endpoints self-guard with CRON_SECRET (otherwise the Vercel crons,
+//    which have no session, get redirected to sign-in)
 //  - report images are loaded by external email recipients / Gmail's image proxy,
 //    so they must not require a session (guarded by an unguessable reportId)
 const isPublicRoute = createRouteMatcher([
   '/api/sync/projects(.*)',
+  '/api/cron/(.*)',
   '/api/report-image/(.*)',
 ])
 

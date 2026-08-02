@@ -31,6 +31,11 @@ export interface IReport extends Document {
   screenshotPng?:  Buffer          // optional instructional screenshot — served publicly for the email body
   draftId?:        string          // Gmail draft id
   gmailUrl?:       string          // link to open the Gmail draft
+  // Set when the report was produced by a schedule rather than by hand.
+  scheduleId?:     Types.ObjectId
+  scheduleName?:   string
+  sentAt?:         Date            // actually delivered (auto-send), not just drafted
+  messageId?:      string          // Gmail message id of the sent mail
   issueCount?:     number
   issuesSnapshot?: ReportIssueSnapshot[]
   filtersSummary?: string
@@ -68,6 +73,10 @@ const ReportSchema = new Schema<IReport>(
     screenshotPng:   Buffer,
     draftId:         String,
     gmailUrl:        String,
+    scheduleId:      { type: Schema.Types.ObjectId, ref: 'ReportSchedule', index: true },
+    scheduleName:    String,
+    sentAt:          Date,
+    messageId:       String,
     issueCount:      Number,
     issuesSnapshot:  { type: [ReportIssueSnapshotSchema], default: undefined },
     filtersSummary:  String,
