@@ -36,3 +36,26 @@ export function getPartnerHubByAccountId(accountId?: string | null): ApsHub | nu
   if (!accountId) return null
   return getPartnerHubs().find(h => h.accountId === accountId) ?? null
 }
+
+// EasyBIM's own ACC account, expressed as an ApsHub so the viewer code paths
+// (token, discovery) work uniformly across our hub and partner hubs.
+export function getEasybimHub(): ApsHub | null {
+  const clientId     = process.env.APS_CLIENT_ID
+  const clientSecret = process.env.APS_CLIENT_SECRET
+  const accountId    = process.env.APS_ACCOUNT_ID
+  if (!clientId || !clientSecret || !accountId) return null
+  return { key: 'easybim', name: 'EasyBIM', accountId, clientId, clientSecret }
+}
+
+// Hub whose 2-legged credentials can drive the model viewer for a project:
+// EasyBIM's own account or a configured partner hub (e.g. ANA). Projects
+// flagged accExternalHub live OUTSIDE the EasyBIM account — for those, only a
+// matching partner hub works; any other client hub → null → no viewer.
+export function resolveViewerHub(accHubId?: string | null, accExternalHub?: boolean | null): ApsHub | null {
+  const easybim = getEasybimHub()
+  const partner = getPartnerHubByAccountId(accHubId)
+  if (accExternalHub) return partner
+  if (!accHubId) return easybim
+  if (easybim && accHubId === easybim.accountId) return easybim
+  return partner
+}

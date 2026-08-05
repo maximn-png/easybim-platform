@@ -22,6 +22,7 @@ import TeamMemberCell from './TeamMemberCell'
 import FormaConnectPanel from './FormaConnectPanel'
 import ActivityReportsPanel from './reports/ActivityReportsPanel'
 import CombinedModelViewer from './ana/CombinedModelViewer'
+import CoordinationModelViewer from './CoordinationModelViewer'
 
 // Canonical subjects default to their namesake team; everything else to 'none'
 // until assigned on the Hours Analytics page. Mirrors HoursAnalyticsClient.
@@ -213,7 +214,7 @@ interface MondayUpdateItem {
   creator:   MondayUpdateCreator
   replies:   Array<{ id: string; body: string; textBody: string; createdAt: string; creator: MondayUpdateCreator }>
   assets:    Array<{ id: string; name: string; url: string | null; isImage: boolean }>
-  source:    { kind: 'project-board' | 'milestone' | 'master'; label: string; itemName: string; itemUrl: string | null }
+  source:    { kind: 'project-board' | 'milestone' | 'master' | 'doc'; label: string; itemName: string; itemUrl: string | null }
 }
 
 // Hebrew source badge, color-coded per board so a mixed feed stays scannable.
@@ -221,6 +222,7 @@ const SOURCE_BADGE: Record<MondayUpdateItem['source']['kind'], { label: string; 
   'project-board': { label: 'לוח הפרויקט', cls: 'bg-[#e7eefe] text-[#1e248c]' },
   'milestone':     { label: 'אבני דרך',    cls: 'bg-cyan-50 text-cyan-700' },
   'master':        { label: 'לוח ראשי',    cls: 'bg-amber-50 text-amber-700' },
+  'doc':           { label: 'מסמך',        cls: 'bg-violet-50 text-violet-700' },
 }
 
 // Above this much text an update is collapsed behind "עוד" in the card grid.
@@ -276,6 +278,19 @@ function sanitizeHtml(html: string): string {
   return doc.body.innerHTML
 }
 
+// Monday checklists arrive as an EMPTY <ul data-checklist-holder> in the HTML
+// body (their items are loaded dynamically on monday.com) while text_body DOES
+// carry the lines — so when the HTML's visible text is much shorter than the
+// plain text, the plain text is the truthful render.
+function visibleTextLen(html: string): number {
+  return html.replace(/<[^>]+>/g, ' ').replace(/[﻿​]/g, '').trim().length
+}
+function preferPlainText(body: string | undefined, textBody: string): boolean {
+  const t = textBody.trim().length
+  if (!body?.trim() || t === 0) return false
+  return visibleTextLen(body) < t * 0.5
+}
+
 function RichText({ html }: { html: string }) {
   const clean = useMemo(() => sanitizeHtml(html), [html])
   // Fallback before hydration / if DOMParser is unavailable: tags stripped to text.
@@ -301,6 +316,10 @@ export default function ProjectDetailClient({
 
   // Report history (ANA view only; mutated locally on delete inside the panel).
   const [reports, setReports] = useState<ReportListItem[]>(initialReports)
+
+  // True when the project's hub has no viewer credentials — the center model
+  // column is absent and the updates card takes its width instead.
+  const [viewerHidden, setViewerHidden] = useState(false)
 
   // Milestone completion, computed during sync from MI-001-MilestonesProjects.
   // Disciplines are dynamic per project (most have BIM Management + MEP
@@ -380,16 +399,17 @@ export default function ProjectDetailClient({
   type UpdateKind = MondayUpdateItem['source']['kind']
   const [activeFilter, setActiveFilter] = useState<'all' | UpdateKind>('all')
   const kindCounts = useMemo(() => {
-    const m: Record<UpdateKind, number> = { 'project-board': 0, milestone: 0, master: 0 }
+    const m: Record<UpdateKind, number> = { 'project-board': 0, milestone: 0, master: 0, doc: 0 }
     for (const u of mondayUpdates ?? []) m[u.source.kind]++
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mondayUpdates])
-  const presentKinds = (['project-board', 'milestone', 'master'] as UpdateKind[]).filter(k => kindCounts[k] > 0)
+  const presentKinds = (['project-board', 'milestone', 'master', 'doc'] as UpdateKind[]).filter(k => kindCounts[k] > 0)
   const kindChipLabel: Record<UpdateKind, string> = {
     'project-board': project.projectNumber,   // e.g. "22125"
     milestone:       'MI-001',
     master:          'MA-004',
+    doc:             'מסמכים',
   }
   // Free-text search: matches the update/reply text, author names and the item name.
   const [updatesQuery, setUpdatesQuery] = useState('')
@@ -482,12 +502,11 @@ export default function ProjectDetailClient({
     )
   }
 
-  // ── Internal EPM view — one screen, the updates feed is the only scroller ──
+  // ── Internal EPM view — one screen, three columns: stat rail · model viewer
+  //    (center) · updates (right). Only the updates feed and the rail scroll,
+  //    internally; the page itself is locked to the viewport from lg up
+  //    (`epm-one-screen`, see globals.css). Below lg it stacks and scrolls. ──
   return (
-    // Height-locked from lg up so the page itself never scrolls. `epm-one-screen`
-    // pins the shell to the viewport (see globals.css) which is what makes the
-    // `flex-1 min-h-0` chain below constrain rather than grow — no magic viewport
-    // math. Below lg the lock is released and the page scrolls normally.
     <div
       className="epm-one-screen flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden"
       style={{ background: 'linear-gradient(135deg, #f0f3ff 0%, #e7eefe 100%)' }}
@@ -520,11 +539,9 @@ export default function ProjectDetailClient({
           </div>
         </div>
 
-        {/* ── Body: narrow stat rail + the updates feed ── */}
+        {/* ── Body: stat rail · model viewer (center) · updates (right) ── */}
         <div className="flex flex-col lg:flex-row gap-3.5 lg:flex-1 lg:min-h-0">
 
-          {/* Rail. `epm-rail` lets globals.css densify it on short viewports so all
-              three cards still fit one screen; overflow is the last-resort valve. */}
           <div className="epm-rail flex flex-col gap-3.5 lg:w-72 lg:shrink-0 lg:min-h-0 lg:overflow-y-auto">
 
             {/* Milestone Status — % of bills completed, per discipline + overall */}
@@ -584,9 +601,10 @@ export default function ProjectDetailClient({
               }}
             />
 
-            {/* Project Contacts */}
+            {/* Project Contacts — stretches to fill the rest of the rail so its
+                bottom edge aligns with the viewer's. */}
             {(project.bimManager || project.mepCoordinator || project.bimModeller) && (
-              <div className="glass-card rounded-2xl p-[15px] flex flex-col gap-3">
+              <div className="glass-card rounded-2xl p-[15px] flex flex-col gap-3 lg:flex-1">
                 <h2 className="font-semibold text-[#1e248c] text-[13px] flex items-center gap-2">
                   <Users size={14} className="text-[#44b8d3]" /> Project Contacts
                 </h2>
@@ -611,12 +629,21 @@ export default function ProjectDetailClient({
             )}
           </div>
 
-          {/* ── Monday Updates — fills the rest; the feed is columnised so no
-                 single card gets uncomfortably wide. ── */}
-          <div className="glass-card rounded-2xl p-[15px] flex flex-col gap-3 @container lg:flex-1 lg:min-w-0 lg:min-h-0">
+          {/* ── Center: the coordination model viewer, filling the column.
+                 Hides itself (and lets updates take the width) for hubs
+                 without viewer credentials. ── */}
+          <CoordinationModelViewer
+            projectId={project._id}
+            className="lg:flex-1 lg:min-w-0 lg:min-h-0"
+            onUnsupported={() => setViewerHidden(true)}
+          />
+
+          {/* ── Right: Project Updates — a narrow column; the feed is the only
+                 scroller. Takes the center's width too when there's no viewer. ── */}
+          <div className={`glass-card rounded-2xl p-[15px] flex flex-col gap-3 @container lg:min-h-0 ${viewerHidden ? 'lg:flex-1 lg:min-w-0' : 'lg:w-[24rem] xl:w-[28rem] lg:shrink-0'}`}>
             <div className="shrink-0 flex items-center gap-2.5 flex-wrap">
               <h2 className="font-semibold text-[#1e248c] text-[13px] flex items-center gap-2">
-                <MessageSquare size={14} className="text-[#44b8d3]" /> Monday Updates
+                <MessageSquare size={14} className="text-[#44b8d3]" /> Project Updates
               </h2>
 
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -694,7 +721,8 @@ export default function ProjectDetailClient({
               </p>
             ) : (
               // The one scroll container on the page. Columns come from the
-              // card's own width (@container), not the viewport.
+              // card's own width (@container) — the narrow right column renders
+              // a single column; without a viewer it widens and re-columnises.
               <div className="lg:flex-1 lg:min-h-0 overflow-y-auto pr-1 max-h-[60vh] lg:max-h-none grid grid-cols-1 @min-[720px]:grid-cols-2 @min-[1180px]:grid-cols-3 gap-2.5 content-start">
                 {visibleUpdates.map(u => {
                   const badge  = SOURCE_BADGE[u.source.kind] ?? { label: u.source.label, cls: 'bg-gray-100 text-gray-600' }
@@ -723,7 +751,7 @@ export default function ProjectDetailClient({
                             Monday's arbitrary markup (tables included). */}
                         {(u.body?.trim() || u.textBody) && (
                           <div className={`relative mt-1 ${long && !open ? 'max-h-[8.5rem] overflow-hidden' : ''}`}>
-                            {u.body?.trim()
+                            {u.body?.trim() && !preferPlainText(u.body, u.textBody)
                               ? <RichText html={u.body} />
                               : <p className="text-[11.5px] text-gray-700 whitespace-pre-wrap break-words">{u.textBody}</p>}
                             {long && !open && (
@@ -782,7 +810,7 @@ export default function ProjectDetailClient({
                                     <span className="text-[10.5px] font-semibold text-gray-700">{r.creator.name ?? 'לא ידוע'}</span>
                                     <span className="text-[9px] text-gray-400">{timeAgo(r.createdAt)}</span>
                                   </div>
-                                  {r.body?.trim() ? (
+                                  {r.body?.trim() && !preferPlainText(r.body, r.textBody) ? (
                                     <div className="mt-0.5"><RichText html={r.body} /></div>
                                   ) : r.textBody ? (
                                     <p className="text-[11px] text-gray-600 whitespace-pre-wrap break-words">{r.textBody}</p>

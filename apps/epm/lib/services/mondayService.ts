@@ -760,7 +760,7 @@ export async function fetchDedicatedBoardUrls(
 // board pulling updates inline, so per-item `updates(limit)` is kept small to
 // stay well under Monday's per-query complexity budget.
 
-export type UpdateSourceKind = 'project-board' | 'milestone' | 'master'
+export type UpdateSourceKind = 'project-board' | 'milestone' | 'master' | 'doc'
 
 export interface MondayUpdateCreator {
   id:    string | null
@@ -840,6 +840,12 @@ function pulseUrl(boardId: string | null, itemId: string): string | null {
   return `https://${MONDAY_SUBDOMAIN}.monday.com/boards/${boardId}/pulses/${itemId}`
 }
 
+/** Deep link to a specific update inside an item's updates pane. */
+function updateUrl(boardId: string | null, itemId: string, updateId: string): string | null {
+  const base = pulseUrl(boardId, itemId)
+  return base ? `${base}/posts/${updateId}` : null
+}
+
 /** Extract the board id from a Monday board URL (…/boards/<digits>). */
 export function boardIdFromUrl(url: string | undefined | null): string | null {
   if (!url) return null
@@ -889,42 +895,72 @@ export async function fetchItemUpdates(
   if (!item) return []
   const boardId = item.board?.id ?? null
   return (item.updates ?? []).map(u => normalizeUpdate(u, {
-    kind: source.kind, label: source.label, itemName: item.name, itemUrl: pulseUrl(boardId, item.id),
+    kind: source.kind, label: source.label, itemName: item.name,
+    itemUrl: updateUrl(boardId, item.id, u.id) ?? pulseUrl(boardId, item.id),
   }))
 }
 
-/** Updates across a board: the board's own "Board Discussion" feed PLUS every
- *  item's updates (used for the dedicated project board). */
+/** Updates across a board (used for the dedicated project board).
+ *
+ *  Monday's board-level `updates` feed already contains BOTH the true "Board
+ *  Discussion" posts (item = null) and every item's updates (item set) — so a
+ *  single paged query replaces the old whole-board items sweep (~10x faster)
+ *  AND restores the item attribution the sweep used to lose to de-duping.
+ *  Falls back to the legacy per-item sweep if the board feed comes back empty. */
 export async function fetchBoardUpdates(
   boardId: string,
   source: { kind: UpdateSourceKind; label: string },
-  opts: { perItemLimit?: number; pageSize?: number; maxItems?: number; boardLimit?: number } = {},
+  opts: { perItemLimit?: number; pageSize?: number; maxItems?: number; boardLimit?: number; maxUpdates?: number } = {},
+): Promise<MondayUpdate[]> {
+  const pageSize   = opts.pageSize ?? 50
+  const maxUpdates = opts.maxUpdates ?? 150
+
+  const out: MondayUpdate[] = []
+  try {
+    const query = `
+      query ($boardId: ID!, $limit: Int!, $page: Int!) {
+        boards(ids: [$boardId]) {
+          updates(limit: $limit, page: $page) {
+            ${UPDATE_FIELDS}
+            item { id name }
+          }
+        }
+      }
+    `
+    let page = 1
+    while (out.length < maxUpdates) {
+      const data = await mondayQuery(query, { boardId, limit: pageSize, page }) as {
+        boards: Array<{ updates: Array<RawUpdateNode & { item: { id: string; name: string } | null }> | null }>
+      }
+      const batch = data.boards?.[0]?.updates ?? []
+      for (const u of batch) {
+        out.push(normalizeUpdate(u, u.item
+          ? { kind: source.kind, label: source.label, itemName: u.item.name,
+              itemUrl: updateUrl(boardId, u.item.id, u.id) }
+          : { kind: source.kind, label: source.label, itemName: 'Board Discussion',
+              itemUrl: `https://${MONDAY_SUBDOMAIN}.monday.com/boards/${boardId}` }))
+      }
+      if (batch.length < pageSize) break
+      page += 1
+    }
+    if (out.length > 0) return out
+  } catch (err) {
+    console.error(`[fetchBoardUpdates] board feed failed for ${boardId}, falling back to item sweep:`, err)
+  }
+  return fetchBoardUpdatesViaItems(boardId, source, opts)
+}
+
+/** Legacy fallback: page the whole board pulling per-item updates inline. */
+async function fetchBoardUpdatesViaItems(
+  boardId: string,
+  source: { kind: UpdateSourceKind; label: string },
+  opts: { perItemLimit?: number; pageSize?: number; maxItems?: number } = {},
 ): Promise<MondayUpdate[]> {
   const perItemLimit = opts.perItemLimit ?? 5
   const pageSize     = opts.pageSize ?? 25
   const maxItems     = opts.maxItems ?? 200
-  const boardLimit   = opts.boardLimit ?? 25
 
   const out: MondayUpdate[] = []
-
-  // Board-level updates — Monday's "Board Discussion", posted to the board itself
-  // and not attached to any item. Skipped (not fatal) if the board has none.
-  try {
-    const bd = await mondayQuery(`
-      query ($boardId: ID!, $uLimit: Int!) {
-        boards(ids: [$boardId]) { name updates(limit: $uLimit) { ${UPDATE_FIELDS} } }
-      }
-    `, { boardId, uLimit: boardLimit }) as { boards: Array<{ name: string; updates: RawUpdateNode[] | null }> }
-    for (const u of bd.boards?.[0]?.updates ?? []) {
-      out.push(normalizeUpdate(u, {
-        kind: source.kind, label: source.label,
-        itemName: 'Board Discussion',
-        itemUrl: `https://${MONDAY_SUBDOMAIN}.monday.com/boards/${boardId}`,
-      }))
-    }
-  } catch (err) {
-    console.error(`[fetchBoardUpdates] board-level updates skipped for ${boardId}:`, err)
-  }
 
   const query = `
     query ($boardId: ID!, $limit: Int!, $cursor: String, $uLimit: Int!) {
@@ -955,7 +991,8 @@ export async function fetchBoardUpdates(
       seen++
       for (const u of item.updates ?? []) {
         out.push(normalizeUpdate(u, {
-          kind: source.kind, label: source.label, itemName: item.name, itemUrl: pulseUrl(boardId, item.id),
+          kind: source.kind, label: source.label, itemName: item.name,
+          itemUrl: updateUrl(boardId, item.id, u.id),
         }))
       }
     }
@@ -1021,7 +1058,7 @@ export async function fetchMilestoneUpdatesForProject(
       for (const u of item.updates ?? []) {
         out.push(normalizeUpdate(u, {
           kind: source.kind, label: source.label, itemName: item.name,
-          itemUrl: pulseUrl(MILESTONES_BOARD_ID, item.id),
+          itemUrl: updateUrl(MILESTONES_BOARD_ID, item.id, u.id),
         }))
       }
       for (const sub of item.subitems ?? []) {
@@ -1029,12 +1066,268 @@ export async function fetchMilestoneUpdatesForProject(
         for (const u of sub.updates ?? []) {
           out.push(normalizeUpdate(u, {
             kind: source.kind, label: source.label, itemName: `${item.name} › ${sub.name}`,
-            itemUrl: pulseUrl(subBoardId, sub.id),
+            itemUrl: updateUrl(subBoardId, sub.id, u.id),
           }))
         }
       }
     }
   } while (cursor)
 
+  return out
+}
+
+// ── Monday docs on the project board ────────────────────────────────────────
+// Docs attached to the board's file columns (fileType MONDAY_DOC) — e.g. the
+// "Meetings" doc on 22130. Doc *content edits* surface in the feed: blocks are
+// grouped by (day, author) into one feed card each. Only docs living in the
+// board's own workspace are included — the "How to" column links Knowledge-
+// Center SOP templates from another workspace, which are not project activity.
+// Monday exposes block dates at DAY granularity only, so doc cards sort at
+// midday of their edit day among the timestamped updates.
+
+interface RawDocBlock {
+  id:              string
+  type:            string
+  content:         string | null
+  created_at:      string | null
+  updated_at:      string | null
+  created_by:      RawCreator | null
+  parent_block_id: string | null   // set on blocks nested inside a table/layout cell
+}
+
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Render one Monday-doc block (Quill-style deltaFormat) to safe-ish HTML —
+// the client sanitizes again before injecting, so this only needs to be tidy.
+function renderDocBlock(b: RawDocBlock): { html: string; text: string } {
+  let parsed: {
+    direction?: string
+    deltaFormat?: Array<{ insert?: unknown; attributes?: Record<string, unknown> }>
+  }
+  try { parsed = JSON.parse(b.content ?? '{}') } catch { return { html: '', text: '' } }
+
+  if (b.type === 'divider') return { html: '<hr/>', text: '' }
+  if (b.type === 'image')   return { html: '', text: '' }   // auth-gated; dropped client-side anyway
+
+  const dir = parsed.direction === 'rtl' ? ' dir="rtl"' : ''
+  let inner = ''
+  let text = ''
+  for (const op of parsed.deltaFormat ?? []) {
+    if (typeof op.insert === 'string') {
+      let chunk = esc(op.insert)
+      const a = op.attributes ?? {}
+      if (a.bold)      chunk = `<strong>${chunk}</strong>`
+      if (a.italic)    chunk = `<em>${chunk}</em>`
+      if (a.underline) chunk = `<u>${chunk}</u>`
+      if (typeof a.link === 'string') chunk = `<a href="${esc(a.link)}">${chunk}</a>`
+      inner += chunk
+      text += op.insert
+    } else if (op.insert && typeof op.insert === 'object' && 'mention' in (op.insert as object)) {
+      inner += '<span class="text-[#1e248c] font-semibold">@</span>'
+    }
+  }
+  if (!inner.trim()) return { html: '', text: '' }
+
+  if (/title/.test(b.type)) return { html: `<p${dir}><strong>${inner}</strong></p>`, text }
+  if (b.type === 'bulleted list') return { html: `<p${dir}>• ${inner}</p>`, text }
+  if (b.type === 'numbered list') return { html: `<p${dir}>◦ ${inner}</p>`, text }
+  if (b.type === 'check list') {
+    const checked = (parsed as { checked?: boolean }).checked === true
+    return { html: `<p${dir}>${checked ? '✓' : '☐'} ${inner}</p>`, text }
+  }
+  return { html: `<p${dir}>${inner}</p>`, text }
+}
+
+// Monday doc `table` (and column `layout`) blocks don't hold their content —
+// they reference separate `cell` blocks by id. Rendered as a real <table>
+// (the client's .monday-body table styles apply); the referenced cell blocks
+// are excluded from the normal block flow so they don't ALSO render as loose
+// paragraphs.
+type TableCells = Array<Array<{ blockId?: string } | null>>
+
+function parseTableCells(b: RawDocBlock): TableCells {
+  try {
+    const cells = (JSON.parse(b.content ?? '{}') as { cells?: TableCells }).cells
+    return Array.isArray(cells) ? cells : []
+  } catch { return [] }
+}
+
+// A `cell` block carries only styling — its CONTENT is the child blocks whose
+// parent_block_id points at it (in document order).
+function renderDocTable(
+  b: RawDocBlock,
+  childrenByParent: Map<string, RawDocBlock[]>,
+): { html: string; text: string } {
+  const rows: string[] = []
+  const texts: string[] = []
+  let any = false
+  for (const row of parseTableCells(b)) {
+    const tds = (row ?? []).map(c => {
+      const kids = c?.blockId ? (childrenByParent.get(c.blockId) ?? []) : []
+      const parts = kids.map(renderDocBlock).filter(r => r.html)
+      for (const r of parts) if (r.text) texts.push(r.text)
+      if (parts.length) any = true
+      return `<td>${parts.map(r => r.html).join('')}</td>`
+    })
+    rows.push(`<tr>${tds.join('')}</tr>`)
+  }
+  if (!any) return { html: '', text: '' }
+  return { html: `<table><tbody>${rows.join('')}</tbody></table>`, text: texts.join(' · ') }
+}
+
+// No age cap — the rest of the feed reaches back years too; the per-doc group
+// cap alone keeps a long-lived doc from flooding the feed.
+const DOC_MAX_GROUPS_PER_DOC = 10
+
+/** Edit activity of the Monday docs attached to a board's file columns. */
+export async function fetchBoardDocUpdates(boardId: string): Promise<MondayUpdate[]> {
+  // 1. The board's workspace + every item's file-column values.
+  const meta = await mondayQuery(`
+    query ($boardId: ID!) {
+      boards(ids: [$boardId]) {
+        workspace { id }
+        items_page(limit: 200) {
+          items { id name column_values(types: [file]) { value } }
+        }
+      }
+    }
+  `, { boardId }) as {
+    boards: Array<{
+      workspace: { id: string } | null
+      items_page: { items: Array<{ id: string; name: string; column_values: Array<{ value: string | null }> }> }
+    }>
+  }
+  const board = meta.boards?.[0]
+  if (!board) return []
+  const workspaceId = board.workspace?.id ?? null
+
+  const docRefs = new Map<string, { itemId: string; itemName: string }>()  // objectId → owning item
+  for (const item of board.items_page?.items ?? []) {
+    for (const cv of item.column_values ?? []) {
+      if (!cv.value) continue
+      try {
+        const files = (JSON.parse(cv.value) as { files?: Array<{ fileType?: string; objectId?: number | string }> }).files ?? []
+        for (const f of files) {
+          if (f.fileType === 'MONDAY_DOC' && f.objectId != null) {
+            docRefs.set(String(f.objectId), { itemId: item.id, itemName: item.name })
+          }
+        }
+      } catch { /* not a files payload */ }
+    }
+  }
+  if (docRefs.size === 0) return []
+
+  // 2. The docs themselves, with blocks (author + day per block). Queried ONE
+  // id at a time: docs(object_ids:) silently drops docs from multi-id queries
+  // (same quirk items(ids:) has — see fetchMA003ByItemIds).
+  type RawDoc = {
+    object_id: string
+    name: string
+    url: string | null
+    workspace: { id: string } | null
+    blocks: RawDocBlock[] | null
+  }
+  const docQuery = `
+    query ($ids: [ID!]) {
+      docs(object_ids: $ids, limit: 1) {
+        object_id
+        name
+        url
+        workspace { id }
+        blocks(limit: 400) {
+          id type content created_at updated_at parent_block_id
+          created_by { id name photo_thumb_small }
+        }
+      }
+    }
+  `
+  const fetched = await Promise.allSettled(
+    [...docRefs.keys()].map(id =>
+      mondayQuery(docQuery, { ids: [id] }) as Promise<{ docs: RawDoc[] | null }>
+    ),
+  )
+  const docs: RawDoc[] = []
+  for (const r of fetched) {
+    if (r.status === 'fulfilled') docs.push(...(r.value.docs ?? []))
+  }
+
+  const out: MondayUpdate[] = []
+
+  for (const doc of docs) {
+    // Cross-workspace docs are SOP templates, not project activity.
+    if (workspaceId && doc.workspace?.id && doc.workspace.id !== workspaceId) continue
+    const ref = docRefs.get(String(doc.object_id))
+    const blocks = doc.blocks ?? []
+
+    // Blocks nested inside a table/layout cell (parent_block_id set) render
+    // within that cell, never as loose flow paragraphs.
+    const childrenByParent = new Map<string, RawDocBlock[]>()
+    for (const b of blocks) {
+      if (!b.parent_block_id) continue
+      let list = childrenByParent.get(b.parent_block_id)
+      if (!list) { list = []; childrenByParent.set(b.parent_block_id, list) }
+      list.push(b)
+    }
+
+    // A table's edit day is the NEWEST edit among itself, its cells, and the
+    // blocks inside them.
+    const tableDate = new Map<string, string>()
+    for (const b of blocks) {
+      if (b.type !== 'table' && b.type !== 'layout') continue
+      let maxDate = (b.updated_at ?? b.created_at ?? '').slice(0, 10)
+      for (const row of parseTableCells(b)) {
+        for (const c of row ?? []) {
+          if (!c?.blockId) continue
+          for (const kid of childrenByParent.get(c.blockId) ?? []) {
+            const d = (kid.updated_at ?? kid.created_at ?? '').slice(0, 10)
+            if (d > maxDate) maxDate = d
+          }
+        }
+      }
+      tableDate.set(b.id, maxDate)
+    }
+
+    // Group blocks by (edit day, author), preserving document order inside a group.
+    const groups = new Map<string, { date: string; creator: RawCreator | null; html: string[]; text: string[] }>()
+    for (const b of blocks) {
+      if (b.parent_block_id || b.type === 'cell') continue
+      const isTable = b.type === 'table' || b.type === 'layout'
+      const date = isTable
+        ? (tableDate.get(b.id) ?? '')
+        : (b.updated_at ?? b.created_at ?? '').slice(0, 10)
+      if (!date) continue
+      const { html, text } = isTable ? renderDocTable(b, childrenByParent) : renderDocBlock(b)
+      if (!html) continue
+      const key = `${date}|${b.created_by?.id ?? '?'}`
+      let g = groups.get(key)
+      if (!g) { g = { date, creator: b.created_by, html: [], text: [] }; groups.set(key, g) }
+      g.html.push(html)
+      if (text) g.text.push(text)
+    }
+
+    const newest = [...groups.values()]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, DOC_MAX_GROUPS_PER_DOC)
+
+    for (const g of newest) {
+      if (g.text.join('').trim().length === 0) continue
+      out.push({
+        id:        `doc-${doc.object_id}-${g.date}-${g.creator?.id ?? '?'}`,
+        body:      g.html.join(''),
+        textBody:  g.text.join('\n'),
+        createdAt: `${g.date}T12:00:00Z`,   // Monday exposes block dates at day granularity
+        creator:   mapCreator(g.creator),
+        replies:   [],
+        assets:    [],
+        source: {
+          kind:     'doc',
+          label:    'Doc',
+          itemName: ref ? `${ref.itemName} › ${doc.name}` : doc.name,
+          itemUrl:  doc.url ?? (ref ? pulseUrl(boardId, ref.itemId) : null),
+        },
+      })
+    }
+  }
   return out
 }
