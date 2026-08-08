@@ -70,6 +70,7 @@ export interface MA003Project {
   bimModeller?:   { name: string; mondayId: string }
   accUrl?:        string
   mainBoardUrl?:  string
+  client?:        string   // "Client" text column (text_mkpswt15)
 }
 
 export interface TS001HoursSummary {
@@ -156,7 +157,7 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
     query ($ids: [ID!]!) {
       items(ids: $ids) {
         id
-        column_values(ids: ["multiple_person_mkpsmr4k", "multiple_person_mkpskxyf", "multiple_person_mm2tw6be", "link_mkpste", "link_mkqmrce0"]) {
+        column_values(ids: ["multiple_person_mkpsmr4k", "multiple_person_mkpskxyf", "multiple_person_mm2tw6be", "link_mkpste", "link_mkqmrce0", "text_mkpswt15"]) {
           id
           value
           text
@@ -207,6 +208,7 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
         bimModeller:     parsePerson(colMap['multiple_person_mm2tw6be']?.value ?? ''),
         accUrl,
         mainBoardUrl,
+        client:          colMap['text_mkpswt15']?.text?.trim() || undefined,
       })
     }
   }

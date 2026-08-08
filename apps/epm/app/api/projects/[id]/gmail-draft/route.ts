@@ -18,6 +18,7 @@ interface EmailParts {
   highlightPhrases?: string[]
   hasChart: boolean
   hasScreenshot: boolean
+  hasLegend?: boolean
 }
 
 interface DraftBody {
@@ -135,7 +136,7 @@ export async function POST(
       import('@/lib/server/reportXlsx'),
     ])
     const pdf = await generateReportPdf(body.meta, body.issues)
-    const xlsx = await generateReportXlsx(body.issues)
+    const xlsx = await generateReportXlsx(body.issues, body.meta.extraColumns ?? [])
 
     const chartPng = body.chartPngBase64 ? Buffer.from(body.chartPngBase64, 'base64') : undefined
     const screenshotPng = body.screenshotPngBase64 ? Buffer.from(body.screenshotPngBase64, 'base64') : undefined

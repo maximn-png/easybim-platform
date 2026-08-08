@@ -32,6 +32,14 @@ export interface MilestoneDiscipline {
   progress: number
 }
 
+// Per-creator ACC issue stats (mirrors IssueCreatorStat in the model):
+// completed = issues with status "completed"; active = all except "closed".
+export interface IssueCreatorStat {
+  name: string
+  completed: number
+  active: number
+}
+
 export interface ProjectSyncMeta {
   lastSyncedAt: string | null
   syncStatus: 'ok' | 'partial' | 'error' | 'never'
@@ -66,6 +74,10 @@ export interface ProjectRow {
   // OAuth + project-list routes so they use the partner app's credentials.
   accHubKey?: string
   status: 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck' | null
+  /** Client name from the MA-003 "Client" text column. */
+  client?: string
+  /** Per-creator ACC issue stats, matched to team members by display name. */
+  issueCreatorStats?: IssueCreatorStat[]
   milestoneProgress: number | null
   milestoneDisciplines?: MilestoneDiscipline[]
   hoursProgress: number | null

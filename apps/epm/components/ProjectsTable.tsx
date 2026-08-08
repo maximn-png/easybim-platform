@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
 import Link from 'next/link'
-import { LayoutGrid, FolderOpen, Cloud, Eye } from 'lucide-react'
+import { LayoutGrid, FolderOpen, Cloud, Eye, X } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import StatusBadge from './StatusBadge'
 import ProgressBar from './ProgressBar'
 import TeamMemberCell from './TeamMemberCell'
+import ColumnHeaderMenu, { type SortDir, type FilterValue } from './ColumnHeaderMenu'
 
 type ColSource = { label?: string; board: string; column?: string }
 
@@ -45,8 +46,135 @@ interface ProjectsTableProps {
   projects: ProjectRow[]
 }
 
+// ── Excel-style column filter & sort ────────────────────────────────────────
+// Column filters/sort live inside the table and compose ON TOP of the toolbar
+// filters (status tabs / person / search) applied upstream in DashboardClient.
+
+const EMPTY = '__empty__'
+
+type SortKey =
+  | 'milestone' | 'hours'
+  | 'bimManager' | 'mepCoordinator' | 'bimModeller'
+  | 'status' | 'projectNumber' | 'client' | 'projectName'
+
+type FilterKey = 'bimManager' | 'mepCoordinator' | 'bimModeller' | 'status' | 'projectNumber' | 'client'
+
+const FILTER_KEYS: FilterKey[] = ['bimManager', 'mepCoordinator', 'bimModeller', 'status', 'projectNumber', 'client']
+
+const filterValueOf: Record<FilterKey, (p: ProjectRow) => string> = {
+  bimManager:     p => p.bimManager?.name ?? EMPTY,
+  mepCoordinator: p => p.mepCoordinator?.name ?? EMPTY,
+  bimModeller:    p => p.bimModeller?.name ?? EMPTY,
+  status:         p => p.status ?? EMPTY,
+  projectNumber:  p => p.projectNumber || EMPTY,
+  client:         p => p.client ?? EMPTY,
+}
+
+// ACC issue stats for a team member, matched by display name. Monday and ACC
+// spell names slightly differently ("Gal Shem-Tov" vs "Gal Shem Tov"), so the
+// comparison ignores case, hyphens/underscores, dots and extra whitespace.
+const normalizeName = (s: string) =>
+  s.toLowerCase().replace(/[-_.]/g, ' ').replace(/\s+/g, ' ').trim()
+
+function statForMember(p: ProjectRow, member?: { name: string }) {
+  if (!member || !p.issueCreatorStats?.length) return undefined
+  const needle = normalizeName(member.name)
+  return p.issueCreatorStats.find(s => normalizeName(s.name) === needle)
+}
+
+// The filter link carries the ACC creator name (stat.name) — that's the exact
+// string the issues page's CREATED BY filter matches against.
+const creatorIssuesHref = (p: ProjectRow, accName: string) =>
+  `/dashboard/${p._id}/reports?createdBy=${encodeURIComponent(accName)}`
+
+// Sort value per column; null/'' rows sort last in either direction.
+function sortValueOf(key: SortKey, p: ProjectRow): string | number | null {
+  switch (key) {
+    case 'milestone':      return p.milestoneProgress
+    case 'hours':          return p.hoursProgress
+    case 'projectNumber':  return parseInt(p.projectNumber.replace(/[^0-9]/g, '')) || null
+    case 'bimManager':     return p.bimManager?.name ?? null
+    case 'mepCoordinator': return p.mepCoordinator?.name ?? null
+    case 'bimModeller':    return p.bimModeller?.name ?? null
+    case 'status':         return p.status
+    case 'client':         return p.client ?? null
+    case 'projectName':    return p.projectName
+  }
+}
+
 export default function ProjectsTable({ projects }: ProjectsTableProps) {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [sort, setSort] = useState<{ key: SortKey; dir: SortDir } | null>(null)
+  const [filters, setFilters] = useState<Partial<Record<FilterKey, Set<string>>>>({})
+
+  // Distinct values (with counts) per filterable column, from the rows the
+  // table receives — counts therefore reflect the active toolbar filters.
+  const filterValues = useMemo(() => {
+    const out = {} as Record<FilterKey, FilterValue[]>
+    for (const key of FILTER_KEYS) {
+      const counts = new Map<string, number>()
+      for (const p of projects) {
+        const v = filterValueOf[key](p)
+        counts.set(v, (counts.get(v) ?? 0) + 1)
+      }
+      out[key] = [...counts.entries()]
+        .map(([value, count]) => ({ value, label: value === EMPTY ? '(Empty)' : value, count }))
+        .sort((a, b) =>
+          a.value === EMPTY ? 1 : b.value === EMPTY ? -1
+          : a.label.localeCompare(b.label, undefined, { numeric: true }))
+    }
+    return out
+  }, [projects])
+
+  const rows = useMemo(() => {
+    let list = projects.filter(p =>
+      FILTER_KEYS.every(key => {
+        const sel = filters[key]
+        return !sel || sel.has(filterValueOf[key](p))
+      })
+    )
+    if (sort) {
+      list = [...list].sort((a, b) => {
+        const va = sortValueOf(sort.key, a)
+        const vb = sortValueOf(sort.key, b)
+        const aEmpty = va == null || va === ''
+        const bEmpty = vb == null || vb === ''
+        if (aEmpty && bEmpty) return 0
+        if (aEmpty) return 1
+        if (bEmpty) return -1
+        const cmp = typeof va === 'number' && typeof vb === 'number'
+          ? va - vb
+          : String(va).localeCompare(String(vb), undefined, { numeric: true })
+        return sort.dir === 'asc' ? cmp : -cmp
+      })
+    }
+    return list
+  }, [projects, filters, sort])
+
+  const columnControlsActive = Object.keys(filters).length > 0 || sort != null
+  const clearColumnControls = () => { setFilters({}); setSort(null) }
+
+  const headerMenu = (
+    key: SortKey,
+    opts: { sortKind: 'text' | 'numeric'; filterKey?: FilterKey; align?: 'left' | 'right' | 'center' },
+  ) => (
+    <ColumnHeaderMenu
+      sortKind={opts.sortKind}
+      sortDir={sort?.key === key ? sort.dir : null}
+      onSort={dir => setSort(dir ? { key, dir } : null)}
+      values={opts.filterKey ? filterValues[opts.filterKey] : undefined}
+      selected={opts.filterKey ? filters[opts.filterKey] ?? null : undefined}
+      onFilter={opts.filterKey
+        ? next => setFilters(prev => {
+            const copy = { ...prev }
+            if (next == null) delete copy[opts.filterKey!]
+            else copy[opts.filterKey!] = next
+            return copy
+          })
+        : undefined}
+      align={opts.align}
+    />
+  )
 
   const toggleCheck = (id: string) => {
     setCheckedIds(prev => {
@@ -58,10 +186,10 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
   }
 
   const toggleAll = () => {
-    if (checkedIds.size === projects.length) {
+    if (checkedIds.size === rows.length) {
       setCheckedIds(new Set())
     } else {
-      setCheckedIds(new Set(projects.map(p => p._id)))
+      setCheckedIds(new Set(rows.map(p => p._id)))
     }
   }
 
@@ -74,6 +202,21 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
   }
 
   return (
+    <div>
+      {/* Column filter/sort summary — only visible while column controls are active */}
+      {columnControlsActive && (
+        <div className="flex items-center gap-2 mb-2 text-xs text-gray-500">
+          <span>Showing {rows.length} of {projects.length} rows</span>
+          <button
+            type="button"
+            onClick={clearColumnControls}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-[#1e248c] hover:bg-blue-100 transition-colors font-medium"
+          >
+            <X size={10} /> Clear filters & sort
+          </button>
+        </div>
+      )}
+
     <div className="overflow-x-auto">
       <div className="w-full rounded-2xl border border-white/80 shadow-sm">
       {/* Percentage widths + w-full make the table stretch edge-to-edge and spread
@@ -104,28 +247,30 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
           <col className="w-[8%]" />
           {/* Proj # */}
           <col className="w-[5.5%]" />
+          {/* Client */}
+          <col className="w-[9.5%]" />
           {/* Project Name — far right so Hebrew names anchor the RTL reading edge;
               largest share. Very long names still truncate at the column width. */}
-          <col className="w-[30.5%]" />
+          <col className="w-[21%]" />
         </colgroup>
         <thead>
           <tr className="bg-gray-50/80 border-b border-gray-200">
             <th className="w-8 px-2 py-2">
               <input
                 type="checkbox"
-                checked={checkedIds.size === projects.length && projects.length > 0}
+                checked={checkedIds.size === rows.length && rows.length > 0}
                 onChange={toggleAll}
                 className="rounded border-gray-300 text-[#1e248c] focus:ring-[#1e248c]"
               />
             </th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Milestone<ColInfo board="MI-001" column="סטאטוס הגשה" formula="completed bills ÷ total bills × 100" note="Share of milestone bills marked Submitted / Work completed, pooled across all disciplines." align="left" /></th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Milestone<ColInfo board="MI-001" column="סטאטוס הגשה" formula="completed bills ÷ total bills × 100" note="Share of milestone bills marked Submitted / Work completed, pooled across all disciplines." align="left" />{headerMenu('milestone', { sortKind: 'numeric', align: 'left' })}</th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Hours<ColInfo formula="actual ÷ budget × 100" sources={[
               { label: 'Actual', board: 'TS-001/003/004/005', column: 'ש״ע (numeric)' },
               { label: 'Budget', board: 'MA-004', column: 'כמות שעות' },
-            ]} align="left" /></th>
-            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Mgmt<ColInfo board="MA-003" column="Model MGMT" /></th>
-            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">MEP<br/>Coord<ColInfo board="MA-003" column="MEP Coordination" /></th>
-            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Modelling<ColInfo board="MA-003" column="Modelling / BIM Coord" /></th>
+            ]} align="left" />{headerMenu('hours', { sortKind: 'numeric', align: 'left' })}</th>
+            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Mgmt<ColInfo board="MA-003" column="Model MGMT" />{headerMenu('bimManager', { sortKind: 'text', filterKey: 'bimManager' })}</th>
+            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">MEP<br/>Coord<ColInfo board="MA-003" column="MEP Coordination" />{headerMenu('mepCoordinator', { sortKind: 'text', filterKey: 'mepCoordinator' })}</th>
+            <th className="px-2 py-2 text-center font-medium text-[#44b8d3] whitespace-nowrap text-xs">BIM<br/>Modelling<ColInfo board="MA-003" column="Modelling / BIM Coord" />{headerMenu('bimModeller', { sortKind: 'text', filterKey: 'bimModeller' })}</th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Monday<ColInfo note="Opens the project's dedicated Monday board (matched by project number), falling back to the MA-003 main board, then MA-004." /></th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Drive<ColInfo note="Opens the project's Google Drive folder (matched by project number)." /></th>
             <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">ACC<ColInfo note={
@@ -143,15 +288,26 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                 </p>
               </div>
             } /></th>
-            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Status<ColInfo board="MA-004" column="Status" /></th>
-            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-004" column="מס פרויקט" align="right" />Proj #</th>
-            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-004" column="Item name" align="right" />Project Name</th>
+            <th className="px-2 py-2 text-center font-medium text-gray-600 whitespace-nowrap">Status<ColInfo board="MA-004" column="Status" />{headerMenu('status', { sortKind: 'text', filterKey: 'status' })}</th>
+            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-004" column="מס פרויקט" align="right" />Proj #{headerMenu('projectNumber', { sortKind: 'numeric', filterKey: 'projectNumber', align: 'right' })}</th>
+            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-003" column="Client" align="right" />Client{headerMenu('client', { sortKind: 'text', filterKey: 'client', align: 'right' })}</th>
+            <th className="px-2 py-2 text-right font-medium text-gray-600 whitespace-nowrap"><ColInfo board="MA-004" column="Item name" align="right" />Project Name{headerMenu('projectName', { sortKind: 'text', align: 'right' })}</th>
           </tr>
         </thead>
         <tbody>
-          {projects.map((project, i) => {
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={13} className="py-12 text-center text-gray-400 text-sm">
+                No projects match the column filters.
+              </td>
+            </tr>
+          )}
+          {rows.map((project, i) => {
             const isChecked = checkedIds.has(project._id)
             const rowBg = i % 2 === 0 ? 'bg-white' : 'bg-blue-50/30'
+            const bimMgrStat   = statForMember(project, project.bimManager)
+            const mepStat      = statForMember(project, project.mepCoordinator)
+            const modellerStat = statForMember(project, project.bimModeller)
 
             return (
               <tr
@@ -180,17 +336,32 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
 
                 {/* BIM Management */}
                 <td className="px-2 py-1.5">
-                  <TeamMemberCell member={project.bimManager} />
+                  <TeamMemberCell
+                    member={project.bimManager}
+                    stat={bimMgrStat}
+                    statHref={bimMgrStat ? creatorIssuesHref(project, bimMgrStat.name) : undefined}
+                    reserveStatSlot
+                  />
                 </td>
 
                 {/* MEP Coordination */}
                 <td className="px-2 py-1.5">
-                  <TeamMemberCell member={project.mepCoordinator} />
+                  <TeamMemberCell
+                    member={project.mepCoordinator}
+                    stat={mepStat}
+                    statHref={mepStat ? creatorIssuesHref(project, mepStat.name) : undefined}
+                    reserveStatSlot
+                  />
                 </td>
 
                 {/* BIM Modelling */}
                 <td className="px-2 py-1.5">
-                  <TeamMemberCell member={project.bimModeller} />
+                  <TeamMemberCell
+                    member={project.bimModeller}
+                    stat={modellerStat}
+                    statHref={modellerStat ? creatorIssuesHref(project, modellerStat.name) : undefined}
+                    reserveStatSlot
+                  />
                 </td>
 
                 {/* Monday Board — links to the project's main board (MA-003 "Main Board"),
@@ -289,6 +460,11 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                 {/* Project Number */}
                 <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap text-xs text-right">{project.projectNumber}</td>
 
+                {/* Client — RTL for Hebrew client names, truncates at column width */}
+                <td className="px-2 py-1.5 text-gray-600 text-xs truncate" dir="rtl" title={project.client}>
+                  {project.client ?? <span className="text-gray-300">—</span>}
+                </td>
+
                 {/* Project Name — RTL for Hebrew, navigates to detail page */}
                 <td className="px-2 py-1.5 font-medium" dir="rtl">
                   <Link
@@ -306,6 +482,7 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
         </tbody>
       </table>
       </div>
+    </div>
     </div>
   )
 }

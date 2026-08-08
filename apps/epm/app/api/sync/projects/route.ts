@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Types } from 'mongoose'
 import { auth } from '@clerk/nextjs/server'
 import {
   fetchAllAccProjects,
@@ -8,7 +9,7 @@ import {
   getApsToken,
   type AccProjectSummary,
 } from '@/lib/services/apsService'
-import { getPartnerHubs, type ApsHub } from '@/lib/services/apsHubs'
+import { getPartnerHubs, getPartnerHubByAccountId, type ApsHub } from '@/lib/services/apsHubs'
 
 const MA004_BOARD_ID  = '7321609006'
 const MA004_BOARD_URL = 'https://easybim-company.monday.com/boards/7321609006'
@@ -299,6 +300,7 @@ export async function POST(req: NextRequest) {
               } : {}),
               ...accFields,
               'snapshot.status':             p.status,
+              'snapshot.client':             ma003?.client ?? null,
               'snapshot.milestoneProgress':  milestones?.overallProgress ?? null,
               'snapshot.milestoneDisciplines': milestones?.disciplines ?? [],
               // Total budget = שכט סופי ÷ 300 (formula8). Only overwrite when the
@@ -333,7 +335,86 @@ export async function POST(req: NextRequest) {
     // Done projects now flow through the main upsert loop above (update-only),
     // so their status + full snapshot is refreshed there — no separate pass needed.
 
-    return NextResponse.json({ synced, errors, durationMs: Date.now() - start })
+    // 6. Per-creator issue stats ("8/12" on the dashboard's team avatars).
+    // Best-effort and TIME-BOXED: ACC issues are fetched per project, which for
+    // ~100 projects would blow the serverless duration budget in one go — so we
+    // process stalest-first until the whole sync nears its budget; the hourly
+    // cron rotates through the rest on subsequent runs.
+    // Token: the interactive Sync Now click carries the user's APS cookies;
+    // cron runs fall back to the most recently refreshed stored token per hub.
+    let issueStatsUpdated = 0
+    const STATS_TIME_BUDGET_MS = 240_000
+    try {
+      const { computeIssueCreatorStats } = await import('@/lib/issueStats')
+      const { fetchAccIssues } = await import('@/lib/services/apsService')
+      const { getApsUserToken } = await import('@/lib/services/apsUserToken')
+      const { getApsAccessTokenForUser } = await import('@/lib/server/apsTokenStore')
+      const ApsToken = (await import('@/app/models/ApsToken')).default
+
+      // Cookie token first, stored-token fallback; resolved once per hub.
+      const tokenCache = new Map<string, string | null>()
+      const tokenForHub = async (hub: ApsHub | null): Promise<string | null> => {
+        const key = hub?.key ?? ''
+        if (tokenCache.has(key)) return tokenCache.get(key)!
+        let token: string | null = null
+        try { token = await getApsUserToken(hub) } catch { /* no request cookies (cron) */ }
+        if (!token) {
+          const rows = await ApsToken.find({ hubKey: key })
+            .sort({ updatedAt: -1 }).select('userId').lean() as Array<{ userId: string }>
+          for (const row of rows) {
+            token = await getApsAccessTokenForUser(row.userId, hub)
+            if (token) break
+          }
+        }
+        tokenCache.set(key, token)
+        return token
+      }
+
+      const accDocs = await Project.find({
+        isActive: true,
+        'externalIds.accProjectId': { $exists: true, $nin: [null, ''] },
+      })
+        .sort({ 'snapshot.issueStatsSyncedAt': 1 })   // stalest first (nulls sort first)
+        .select('projectNumber externalIds')
+        .lean() as unknown as Array<{ _id: Types.ObjectId; projectNumber: string; externalIds: Record<string, unknown> }>
+
+      let anyToken = false
+      let skippedForTime = 0
+      for (const doc of accDocs) {
+        if (Date.now() - start > STATS_TIME_BUDGET_MS) { skippedForTime++; continue }
+        const ext = doc.externalIds
+        const partnerHub = ext.accExternalHub
+          ? getPartnerHubByAccountId(ext.accHubId as string | undefined)
+          : null
+        // Unreachable external hubs (Excel import) refresh via the issues API only.
+        if (ext.accExternalHub && !partnerHub) continue
+        const token = await tokenForHub(partnerHub)
+        if (!token) continue
+        anyToken = true
+        try {
+          const issues = await fetchAccIssues(String(ext.accProjectId), token, partnerHub)
+          await Project.updateOne({ _id: doc._id }, {
+            $set: {
+              'snapshot.issueCreatorStats': computeIssueCreatorStats(issues),
+              'snapshot.issueStatsSyncedAt': new Date(),
+            },
+          })
+          issueStatsUpdated++
+        } catch (err) {
+          errors.push(`Issue stats ${doc.projectNumber}: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+      if (!anyToken && accDocs.length > 0) {
+        errors.push('Issue stats: no Autodesk token available (connect Autodesk, then Sync Now)')
+      }
+      if (skippedForTime > 0) {
+        errors.push(`Issue stats: ${skippedForTime} projects deferred to the next sync (time budget)`)
+      }
+    } catch (err) {
+      errors.push(`Issue stats: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    return NextResponse.json({ synced, issueStatsUpdated, errors, durationMs: Date.now() - start })
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err), synced, errors },

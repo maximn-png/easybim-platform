@@ -109,7 +109,7 @@ export async function POST(
       import('@/lib/server/reportXlsx'),
     ])
     const pdf = await generateReportPdf(body.meta, issues)
-    const xlsx = await generateReportXlsx(issues)
+    const xlsx = await generateReportXlsx(issues, body.meta.extraColumns ?? [])
 
     const chartPng = body.chartPngBase64 ? Buffer.from(body.chartPngBase64, 'base64') : undefined
     const screenshotPng = body.screenshotPngBase64 ? Buffer.from(body.screenshotPngBase64, 'base64') : undefined

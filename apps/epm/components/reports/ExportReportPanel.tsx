@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useUser, useReverification } from '@clerk/nextjs'
 import { isReverificationCancelledError } from '@clerk/nextjs/errors'
 import { toPng } from 'html-to-image'
-import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink, BarChart3 } from 'lucide-react'
+import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink, BarChart3, Clock } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue, AccMember } from '@/lib/services/apsService'
 import { type GroupKey, buildGroupOptions, statusLabel, normalizeStatus, dropDraft, issueMonthKey } from '@/lib/reportGrouping'
@@ -14,7 +14,9 @@ import {
   type ReportTemplate, type BodyLink,
 } from '@/lib/reportTemplates'
 import { buildEmailHtml } from '@/lib/emailHtml'
+import { buildStatusLegendHtml } from '@/lib/statusLegend'
 import type { ReportMeta } from '@/lib/server/reportHtml'
+import type { ScheduleSeed } from '@/lib/scheduleTypes'
 import MultiSelect from '../MultiSelect'
 import AnalyticsBars from '../AnalyticsBars'
 import {
@@ -43,7 +45,7 @@ export default function ExportReportPanel({
   project, issues, issueTypes, disciplines, allStatuses, assignees,
   defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines,
   defaultStatuses, defaultExtraFilters, defaultMonth,
-  onReportSaved,
+  onReportSaved, onScheduleRequest,
 }: {
   project: ProjectRow
   issues: AccIssue[]
@@ -61,6 +63,9 @@ export default function ExportReportPanel({
   defaultMonth: string | null
   // Lets the drawer refresh the Activity tab after a report is created.
   onReportSaved?: () => void
+  // "תזמן את הדוח": hands the fully-configured report to the Schedule tab, so
+  // the user only picks the cadence there.
+  onScheduleRequest?: (seed: ScheduleSeed) => void
 }) {
   const { user } = useUser()
   // Connecting / reauthorizing a Google account is a Clerk-protected action: it
@@ -86,6 +91,13 @@ export default function ExportReportPanel({
   // Month filter inherited from a reports-page month-chart click (YYYY-MM).
   const [monthFilter, setMonthFilter] = useState<string | null>(defaultMonth)
   const [groupBy, setGroupBy] = useState<GroupKey>(defaultGroupBy)
+  // Extra table columns appended to the PDF + Excel (keys of paramValue dims).
+  const [selExtraColumns, setSelExtraColumns] = useState<string[]>([])
+  // Whether to include the issue-comment instructions screenshot in the email.
+  const [includeScreenshot, setIncludeScreenshot] = useState(true)
+  // Whether to include the Hebrew status legend in the EMAIL body — the PDF
+  // always carries it.
+  const [includeLegend, setIncludeLegend] = useState(true)
   const [bodyText, setBodyText] = useState('')
   // Manually-edited link to the ACC model (only for templates with needsModelLink).
   const [modelLink, setModelLink] = useState('')
@@ -185,8 +197,13 @@ export default function ExportReportPanel({
     seedFilters(t)
     seedBody(t, vId)
     seedRecipients(t, members)
+    setIncludeScreenshot(true)
+    setIncludeLegend(true)
     setDraftUrl(null)
   }
+
+  // The instructions screenshot is optional — the checkbox can drop it entirely.
+  const hasScreenshot = !!template.bodyImage && includeScreenshot
 
   // Stack-by options mirror the reports page (base dims + custom attributes).
   const groupOptions = useMemo(() => buildGroupOptions(issues), [issues])
@@ -205,6 +222,18 @@ export default function ExportReportPanel({
   // Distinct values available for a chosen parameter.
   const valuesFor = (key: string): string[] =>
     [...new Set(issues.map(i => issueParamValue(i, key)))].filter(Boolean).sort((a, b) => a.localeCompare(b))
+
+  // "Add columns to the report": dimensions not already a fixed table column
+  // (#/title/description/assignee/discipline/status/type) — Due Date, Created By,
+  // and each non-discipline custom attribute. Keys, labeled via groupLabelHe.
+  const extraColumnOptions = useMemo(() => {
+    const all = [...groupOptions, { value: 'createdBy', label: 'Created By' }]
+    return all
+      .filter(o =>
+        !FIXED_FILTER_KEYS.has(o.value) &&
+        !(o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase())))
+      .map(o => o.value)
+  }, [groupOptions])
 
   // "Final summary" templates (forceAllIssues) reset to ALL issues, grouped by
   // discipline — overriding the page-seeded defaults when such a template is picked.
@@ -256,6 +285,7 @@ export default function ExportReportPanel({
   ].filter(Boolean).join(' · ') || 'ללא סינון'
 
   // Payload the server uses to render the PDF + Excel.
+  const extraColumns = selExtraColumns.map(k => ({ key: k, label: groupLabelHe(k) }))
   const reportMeta: ReportMeta = {
     projectName: project.projectName,
     projectNumber: project.projectNumber,
@@ -263,6 +293,8 @@ export default function ExportReportPanel({
     groupBy,
     groupLabel: groupLabelHe(groupBy),
     filtersSummary,
+    extraColumns,
+    includeLegend: true, // the PDF always carries the legend; the checkbox is email-only
   }
 
   const addManual = () => {
@@ -309,7 +341,7 @@ export default function ExportReportPanel({
       const res = await fetch(`/api/projects/${project._id}/report-xlsx`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ issues: docIssues, xlsxName }),
+        body: JSON.stringify({ issues: docIssues, xlsxName, extraColumns }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string }
@@ -325,6 +357,26 @@ export default function ExportReportPanel({
     } finally {
       setXlsxBusy(false)
     }
+  }
+
+  // ── Hand off to the Schedule tab, fully configured ────────────────────────
+  const handleScheduleRequest = () => {
+    onScheduleRequest?.({
+      name: resolved.title,
+      templateId,
+      variantId,
+      groupBy,
+      filters: {
+        assignees:   selAssignees,
+        issueTypes:  selIssueTypes,
+        disciplines: selDisciplines,
+        statuses:    selStatuses,
+        extra:       extraFilters,
+      },
+      bodyText,
+      modelLink,
+      recipients: recipients.map(r => r.email),
+    })
   }
 
   // ── Connect Google (Clerk) ────────────────────────────────────────────────
@@ -361,9 +413,9 @@ export default function ExportReportPanel({
     return stripDataUrl(await toPng(node, { pixelRatio: 2, backgroundColor: '#ffffff' }))
   }
 
-  // The template's instructional screenshot as base64 (optional).
+  // The template's instructional screenshot as base64 (optional, checkbox-gated).
   const screenshotToBase64 = async (): Promise<string | undefined> => {
-    if (!template.bodyImage) return undefined
+    if (!hasScreenshot || !template.bodyImage) return undefined
     try {
       const res = await fetch(template.bodyImage)
       const blob = await res.blob()
@@ -388,7 +440,7 @@ export default function ExportReportPanel({
       // 1. email parts — the SERVER builds the final HTML (with hosted image URLs)
       const emailParts = {
         bodyText, links, highlightPhrases: resolved.highlightPhrases,
-        hasChart: true, hasScreenshot: !!template.bodyImage,
+        hasChart: true, hasScreenshot, hasLegend: includeLegend,
       }
       // 2. chart PNG (hidden fixed-width node) + 3. screenshot → base64 (CID)
       const chartPngBase64 = await chartToBase64(emailChartRef.current)
@@ -396,7 +448,7 @@ export default function ExportReportPanel({
       // 4. Self-contained preview HTML (images inlined) — saved for report history.
       const previewHtml = buildEmailHtml({
         bodyText, links, highlightPhrases: resolved.highlightPhrases,
-        hasChart: true, hasScreenshot: !!template.bodyImage,
+        hasChart: true, hasScreenshot, hasLegend: includeLegend,
         inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
       })
       // 5. POST — server renders the PDF (Chromium) + Excel from meta/issues.
@@ -440,7 +492,7 @@ export default function ExportReportPanel({
       const screenshotPngBase64 = await screenshotToBase64()
       const previewHtml = buildEmailHtml({
         bodyText, links, highlightPhrases: resolved.highlightPhrases,
-        hasChart: true, hasScreenshot: !!template.bodyImage,
+        hasChart: true, hasScreenshot, hasLegend: includeLegend,
         inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
       })
       const res = await fetch(`/api/projects/${project._id}/reports`, {
@@ -470,7 +522,7 @@ export default function ExportReportPanel({
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
 
         {/* ── Config pane ── */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           {/* Templates */}
           <section>
             <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">תבנית</p>
@@ -514,19 +566,67 @@ export default function ExportReportPanel({
             </section>
           )}
 
-          {/* Stack By — mirrors the reports page's grouping */}
+          {/* Stack By + extra columns — side by side to keep the pane compact */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <section>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">קיבוץ</p>
+              <div className="flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-3">
+                <span className="text-[10px] font-mono uppercase text-[#1e248c]">קבץ לפי</span>
+                <select
+                  value={groupBy}
+                  onChange={e => setGroupBy(e.target.value as GroupKey)}
+                  dir="rtl"
+                  className="border border-[#1e248c]/30 rounded-lg px-2 py-1.5 text-sm bg-[#e7eefe]/60 font-medium text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
+                >
+                  {groupOptions.map(o => <option key={o.value} value={o.value}>{groupLabelHe(o.value)}</option>)}
+                </select>
+              </div>
+            </section>
+
+            {/* Extra report columns — appended to the PDF + Excel tables */}
+            <section>
+              <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">הוספת עמודות לדוח</p>
+              <div className="flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-3" title="העמודות שנבחרו יתווספו לטבלת הנושאים ב-PDF וב-Excel, אחרי העמודות הקבועות">
+                <span className="text-[10px] font-mono uppercase text-[#1e248c]">עמודות נוספות</span>
+                <MultiSelect
+                  placeholder="ללא עמודות נוספות"
+                  options={extraColumnOptions}
+                  selected={selExtraColumns}
+                  onChange={setSelExtraColumns}
+                  renderLabel={groupLabelHe}
+                />
+              </div>
+            </section>
+          </div>
+
+          {/* Report add-ons: status legend (email + PDF) and the instructions screenshot */}
           <section>
-            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">קיבוץ</p>
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl p-3">
-              <span className="text-[10px] font-mono uppercase text-[#1e248c]">קבץ לפי</span>
-              <select
-                value={groupBy}
-                onChange={e => setGroupBy(e.target.value as GroupKey)}
-                dir="rtl"
-                className="border border-[#1e248c]/30 rounded-lg px-2 py-1.5 text-sm bg-[#e7eefe]/60 font-medium text-[#1e248c] focus:outline-none focus:ring-2 focus:ring-[#1e248c]/20"
-              >
-                {groupOptions.map(o => <option key={o.value} value={o.value}>{groupLabelHe(o.value)}</option>)}
-              </select>
+            <p className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-2">תוספות לדוח</p>
+            <div className="flex flex-col gap-2 bg-gray-50 border border-gray-200 rounded-xl p-3">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={includeLegend}
+                  onChange={e => setIncludeLegend(e.target.checked)}
+                  className="w-4 h-4 accent-[#1e248c] shrink-0"
+                />
+                <span className="text-xs text-gray-700">
+                  הוסף מקרא סטטוסים לגוף המייל (ב-PDF המקרא מופיע תמיד)
+                </span>
+              </label>
+              {template.bodyImage && (
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={includeScreenshot}
+                    onChange={e => setIncludeScreenshot(e.target.checked)}
+                    className="w-4 h-4 accent-[#1e248c] shrink-0"
+                  />
+                  <span className="text-xs text-gray-700">
+                    צרף למייל את צילום המסך של הנחיות הטיפול בהערות (עדכון סטטוס ל-Completed)
+                  </span>
+                </label>
+              )}
             </div>
           </section>
 
@@ -711,8 +811,12 @@ export default function ExportReportPanel({
                 </div>
                 <AnalyticsBars issues={imageIssues} groupBy={groupBy} renderName={localizeGroup} />
               </div>
-              {/* Screenshot (after analytics) */}
-              {template.bodyImage && (
+              {/* Status legend (after analytics, checkbox-gated) — the exact HTML the email embeds */}
+              {includeLegend && (
+                <div dangerouslySetInnerHTML={{ __html: buildStatusLegendHtml() }} />
+              )}
+              {/* Screenshot (after analytics, checkbox-gated) */}
+              {hasScreenshot && template.bodyImage && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={template.bodyImage} alt="" className="w-full rounded-xl border border-gray-100" />
               )}
@@ -775,6 +879,15 @@ export default function ExportReportPanel({
                 {savingInternal ? <Loader2 size={15} className="animate-spin" /> : <BarChart3 size={15} />}
                 {savingInternal ? 'שומר…' : 'שמור לניתוח'}
               </button>
+              {onScheduleRequest && (
+                <button
+                  onClick={handleScheduleRequest}
+                  title="מעביר את כל ההגדרות לטאב התזמון — נותר רק לבחור מועד"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 border-2 border-[#1e248c] text-[#1e248c] bg-white rounded-xl text-sm font-bold hover:bg-[#e7eefe] transition"
+                >
+                  <Clock size={15} /> תזמן את הדוח
+                </button>
+              )}
             </div>
 
             {draftUrl && <span className="text-[11px] text-emerald-600 flex items-center gap-1"><Check size={13} /> הטיוטה נוצרה</span>}

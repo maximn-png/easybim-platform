@@ -54,3 +54,16 @@ export interface ScheduleDTO {
 export const EMPTY_FILTERS: ScheduleFilters = {
   assignees: [], issueTypes: [], disciplines: [], statuses: [], extra: [],
 }
+
+// A pre-filled schedule form handed from the Export tab's "תזמן את הדוח" button —
+// everything except the cadence, which the user picks in the Schedule tab.
+export interface ScheduleSeed {
+  name:       string
+  templateId: string
+  variantId:  string | null
+  groupBy:    string
+  filters:    ScheduleFilters
+  bodyText:   string
+  modelLink:  string
+  recipients: string[]
+}

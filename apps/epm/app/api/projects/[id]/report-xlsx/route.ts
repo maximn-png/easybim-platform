@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import type { AccIssue } from '@/lib/services/apsService'
+import type { ExtraColumn } from '@/lib/reportGrouping'
 
 export const runtime = 'nodejs'
 
 interface Body {
   issues: AccIssue[]
   xlsxName?: string
+  extraColumns?: ExtraColumn[]
 }
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const { generateReportXlsx } = await import('@/lib/server/reportXlsx')
-    const xlsx = await generateReportXlsx(body.issues)
+    const xlsx = await generateReportXlsx(body.issues, body.extraColumns ?? [])
     return new NextResponse(new Uint8Array(xlsx), {
       headers: {
         'Content-Type': XLSX_MIME,

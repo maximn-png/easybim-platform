@@ -5,8 +5,10 @@
 // route handler without a DOM.
 import type { AccIssue } from '@/lib/services/apsService'
 import {
-  type GroupKey, GROUP_OPTIONS, groupValue, statusColor, statusLabel, segmentTextColor, dropDraft,
+  type GroupKey, type ExtraColumn, GROUP_OPTIONS, groupValue, columnValue,
+  statusColor, statusLabel, segmentTextColor, dropDraft,
 } from '@/lib/reportGrouping'
+import { buildStatusLegendHtml } from '@/lib/statusLegend'
 
 export interface ReportMeta {
   projectName:    string
@@ -17,6 +19,11 @@ export interface ReportMeta {
   // custom-attribute names). Falls back to the static option label / raw key.
   groupLabel?:    string
   filtersSummary: string
+  // User-chosen extra table columns (Due Date, Created By, custom attributes…),
+  // appended after the fixed columns in the PDF and Excel.
+  extraColumns?:  ExtraColumn[]
+  // Hebrew status legend under the analytics (mirrors the email's legend block).
+  includeLegend?: boolean
 }
 
 const esc = (s: string) =>
@@ -71,9 +78,9 @@ function buildAnalytics(issues: AccIssue[], groupBy: GroupKey): string {
   return `${rows}<div style="display:flex;flex-wrap:wrap;gap:4px;padding-top:8px;margin-top:8px;border-top:1px solid #f3f4f6">${legend}</div>`
 }
 
-function issueRows(issues: AccIssue[]): string {
+function issueRows(issues: AccIssue[], extraColumns: ExtraColumn[]): string {
   if (issues.length === 0) {
-    return `<tr><td colspan="7" style="text-align:center;color:#9ca3af">אין נושאים</td></tr>`
+    return `<tr><td colspan="${7 + extraColumns.length}" style="text-align:center;color:#9ca3af">אין נושאים</td></tr>`
   }
   // Sort by the real ACC issue number (numeric), matching the reports page.
   const sorted = [...issues].sort(
@@ -86,6 +93,8 @@ function issueRows(issues: AccIssue[]): string {
     const numCell = i.url
       ? `<a href="${esc(i.url)}" style="color:#1e248c;font-weight:600;text-decoration:underline">${numText}</a>`
       : `<span style="color:#6b7280">${numText}</span>`
+    const extraCells = extraColumns.map(c => `
+      <td>${esc(columnValue(i, c.key) || '—')}</td>`).join('')
     return `<tr>
       <td style="white-space:nowrap">${numCell}</td>
       <td>${esc(i.title)}</td>
@@ -93,7 +102,7 @@ function issueRows(issues: AccIssue[]): string {
       <td>${esc(i.assignedTo ?? '—')}</td>
       <td>${esc(i.discipline || '—')}</td>
       <td style="text-align:center">${pill}</td>
-      <td>${esc(i.issueType)}</td>
+      <td>${esc(i.issueType)}</td>${extraCells}
     </tr>`
   }).join('')
 }
@@ -105,6 +114,7 @@ export function buildReportHtml(
 ): string {
   // Draft issues never appear in the report (analytics, table, or the count).
   const issues = dropDraft(allIssues)
+  const extraColumns = meta.extraColumns ?? []
   const today = new Date().toLocaleDateString('he-IL', { day: '2-digit', month: 'long', year: 'numeric' })
   const groupLabel = meta.groupLabel
     || GROUP_OPTIONS.find(o => o.value === meta.groupBy)?.label
@@ -153,6 +163,7 @@ th { background: #f1f3f8; color: #1e248c; font-weight: 700; font-size: 9px; }
 
   <div class="h2">נושאים לפי ${esc(groupLabel)}</div>
   ${buildAnalytics(issues, meta.groupBy)}
+  ${meta.includeLegend ? `<div style="margin-top:12px">${buildStatusLegendHtml()}</div>` : ''}
 
   <div class="section-table">
     <div class="h2">פירוט נושאים</div>
@@ -166,10 +177,11 @@ th { background: #f1f3f8; color: #1e248c; font-weight: 700; font-size: 9px; }
           <th style="width:75px">דיסציפלינה</th>
           <th style="width:64px">סטטוס</th>
           <th style="width:64px">סוג</th>
+          ${extraColumns.map(c => `<th style="width:70px">${esc(c.label)}</th>`).join('\n          ')}
         </tr>
       </thead>
       <tbody>
-        ${issueRows(issues)}
+        ${issueRows(issues, extraColumns)}
       </tbody>
     </table>
   </div>

@@ -49,6 +49,8 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
         accExternalHub: ext.accExternalHub as boolean | undefined,
         accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
         status: (snap.status as import('@/lib/types').ProjectRow['status']) ?? null,
+        client: (snap.client as string | undefined) || undefined,
+        issueCreatorStats: (snap.issueCreatorStats as import('@/lib/types').ProjectRow['issueCreatorStats']) ?? undefined,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
         hoursProgress: deriveHoursProgress(actualHours, budgetHours),
         actualHours,

@@ -241,6 +241,17 @@ export default function BimReportClient({ project, anaView = false }: { project:
   // Reports drawer (Export · Schedule · Activity)
   const [reportsOpen, setReportsOpen] = useState(false)
 
+  // Deep-link support: ?createdBy=<name> (the dashboard's "8/12" badges) seeds
+  // the CREATED BY filter chip. Read from window.location so no Suspense
+  // boundary is needed around useSearchParams.
+  useEffect(() => {
+    const createdBy = new URLSearchParams(window.location.search).get('createdBy')
+    if (!createdBy) return
+    setExtraFilters(prev => prev.some(f => f.key === 'createdBy')
+      ? prev
+      : [...prev, { key: 'createdBy', values: [createdBy] }])
+  }, [])
+
   useEffect(() => {
     fetch(`/api/projects/${project._id}/issues`)
       .then(async r => {
