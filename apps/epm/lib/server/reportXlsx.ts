@@ -4,7 +4,7 @@
 import 'server-only'
 import ExcelJS from 'exceljs'
 import type { AccIssue } from '@/lib/services/apsService'
-import { statusColor, statusLabel, segmentTextColor, dropDraft } from '@/lib/reportGrouping'
+import { type ExtraColumn, columnValue, statusColor, statusLabel, segmentTextColor, dropDraft } from '@/lib/reportGrouping'
 
 // EasyBIM brand colours as ARGB.
 const NAVY      = 'FF1E248C'
@@ -24,7 +24,7 @@ const fmtDate = (iso: string | null | undefined): string => {
 const thin = { style: 'thin' as const, color: { argb: BORDER } }
 const allBorders = { top: thin, left: thin, bottom: thin, right: thin }
 
-export async function generateReportXlsx(allIssues: AccIssue[]): Promise<Buffer> {
+export async function generateReportXlsx(allIssues: AccIssue[], extraColumns: ExtraColumn[] = []): Promise<Buffer> {
   // Draft issues never appear in the report.
   const issues = dropDraft(allIssues)
   const wb = new ExcelJS.Workbook()
@@ -45,6 +45,8 @@ export async function generateReportXlsx(allIssues: AccIssue[]): Promise<Buffer>
     { header: 'נוצר',        key: 'created',     width: 12 },
     { header: 'עודכן',       key: 'updated',     width: 12 },
     { header: 'נסגר',        key: 'closed',      width: 12 },
+    // User-chosen extra columns (Due Date, Created By, custom attributes…).
+    ...extraColumns.map((c, idx) => ({ header: c.label, key: `extra${idx}`, width: 16 })),
   ]
 
   // Header row — navy fill, white bold text.
@@ -70,6 +72,7 @@ export async function generateReportXlsx(allIssues: AccIssue[]): Promise<Buffer>
       created:    fmtDate(issue.createdAt),
       updated:    fmtDate(issue.updatedAt),
       closed:     fmtDate(issue.closedAt),
+      ...Object.fromEntries(extraColumns.map((c, i) => [`extra${i}`, columnValue(issue, c.key)])),
     })
 
     // Base cell style + zebra striping.

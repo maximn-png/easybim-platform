@@ -5,6 +5,7 @@ import { X, FileDown, Clock, FileText } from 'lucide-react'
 import type { ProjectRow, ReportListItem } from '@/lib/types'
 import type { AccIssue } from '@/lib/services/apsService'
 import type { GroupKey } from '@/lib/reportGrouping'
+import type { ScheduleSeed } from '@/lib/scheduleTypes'
 import ExportReportPanel from './ExportReportPanel'
 import ScheduleReportPanel from './ScheduleReportPanel'
 import ActivityReportsPanel from './ActivityReportsPanel'
@@ -47,6 +48,15 @@ export default function ReportsDrawer({
   // the page's CURRENT filters (as the old modal did) — while a tab switch,
   // which doesn't bump it, keeps a half-filled form intact.
   const [openCount, setOpenCount] = useState(0)
+  // Export → Schedule hand-off ("תזמן את הדוח"): the seed pre-fills the schedule
+  // form; the version bump tells the panel a new hand-off happened.
+  const [scheduleSeed, setScheduleSeed] = useState<ScheduleSeed | null>(null)
+  const [seedVersion, setSeedVersion] = useState(0)
+  const handleScheduleRequest = useCallback((seed: ScheduleSeed) => {
+    setScheduleSeed(seed)
+    setSeedVersion(v => v + 1)
+    setTab('schedule')
+  }, [])
 
   const loadReports = useCallback(async () => {
     try {
@@ -59,6 +69,9 @@ export default function ReportsDrawer({
   useEffect(() => {
     if (!open) return
     setOpenCount(c => c + 1)
+    // A hand-off never outlives the drawer session it was made in — clearing it
+    // stops the remounted Schedule panel from re-opening a stale pre-filled form.
+    setScheduleSeed(null)
     loadReports()
   }, [open, loadReports])
 
@@ -170,6 +183,7 @@ export default function ReportsDrawer({
               defaultExtraFilters={extraFilters}
               defaultMonth={monthSel}
               onReportSaved={loadReports}
+              onScheduleRequest={handleScheduleRequest}
             />
           </div>
 
@@ -185,6 +199,8 @@ export default function ReportsDrawer({
               defaultGroupBy={groupBy}
               onSchedulesChange={setActiveSchedules}
               onReportSaved={loadReports}
+              seed={scheduleSeed}
+              seedVersion={seedVersion}
             />
           </div>
 

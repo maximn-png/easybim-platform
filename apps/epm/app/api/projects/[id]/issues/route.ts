@@ -45,6 +45,22 @@ export async function GET(
     return imp?.issues ?? []
   }
 
+  // Piggyback: we already hold the full issue list, so refresh the stored
+  // per-creator stats (shown on the dashboard's team avatars). Best-effort.
+  const saveStats = async (issues: unknown[]) => {
+    try {
+      const { computeIssueCreatorStats } = await import('@/lib/issueStats')
+      await Project.updateOne({ _id: id }, {
+        $set: {
+          'snapshot.issueCreatorStats': computeIssueCreatorStats(issues as Array<{ status: string; createdBy?: string | null }>),
+          'snapshot.issueStatsSyncedAt': new Date(),
+        },
+      })
+    } catch (err) {
+      console.warn('[GET /api/projects/[id]/issues] stats save failed:', err)
+    }
+  }
+
   // ── External-hub projects (no partner integration): serve the manually-
   // imported Excel/CSV issues. No Autodesk login required — the client account
   // isn't reachable via the API.
@@ -53,6 +69,7 @@ export async function GET(
     if (issues.length === 0) {
       return NextResponse.json({ issues: [], count: 0, needsImport: true })
     }
+    await saveStats(issues)
     return NextResponse.json({ issues, count: issues.length, imported: true })
   }
 
@@ -72,6 +89,7 @@ export async function GET(
 
   try {
     const issues = await fetchAccIssues(accProjectId, accessToken, partnerHub)
+    await saveStats(issues)
     return NextResponse.json({ issues, count: issues.length })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -81,6 +99,7 @@ export async function GET(
       const imported = await loadImport()
       if (imported.length > 0) {
         console.warn(`[GET /api/projects/[id]/issues] live fetch failed for ${partnerHub.name} project, serving import:`, msg)
+        await saveStats(imported)
         return NextResponse.json({ issues: imported, count: imported.length, imported: true })
       }
     }

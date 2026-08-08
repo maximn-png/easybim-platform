@@ -161,6 +161,24 @@ export function paramValue(issue: AccIssue, key: string): string {
   return groupValue(issue, key)
 }
 
+// An extra report column chosen by the user (key = a paramValue key; label = the
+// display header, resolved client-side so Hebrew/custom-attribute names carry over).
+export interface ExtraColumn { key: string; label: string }
+
+// Cell value of an extra report column for an issue. Unlike paramValue, dueDate
+// renders as the actual date (buckets like "Overdue" suit charts, not table cells)
+// and missing values stay empty instead of "No <title>" placeholders.
+export function columnValue(issue: AccIssue, key: string): string {
+  if (key === 'dueDate') {
+    if (!issue.dueDate) return ''
+    const d = new Date(issue.dueDate)
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  }
+  if (key === 'createdBy') return issue.createdBy?.trim() || ''
+  if (key.startsWith('attr:')) return issue.attributes?.[key.slice(5)]?.trim() || ''
+  return groupValue(issue, key)
+}
+
 // Returns the group label for an issue under the chosen dimension.
 export function groupValue(issue: AccIssue, groupBy: string): string {
   if (groupBy === 'status')     return statusLabel(issue.status)

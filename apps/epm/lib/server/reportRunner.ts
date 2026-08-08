@@ -229,6 +229,8 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
     groupBy:       schedule.groupBy,
     groupLabel:    groupLabelHe(schedule.groupBy),
     filtersSummary,
+    // Scheduled reports have no add-ons checkbox — they always carry the legend.
+    includeLegend: true,
   }
 
   // ── Artefacts ──
@@ -257,6 +259,7 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
     highlightPhrases: resolved.highlightPhrases,
     hasChart: true,
     hasScreenshot,
+    hasLegend: true,
     inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
   })
 
@@ -318,6 +321,7 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
     highlightPhrases: resolved.highlightPhrases,
     hasChart: true,
     hasScreenshot,
+    hasLegend: true,
     urls: useHosted ? {
       chart: `${origin}/api/report-image/${reportId}?kind=chart`,
       screenshot: hasScreenshot ? `${origin}/api/report-image/${reportId}?kind=screenshot` : undefined,

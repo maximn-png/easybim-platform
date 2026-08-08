@@ -9,7 +9,7 @@ import type { ProjectRow } from '@/lib/types'
 import type { AccIssue, AccMember } from '@/lib/services/apsService'
 import { type GroupKey, buildGroupOptions, statusLabel, normalizeStatus, dropDraft } from '@/lib/reportGrouping'
 import { REPORT_TEMPLATES, resolveVariant, seedBodyLines, type ReportTemplate } from '@/lib/reportTemplates'
-import { EMPTY_FILTERS, type ScheduleDTO, type ScheduleFilters } from '@/lib/scheduleTypes'
+import { EMPTY_FILTERS, type ScheduleDTO, type ScheduleFilters, type ScheduleSeed } from '@/lib/scheduleTypes'
 import { describeFrequency, formatInZone, WEEKDAYS_EN, DEFAULT_TZ, type Frequency } from '@/lib/scheduleTime'
 import MultiSelect from '../MultiSelect'
 import {
@@ -92,7 +92,7 @@ function StatusPill({ s }: { s: ScheduleDTO }) {
 
 export default function ScheduleReportPanel({
   project, issues, assignees, issueTypes, disciplines, allStatuses, defaultGroupBy,
-  onSchedulesChange, onReportSaved,
+  onSchedulesChange, onReportSaved, seed, seedVersion = 0,
 }: {
   project: ProjectRow
   issues: AccIssue[]
@@ -103,6 +103,10 @@ export default function ScheduleReportPanel({
   defaultGroupBy: GroupKey
   onSchedulesChange?: (count: number) => void
   onReportSaved?: () => void
+  // Handed over by the Export tab's "תזמן את הדוח" — opens the new-schedule form
+  // pre-filled with the export's configuration; only the cadence is left to pick.
+  seed?: ScheduleSeed | null
+  seedVersion?: number
 }) {
   const [schedules, setSchedules] = useState<ScheduleDTO[]>([])
   const [loading, setLoading] = useState(true)
@@ -144,6 +148,20 @@ export default function ScheduleReportPanel({
       .catch(() => { /* manual entry still works */ })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project._id])
+
+  // Apply a hand-off from the Export tab: open the new-schedule form pre-filled
+  // with the export's configuration (cadence/delivery stay at their defaults).
+  useEffect(() => {
+    if (!seed) return
+    setForm({
+      ...blankForm(project, defaultGroupBy),
+      ...seed,
+      filters: { ...EMPTY_FILTERS, ...seed.filters, extra: seed.filters.extra ?? [] },
+    })
+    setFormError(null)
+    setEditing('new')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedVersion])
 
   // ── Derived options, mirroring the Export tab ──
   const groupOptions = useMemo(() => buildGroupOptions(issues), [issues])
