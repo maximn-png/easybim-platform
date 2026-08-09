@@ -24,15 +24,21 @@ export interface DriveFileMeta {
   id: string
   name: string
   mimeType: string
+  sizeBytes: number
 }
 
 export async function getDriveFileMeta(fileId: string): Promise<DriveFileMeta> {
   const res = await getDrive().files.get({
     fileId,
-    fields: 'id,name,mimeType',
+    fields: 'id,name,mimeType,size',
     supportsAllDrives: true,
   })
-  return { id: res.data.id ?? fileId, name: res.data.name ?? fileId, mimeType: res.data.mimeType ?? '' }
+  return {
+    id: res.data.id ?? fileId,
+    name: res.data.name ?? fileId,
+    mimeType: res.data.mimeType ?? '',
+    sizeBytes: res.data.size ? Number(res.data.size) : 0,
+  }
 }
 
 export async function downloadDriveFile(fileId: string): Promise<Buffer> {

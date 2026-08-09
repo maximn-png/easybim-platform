@@ -26,7 +26,7 @@
   function norm(n){
     if(typeof n==='string') return {name:n};
     if(Array.isArray(n)) return {name:n[0], children:n[1]};
-    return {name:n.n, children:n.c, status:n.s, custom:!!n.custom, muted:!!n.muted, doc:n.doc, video:n.video, descEn:n.descEn, descHe:n.descHe};
+    return {name:n.n, children:n.c, status:n.s, custom:!!n.custom, muted:!!n.muted, doc:n.doc};
   }
 
   const menuBtn = '<button class="row-menu" onclick="KC.menu(event,this)" title="Manage"><i data-lucide="more-vertical"></i></button>';
@@ -39,7 +39,6 @@
     node.className = 'node' + (isCustom?' custom':'');
     node.dataset.depth = depth;
     if(n.doc) node.dataset.doc = n.doc;
-    if(n.video){ node.dataset.video = n.video; if(n.descEn) node.dataset.descEn = n.descEn; if(n.descHe) node.dataset.descHe = n.descHe; }
     const hasKids = Array.isArray(n.children);
     const realCount = hasKids ? n.children.filter(c=>!(c && typeof c==='object' && !Array.isArray(c) && c.muted)).length : 0;
 
@@ -244,38 +243,8 @@
     const ws=rowEl.closest('.workspace');
     if(node && node.classList.contains('custom')) openCustomDoc(ws, node);
     else if(node && node.dataset.doc) openDocPage(ws, node);
-    else if(node && node.dataset.video) openVideoPage(ws, node);
     else closeCustomDoc(ws);
   };
-
-  /* official video page — a leaf whose kc-data.js node carries a `video`
-     Google Drive file id (scripts/digestRevitVideos.ts fills these in from
-     the Monday "Revit" > "Videos" group). Unlike openDocPage there's no
-     digested content to fetch — just embed Drive's own preview player and
-     show the bilingual description the board already carries alongside
-     the file, so this renders synchronously with no KC.API round-trip. */
-  function openVideoPage(ws, node){
-    const cb=ws.querySelector('.c2 .cb'); if(!cb) return;
-    const c2=ws.querySelector('.c2'); if(c2 && c2.classList.contains('slim') && window.xp) xp(c2.id);
-    cb.querySelectorAll('.kc-doc').forEach(e=>e.remove());
-    [...cb.children].forEach(el=>{ if(!el.classList.contains('kc-doc')) el.classList.add('kc-doc-hidden'); });
-    const driveId=node.dataset.video;
-    const title=(node.querySelector(':scope > .row .row-name')||{}).textContent.trim()||'Video';
-    const path=nodePath(node);
-    const bc=path.map((p,i)=>(i?'<i data-lucide="chevron-right"></i>':'')+'<span'+(i===path.length-1?' class="bc-cur"':'')+'>'+esc(p)+'</span>').join('');
-    const descEn=node.dataset.descEn||'', descHe=node.dataset.descHe||'';
-    const wrap=document.createElement('div'); wrap.className='kc-doc kc-video-page';
-    wrap.innerHTML=
-      '<div class="bcrumb">'+bc+'</div>'+
-      '<h1 class="kc-video-title">'+esc(title)+'</h1>'+
-      '<div class="kc-video-frame"><iframe src="https://drive.google.com/file/d/'+attr(driveId)+'/preview" allow="autoplay" allowfullscreen loading="lazy"></iframe></div>'+
-      '<a class="kc-video-openin" href="https://drive.google.com/file/d/'+attr(driveId)+'/view" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open in Google Drive</a>'+
-      (descEn?'<p class="kc-video-desc" dir="ltr">'+esc(descEn)+'</p>':'')+
-      (descHe?'<p class="kc-video-desc" dir="rtl">'+esc(descHe)+'</p>':'');
-    cb.insertBefore(wrap, cb.firstChild);
-    cb.scrollTop=0;
-    icons();
-  }
 
   /* official rich document page (KC.DocPage) rendered in the Textbook.
      Goes through KC.API.getDocument, so the four document states
@@ -826,7 +795,7 @@
   function bkTopicOf(cb){ const c=cb.querySelector('.bcrumb .bc-cur')||cb.querySelector('.dp-bc-cur'); return c?c.textContent.trim():''; }
   function bkLines(cb){
     const dp=cb.querySelector('.kc-docpage .dp-body');
-    if(dp) return [...dp.querySelectorAll(':scope > .dp-p, :scope > .dp-h, :scope > .dp-list > li, :scope > .dp-callout, :scope > .dp-fig')];
+    if(dp) return [...dp.querySelectorAll(':scope > .dp-p, :scope > .dp-h, :scope > .dp-list > li')];
     const body=cb.querySelector('.kc-doc .kc-doc-body');
     if(body) return [...body.children].filter(el=>el.nodeType===1 && !el.classList.contains('kc-bm'));
     return [...cb.querySelectorAll(':scope > .doc-p')];
@@ -2031,20 +2000,17 @@
      glass preview (--glass / --glass-bd / --sh-pop).
      ============================================================ */
   function ytId(url){ const m=String(url).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/))([\w-]{11})/); return m?m[1]:null; }
-  function driveVideoId(url){ const m=String(url).match(/drive\.google\.com\/file\/d\/([\w-]+)/); return m?m[1]:null; }
   function domainOf(url){ try{ return new URL(url).hostname.replace(/^www\./,''); }catch(e){ return String(url).replace(/^https?:\/\//,'').split('/')[0]||'link'; } }
   function cardMeta(url){
     const yt=ytId(url);
     if(yt) return {type:'video', icon:'play-circle', source:'YouTube', title:'YouTube video', yt};
-    const drive=driveVideoId(url);
-    if(drive) return {type:'video', icon:'play-circle', source:'Google Drive', title:'Google Drive video', drive};
     if(/\.pdf(\?|#|$)/i.test(url)){ const f=decodeURIComponent((url.split(/[?#]/)[0].split('/').pop())||'')||'Document.pdf'; return {type:'pdf', icon:'file-text', source:domainOf(url), title:f}; }
     return {type:'link', icon:'link', source:domainOf(url), title:domainOf(url)};
   }
   // Single source of truth for card markup — returns an HTML string.
   KC.renderLinkCard = function(url, title){
     const m=cardMeta(url); const t=title||m.title;
-    return '<a class="lcard" data-type="'+m.type+'" data-url="'+attr(url)+'"'+(m.yt?' data-yt="'+m.yt+'"':'')+(m.drive?' data-drive="'+attr(m.drive)+'"':'')+(title?' data-fixed="1"':'')+
+    return '<a class="lcard" data-type="'+m.type+'" data-url="'+attr(url)+'"'+(m.yt?' data-yt="'+m.yt+'"':'')+(title?' data-fixed="1"':'')+
       ' href="'+attr(url)+'" target="_blank" rel="noopener noreferrer" contenteditable="false">'+
       '<span class="lcard-ic"><i data-lucide="'+m.icon+'"></i></span>'+
       '<span class="lcard-body"><span class="lcard-title">'+esc(t)+'</span>'+
@@ -2058,12 +2024,11 @@
   let prevCard=null;
   function ensurePrev(){ let p=document.getElementById('lcardPrev'); if(!p){ p=document.createElement('div'); p.id='lcardPrev'; p.className='lcard-preview'; document.body.appendChild(p); } return p; }
   function prevContent(card){
-    const type=card.dataset.type, yt=card.dataset.yt, drive=card.dataset.drive;
+    const type=card.dataset.type, yt=card.dataset.yt;
     const title=(card.querySelector('.lcard-title')||{}).textContent||'';
     const src=(card.querySelector('.lcard-src')||{}).textContent||'';
     let media;
     if(type==='video' && yt) media='<img class="lcard-thumb" src="https://img.youtube.com/vi/'+yt+'/hqdefault.jpg" alt="">';
-    else if(type==='video' && drive) media='<img class="lcard-thumb" src="https://drive.google.com/thumbnail?id='+drive+'&sz=w400" alt="">';
     else if(type==='pdf') media='<div class="lcard-ph"><i data-lucide="file-text"></i><span>PDF preview</span></div>'; // TODO: real PDF first-page render
     else media='<div class="lcard-ph"><i data-lucide="link"></i><span>'+esc(src)+'</span></div>';
     return media+'<div class="lcard-ptitle">'+esc(title)+'</div>';
@@ -2079,7 +2044,7 @@
   function showPrev(card){ prevCard=card; const p=ensurePrev(); p.innerHTML=prevContent(card); icons(); positionPrev(card,p); requestAnimationFrame(()=>p.classList.add('show')); enrichCard(card); }
   function hidePrev(){ const p=document.getElementById('lcardPrev'); if(p)p.classList.remove('show'); prevCard=null; }
   function enrichCard(card){
-    if(card.dataset.type!=='video' || card.dataset.drive || card.dataset.enriched) return;
+    if(card.dataset.type!=='video' || card.dataset.enriched) return;
     card.dataset.enriched='1';
     fetch('https://www.youtube.com/oembed?url='+encodeURIComponent(card.dataset.url)+'&format=json')
       .then(r=>r.ok?r.json():null).then(d=>{

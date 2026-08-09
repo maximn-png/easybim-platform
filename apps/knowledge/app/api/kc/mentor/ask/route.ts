@@ -18,7 +18,13 @@ export async function POST(req: Request) {
   if (!question) return NextResponse.json({ error: 'question is required' }, { status: 400 })
   const preferSourceId = typeof body?.sourceId === 'string' ? body.sourceId : undefined
 
-  const results = await searchChunks(question, { limit: 6, preferSourceId })
+  let results
+  try {
+    results = await searchChunks(question, { limit: 6, preferSourceId })
+  } catch (err) {
+    console.error('[mentor/ask] searchChunks failed:', err)
+    return NextResponse.json({ error: 'The mentor is unavailable right now — please try again.' }, { status: 502 })
+  }
 
   if (!results.length) {
     return NextResponse.json({

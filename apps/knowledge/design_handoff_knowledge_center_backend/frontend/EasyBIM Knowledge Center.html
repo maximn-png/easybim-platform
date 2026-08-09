@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<base href="/kc/">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EasyBIM — Knowledge Center</title>
 <template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#1e248c"/><rect x="30" y="30" width="140" height="140" rx="16" fill="#44b8d3" opacity="0.25"/><text x="100" y="112" font-family="Georgia,serif" font-size="52" font-weight="700" fill="#fff" text-anchor="middle">EB</text></svg></template>
@@ -646,9 +645,7 @@ body.tr-off .ctr{display:none}
 .kc-docpage .dp-body>.dp-list>li .kc-bm-r{right:-29px}
 .kc-docpage .dp-body>.dp-p:hover>.kc-bm,
 .kc-docpage .dp-body>.dp-h:hover>.kc-bm,
-.kc-docpage .dp-body>.dp-list>li:hover>.kc-bm,
-.kc-docpage .dp-body>.dp-callout:hover>.kc-bm,
-.kc-docpage .dp-body>.dp-fig:hover>.kc-bm{opacity:.28}
+.kc-docpage .dp-body>.dp-list>li:hover>.kc-bm{opacity:.28}
 .kc-docpage .dp-body .kc-bm:hover{opacity:.9!important;background:var(--acc2)}
 .kc-docpage .dp-body .bk-l>.kc-bm-l,
 .kc-docpage .dp-body .bk-r>.kc-bm-r{display:none}
@@ -889,18 +886,6 @@ body.tr-off .ctr{display:none}
 .lcard-ph .lucide{font-size:28px;stroke:var(--acc)}
 .lcard-ph span{font-family:var(--font-mono);font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
 .lcard-ptitle{font-size:12px;font-weight:600;color:var(--hd);line-height:1.4;margin-top:8px;padding:0 3px 2px}
-
-/* ── VIDEO PAGE (official Revit "Videos" leaves — embedded Drive player) ── */
-.kc-video-page{padding:0 16px 40px}
-.kc-video-title{font-family:var(--font-display);font-size:20px;font-weight:700;color:var(--hd);margin:2px 0 16px}
-.kc-video-frame{width:100%;aspect-ratio:16/9;border-radius:14px;overflow:hidden;background:var(--bg2);box-shadow:var(--sh-sm)}
-.kc-video-frame iframe{width:100%;height:100%;border:0;display:block}
-.kc-video-openin{display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-family:var(--font-body);font-size:11.5px;font-weight:600;color:var(--acc);text-decoration:none}
-.kc-video-openin:hover{color:var(--acc2)}
-.kc-video-openin .lucide{font-size:13px}
-.kc-video-desc{font-family:var(--font-body);font-size:13px;line-height:1.6;color:var(--tx1);margin-top:18px;max-width:720px}
-.kc-video-desc[dir="rtl"]{text-align:right}
-
 @keyframes flashRow{0%,100%{background:transparent}30%{background:var(--acc-bg)}}
 .row.flash-row{animation:flashRow 1.1s var(--ease)}
 .nblk{position:relative;background:var(--bg0);border:1px solid var(--bd);border-radius:14px;margin:0 12px 9px;box-shadow:var(--sh-sm);transition:border-color .15s}
@@ -1497,37 +1482,6 @@ body:not(.role-intern) .blk-bar{display:none}
 .snd-iss-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .snd-iss-sub{font-size:11px;color:var(--tx2);width:100%;text-align:left}
 @media (max-width:560px){.snd-filters{grid-template-columns:1fr}}
-/* Boot-only: same visual effect as .col.slim (see above), applied by
-   default before kc-api.js's <script> tag (last in body) has run — its own
-   real collapse-on-load logic then adds body.kc-boot-ready, handing off to
-   the normal .slim rules with no visible change. Without this, the browser
-   can paint one frame of the fully-open layout while parsing the rest of
-   the page, before that script is even reached. */
-body:not(.kc-boot-ready) :is(.c1,.c2,.c3,.c4){flex:0 0 54px!important;min-width:54px!important}
-body:not(.kc-boot-ready) :is(.c1,.c2,.c3,.c4) .ci{display:none}
-body:not(.kc-boot-ready) :is(.c1,.c2,.c3,.c4) .ss{display:flex}
-/* Same reasoning, for the translation corner tab: hidden through the boot
-   window regardless of the real preference, then handed off to the normal
-   body.tr-off rule the instant kc-api.js runs (which sets tr-off itself
-   from the real, per-user pref) — correct either way, no flash either way. */
-body:not(.kc-boot-ready) .tr-tab{display:none}
-/* .tr-tab is only the small click-target; the translation column itself
-   (.ctr) has its own always-there 37px "peek" sliver (see .ctr's own CSS
-   above) whenever body.tr-off is absent — same boot-window gap, same fix. */
-body:not(.kc-boot-ready) .ctr{display:none}
-/* Same reasoning again, for the c1 spine's label text: it reads "Plan" in
-   the raw markup, renamed to "Content" by kc-api.js. Blanking it left an
-   empty label for that first moment — paint the real end state directly
-   instead (font-size:0 hides "Plan", ::after shows "Content" styled
-   identically to .ss-lbl's own rule above), so there's nothing to hand off
-   visually once the boot window ends; the real text underneath already
-   says the same thing by the time it's revealed. */
-body:not(.kc-boot-ready) #w0c1 .ss-lbl,
-body:not(.kc-boot-ready) #w1c1 .ss-lbl,
-body:not(.kc-boot-ready) #w2c1 .ss-lbl{font-size:0}
-body:not(.kc-boot-ready) #w0c1 .ss-lbl::after,
-body:not(.kc-boot-ready) #w1c1 .ss-lbl::after,
-body:not(.kc-boot-ready) #w2c1 .ss-lbl::after{content:"Content";writing-mode:vertical-rl;font-family:var(--font-display);font-size:13px;font-weight:700;color:var(--hd);letter-spacing:.01em}
 </style>
 <link id="gfont-Open-Sans" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&amp;display=swap">
 </head>
@@ -2170,9 +2124,9 @@ window.addEventListener('load',renderIcons);
 
 <div class="ctxmenu" id="ctxmenu"></div>
 <div class="toast" id="toast"></div>
-<script src="kc-api.js?v=52"></script>
+<script src="kc-api.js?v=1"></script>
 <script src="kc-data.js?v=2"></script>
-<script src="kc-app.js?v=20"></script>
+<script src="kc-app.js?v=19"></script>
 <script src="kc-teamlead.js?v=6"></script>
 <script src="kc-suggest.js?v=4"></script>
 <script src="kc-send.js?v=5"></script>

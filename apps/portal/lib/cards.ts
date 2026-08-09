@@ -42,8 +42,10 @@ export const CARDS: AppCard[] = [
     description:
       'Your central hub for EasyBIM standards, BIM guides, templates, and best practices — find the right workflow and answer in seconds.',
     icon: BookOpen,
-    href: '#',
-    status: 'coming-soon',
+    href: process.env.NEXT_PUBLIC_KNOWLEDGE_URL || '#',
+    // Only advertise as Live when the knowledge URL is actually configured for
+    // this environment — otherwise show "coming soon" instead of a dead `#` link.
+    status: process.env.NEXT_PUBLIC_KNOWLEDGE_URL ? 'live' : 'coming-soon',
     color: '#818cf8',
   },
   {

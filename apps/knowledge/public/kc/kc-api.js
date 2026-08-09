@@ -368,6 +368,24 @@
   // which workspace) takes over from here — a brand-new user (nothing
   // saved yet) still gets the clean, all-collapsed start above.
   document.querySelectorAll('.workspace').forEach((ws) => {
+    // template.html hardcodes fake "demo" content directly into every
+    // workspace's .c2 .cb (a placeholder breadcrumb/byline/paragraphs,
+    // never wrapped in .kc-doc) — normally hidden behind renderNotYetAvailable
+    // (below, further down this file), but that only runs once window.KC
+    // exists and tryWrap() has finished, ~150ms after this point. If this
+    // workspace's Textbook column was left open in a previously-saved
+    // layout, `xp(col.id)` a few lines down reveals it RIGHT NOW —
+    // synchronously, on script load — which is well before that 150ms
+    // mitigation has had any chance to run, so the raw fake content would
+    // flash into view for real. Hide it here too, synchronously, before
+    // any column can expand — pure DOM, no KC.* needed yet. The later
+    // renderNotYetAvailable/fixInitialMockViews pass still runs on top of
+    // this and paints the real "Not in the Knowledge Center yet" message;
+    // this only closes the timing gap before that's ready.
+    const c2cb = ws.querySelector('.c2 .cb');
+    if (c2cb && !c2cb.querySelector('.kc-doc')) {
+      Array.prototype.forEach.call(c2cb.children, (el) => el.classList.add('kc-doc-hidden'));
+    }
     const savedCols = RemoteKV.get(K.uiCols(ws.id), null);
     ['c1', 'c2', 'c3', 'c4'].forEach((cls) => {
       const col = ws.querySelector('.' + cls);
@@ -430,7 +448,368 @@
   }
   API.getNote = function (wsId) { return RemoteKV.getRaw(noteKeyForWs(wsId) || K.note(wsId)); };
   API.saveNote = function (wsId, html) { return RemoteKV.setRaw(noteKeyForWs(wsId) || K.note(wsId), html); };
-
+  // Custom documents' "Created by X / Last updated by Y" byline didn't earn
+  // its space — not wanted here at all, same call as dropping it from the
+  // Notebook. KC.bylineHTML is still called from several locked/patched
+  // spots (openCustomDoc, KC.saveDoc, replaceSaveDocForEditor) that all
+  // insert its return value or replaceWith() an existing `.kc-byline`, so
+  // it stays a real (if invisible) node — an empty string would make
+  // replaceWith() insert a literal text node reading "null" instead.
+  function replaceBylineHTML() {
+    if (typeof KC.bylineHTML !== 'function') return false;
+    if (KC.bylineHTML.__nbCardStyle) return true;
+    KC.bylineHTML = function () { return '<div class="kc-byline" style="display:none"></div>'; };
+    KC.bylineHTML.__nbCardStyle = true;
+    return true;
+  }
+  // openCustomDoc (locked, kc-app.js:319-339) builds, in source order:
+  // toolbar → breadcrumb → byline → title input → body. The title is now
+  // mirrored into c2's static header instead (syncTextbookHeaderTitle,
+  // below) and hidden in place here, and the byline is hidden outright
+  // (replaceBylineHTML) — so this only needs to reorder what's still
+  // visible into breadcrumb → toolbar → body, matching the official
+  // document's own title+breadcrumb → body convention and the same order
+  // the Notebook now uses.
+  function reorderCustomDocHeader(wrap) {
+    if (!wrap) return;
+    const bcrumb = wrap.querySelector(':scope > .bcrumb');
+    const bar = wrap.querySelector(':scope > .kc-doc-bar');
+    const body = wrap.querySelector(':scope > .kc-doc-body');
+    if (!bcrumb || !bar || !body) return;
+    [bcrumb, bar, body].forEach((el) => { wrap.appendChild(el); });
+  }
+  // Reused across the custom-document Versions/TOC blocks below — a real
+  // document's own .dp-blk-head onclick handlers (KC.DocPage.versToggle/
+  // togglePin/tocToggle, kc-docpage.js) all resolve their target via a
+  // hardcoded document.getElementById('dpVers'/'dpToc') — fine for a
+  // single real document, but this app keeps all 3 workspaces' DOM alive
+  // at once (only one .active), so a second matching id anywhere (another
+  // workspace's real document, or a custom document's own block) would
+  // silently steal every click, regardless of which workspace is actually
+  // visible. Wiring each block's own toggle/pin straight off the specific
+  // element that was clicked (closures, not id lookups) sidesteps that
+  // entirely — this is why the custom-doc blocks below never reuse
+  // KC.DocPage's own render functions or ids.
+  function installBlockToggle(blockEl, container) {
+    const head = blockEl.querySelector(':scope > .dp-blk-head');
+    if (head) {
+      head.addEventListener('click', (ev) => {
+        if (ev.target.closest('.dp-toc-pin')) return;
+        if (blockEl.classList.contains('pinned')) blockEl.classList.toggle('open');
+        else blockEl.classList.toggle('collapsed');
+      });
+    }
+    const pinBtn = blockEl.querySelector(':scope > .dp-blk-head .dp-toc-pin');
+    if (pinBtn) {
+      pinBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const pinned = blockEl.classList.toggle('pinned');
+        pinBtn.title = pinned ? 'Unpin' : 'Pin to top';
+        blockEl.classList.toggle('open', pinned);
+        blockEl.classList.toggle('collapsed', !pinned);
+        relayoutCustomPins(container);
+      });
+    }
+  }
+  // At most 2 blocks (Versions, TOC) ever coexist here, so a full
+  // multi-block stacking algorithm (kc-docpage.js's DP.relayoutPins, which
+  // also scans the whole document rather than one container) isn't needed
+  // — just stack whichever of the two are pinned under the sticky
+  // breadcrumb head, in DOM order.
+  function relayoutCustomPins(container) {
+    const tbhead = container.querySelector(':scope > .dp-tbhead');
+    let offset = tbhead ? tbhead.getBoundingClientRect().height : 0;
+    [...container.querySelectorAll(':scope > .dp-blk.pinned')].forEach((el) => {
+      el.style.top = offset + 'px';
+      offset += el.getBoundingClientRect().height;
+    });
+  }
+  // A custom document's own "Versions" is just the {createdBy,createdAt,
+  // editedBy,editedAt} kc_docs already tracks (KC.saveDoc, locked) — not a
+  // growing audit trail; kc-docpage's own DP.allVersions would also mix in
+  // a single GLOBAL, cross-document log (RemoteKV kc_docpage_versions) on
+  // top of whatever's passed in, which is real documents' own log, not
+  // something a custom document's "Versions" should ever show.
+  function buildCustomVersionEntries(meta) {
+    if (!meta || !meta.createdBy) return null;
+    const entries = [{ v: 1, who: meta.createdBy, date: meta.createdAt ? KC.fmtDate(meta.createdAt) : 'Draft' }];
+    if (meta.editedBy && (meta.editedAt !== meta.createdAt || meta.editedBy !== meta.createdBy)) {
+      entries.push({ v: 2, who: meta.editedBy, date: KC.fmtDate(meta.editedAt) });
+    }
+    return entries;
+  }
+  // Same markup DP.versionsHTML (kc-docpage.js) renders — .dp-blk/.dp-vitem/
+  // .dp-vbadge/etc — minus the onclick attributes (installBlockToggle wires
+  // those instead) and the id (own unique-enough one, never "dpVers").
+  function renderCustomVersionsBlock(docId, entries) {
+    const items = entries.map((v, i) => {
+      const chip = i === 0 ? '<span class="dp-vbadge">Created</span>' : '<span class="dp-vchip">v' + esc(String(v.v)) + '</span>';
+      return '<div class="dp-vitem' + (i === 0 ? ' dp-vcreate' : '') + '">'
+        + '<div class="dp-vmain"><div class="dp-vhead"><span class="dp-vwho2">' + esc(v.who) + '</span>'
+        + '<span class="dp-vmeta">' + chip + '<span class="dp-vdate2">' + esc(v.date) + '</span></span></div></div></div>';
+    }).join('');
+    const host = document.createElement('div');
+    host.innerHTML = '<section class="dp-blk dp-versions collapsed" id="' + esc('dpVers-' + docId) + '">'
+      + '<div class="dp-blk-head"><span class="dp-blk-h"><i data-lucide="history"></i><span>Versions</span>'
+      + '<span class="dp-blk-count">' + entries.length + '</span></span>'
+      + '<span class="dp-blk-ctrl"><button class="dp-toc-pin" title="Pin to top"><svg class="dp-pin-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M9.5 4v5l-2 3h9l-2-3V4"></path><path d="M12 12v8"></path></svg></button>'
+      + '<i data-lucide="chevron-down" class="dp-blk-caret"></i></span></div>'
+      + '<div class="dp-blk-body"><div class="dp-vlog">' + items + '</div></div></section>';
+    return host.firstElementChild;
+  }
+  // Scans the doc body for headings — both a plain new document's own
+  // (h1-h6, TipTap's default schema) and a "Duplicate to edit" copy's
+  // .dp-h2-.dp-h5-classed ones. Always mints a fresh, doc-scoped anchor id
+  // for every heading rather than trusting one a duplicated heading might
+  // already carry (a "sec-N" id copied from its source real document) —
+  // digest anchors are only unique *within* one document, so a duplicate
+  // could otherwise collide with its own still-open source, or with
+  // another workspace's real document using the same "sec-N".
+  function buildCustomToc(bodyEl, docId) {
+    if (!bodyEl) return [];
+    const heads = [...bodyEl.querySelectorAll('h1,h2,h3,h4,h5,h6,.dp-h2,.dp-h3,.dp-h4,.dp-h5')];
+    const base = 'kc-toc-' + docId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return heads.map((el, i) => {
+      el.id = base + '-' + i;
+      const tagLvl = /^H[1-6]$/.test(el.tagName) ? +el.tagName[1] : 0;
+      const classMatch = el.className.match(/dp-h([2-5])/);
+      // A "Duplicate to edit" copy's heading (kc-docpage.js's DP.blocksHTML)
+      // renders its real section number as a separate .dp-hnum span BEFORE
+      // the actual heading text (.dp-htx) — using the whole element's
+      // textContent glues that number onto the text instead of keeping it
+      // as its own number badge, which is what actually made this look
+      // "off" compared to the real document's own TOC.
+      const txtEl = el.querySelector(':scope > .dp-htx');
+      const numEl = el.querySelector(':scope > .dp-hnum');
+      const txt = (txtEl ? txtEl.textContent : el.textContent || '').trim();
+      const num = numEl ? numEl.textContent.replace(/\.\s*$/, '').trim() : '';
+      return { txt, num, anchor: el.id, lvl: tagLvl || (classMatch ? +classMatch[1] : 2) };
+    }).filter((e) => e.txt);
+  }
+  // Same markup DP.tocHTML (kc-docpage.js) renders — .dp-blk/.dp-toc-i/
+  // .dp-toc-n/etc — minus the onclick (installBlockToggle + a plain scoped
+  // scrollIntoView instead of KC.DocPage.goToSection's own
+  // document.getElementById('dpToc')-based pinned-state lookup) and the id.
+  function renderCustomTocBlock(entries) {
+    const items = entries.map((it, i) => {
+      const heb = /[\u0590-\u05FF]/.test(it.txt);
+      // Same branch DP.tocHTML itself takes -- Hebrew entries get .dp-toc-he
+      // (+ a gray English translation line straight from kc-docpage's own
+      // DP.EN dictionary, when this exact phrase happens to be in it) and
+      // ONLY English-only entries get .dp-toc-only; using .dp-toc-only for
+      // everything (an earlier pass here) meant every Hebrew heading -- the
+      // vast majority of them -- rendered with the wrong styling.
+      const en = window.KC && KC.DocPage && KC.DocPage.EN && KC.DocPage.EN[it.txt];
+      const label = heb
+        ? '<span class="dp-toc-he" dir="rtl">' + esc(it.txt) + '</span>' + (en ? '<span class="dp-toc-en">' + esc(en) + '</span>' : '')
+        : '<span class="dp-toc-only" dir="ltr">' + esc(it.txt) + '</span>';
+      const lvlClass = it.lvl >= 3 ? ' dp-toc-lvl' + it.lvl : '';
+      return '<li><a class="dp-toc-i' + lvlClass + '" dir="' + (heb ? 'rtl' : 'ltr') + '" href="#' + esc(it.anchor) + '" data-anchor="' + esc(it.anchor) + '">'
+        + '<span class="dp-toc-n">' + esc(it.num || String(i + 1)) + '</span>'
+        + '<span class="dp-toc-t">' + label + '</span></a></li>';
+    }).join('');
+    const host = document.createElement('div');
+    host.innerHTML = '<nav class="dp-blk dp-toc">'
+      + '<div class="dp-blk-head"><span class="dp-blk-h"><i data-lucide="list-tree"></i><span>Table of contents</span></span>'
+      + '<span class="dp-blk-ctrl"><button class="dp-toc-pin" title="Pin to top"><svg class="dp-pin-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M9.5 4v5l-2 3h9l-2-3V4"></path><path d="M12 12v8"></path></svg></button>'
+      + '<i data-lucide="chevron-down" class="dp-blk-caret"></i></span></div>'
+      + '<div class="dp-blk-body"><ol class="dp-toc-list">' + items + '</ol></div></nav>';
+    const nav = host.firstElementChild;
+    nav.querySelectorAll('a[data-anchor]').forEach((a) => {
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const target = document.getElementById(a.dataset.anchor);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+    return nav;
+  }
+  // The whole point of this pass: a custom document's header should be
+  // built from the exact same pieces a real document's is (sticky
+  // title+breadcrumb head → Versions → TOC), not a hand-tuned lookalike —
+  // wraps breadcrumb+Versions+TOC in one real .dp-tb (their shared --dp-*
+  // scope; deliberately NOT the whole .kc-doc, so the toolbar keeps the
+  // app's own fonts and a plain body's own separately-decided styling is
+  // undisturbed) and keeps both blocks in sync with the doc's current
+  // metadata/headings on every call — cheap enough to just rebuild both
+  // each time (doc open, and on the same debounce autosave already uses).
+  function buildRealDocStructureForCustomDoc(wrap) {
+    // Plain descendant, not :scope > — after the first call this doc's
+    // .bcrumb is nested inside .dp-tbhead/.dp-tb (below), not a direct
+    // child of wrap any more, and this runs again on every autosave
+    // debounce to keep the TOC current while typing.
+    const bcrumb = wrap.querySelector('.bcrumb');
+    if (!bcrumb) return;
+    let dpTb = wrap.querySelector(':scope > .dp-tb');
+    if (!dpTb) {
+      dpTb = document.createElement('div');
+      dpTb.className = 'dp-tb';
+      bcrumb.parentElement.insertBefore(dpTb, bcrumb);
+    }
+    let tbhead = dpTb.querySelector(':scope > .dp-tbhead');
+    if (!tbhead) {
+      tbhead = document.createElement('div');
+      tbhead.className = 'dp-tbhead';
+      dpTb.appendChild(tbhead);
+    }
+    if (bcrumb.parentElement !== tbhead) tbhead.appendChild(bcrumb);
+    if (!bcrumb.classList.contains('dp-bc')) {
+      bcrumb.classList.add('dp-bc');
+      [...bcrumb.children].forEach((el) => {
+        if (el.tagName === 'SPAN') el.classList.add('dp-bc-i', el.classList.contains('bc-cur') ? 'dp-bc-cur' : 'dp-bc-lnk');
+        else el.classList.add('dp-bc-sep');
+      });
+    }
+    // This rebuilds both blocks from scratch every time it runs (doc open,
+    // and again on every autosave debounce so headings stay current while
+    // typing) — carry over whichever collapsed/pinned/open state the old
+    // block already had (same as kc-docpage's own DP.renderVersions does
+    // across its in-place re-renders) so an actively-editing user doesn't
+    // see their open/pinned Versions or TOC panel snap shut every 650ms.
+    const carryBlockState = (oldEl, newEl) => {
+      if (!oldEl) return;
+      ['collapsed', 'pinned', 'open'].forEach((c) => newEl.classList.toggle(c, oldEl.classList.contains(c)));
+      const pinBtn = newEl.querySelector(':scope > .dp-blk-head .dp-toc-pin');
+      if (pinBtn && newEl.classList.contains('pinned')) pinBtn.title = 'Unpin';
+    };
+    const docId = wrap.dataset.docid;
+    const meta = docId ? API.getCustomDocs()[docId] : null;
+    let versionsBlock = dpTb.querySelector(':scope > .dp-versions');
+    const versionEntries = docId ? buildCustomVersionEntries(meta) : null;
+    if (versionEntries) {
+      const fresh = renderCustomVersionsBlock(docId, versionEntries);
+      carryBlockState(versionsBlock, fresh);
+      if (versionsBlock) versionsBlock.replaceWith(fresh); else dpTb.appendChild(fresh);
+      installBlockToggle(fresh, dpTb);
+    } else if (versionsBlock) versionsBlock.remove();
+    const bodyEl = wrap.querySelector(':scope > .kc-doc-body');
+    let tocBlock = dpTb.querySelector(':scope > .dp-toc');
+    const tocEntries = (bodyEl && docId) ? buildCustomToc(bodyEl, docId) : [];
+    if (tocEntries.length) {
+      const fresh = renderCustomTocBlock(tocEntries);
+      carryBlockState(tocBlock, fresh);
+      if (tocBlock) tocBlock.replaceWith(fresh); else dpTb.appendChild(fresh);
+      installBlockToggle(fresh, dpTb);
+    } else if (tocBlock) tocBlock.remove();
+    relayoutCustomPins(dpTb);
+    if (KC.DocPage && KC.DocPage.injectCSS) KC.DocPage.injectCSS();
+    if (window.lucide && lucide.createIcons) lucide.createIcons();
+  }
+  // A custom document's own title (.kc-doc-title, persisted per-node in
+  // kc_docs[docId].title) and its tree row's displayed name (.row-name,
+  // which nodePathFor/docIdFor build the storage key from) were always two
+  // fully independent fields with no sync in either direction, even before
+  // any of this — KC.saveDoc only ever touched the former, KC.rename only
+  // ever touched the latter (kc-app.js, both locked). That gap barely
+  // showed before; a title now editable right in the header reads as "the
+  // name of this thing" and is expected to rename it everywhere. Commits on
+  // blur (not per-keystroke — this touches storage, and renaming is really
+  // "move to a new path where only the last segment differs", so it goes
+  // through moveCustomNode's own re-keying helper, migratePathDependentStorage,
+  // to carry kc_docs + Notebook note storage over to the new key, exactly as
+  // a real move already does — including for any descendants).
+  function commitCustomTitleRename(node, ws, wrap, newTitle) {
+    const nameEl = node && node.querySelector(':scope > .row .row-name');
+    if (!nameEl) return;
+    const oldName = nameEl.textContent.trim();
+    if (!newTitle || newTitle === oldName) return;
+    const wsId = ws.id;
+    const oldPath = nodePathFor(node);
+    nameEl.textContent = newTitle;
+    const newPath = nodePathFor(node);
+    migratePathDependentStorage(wsId, oldPath, newPath);
+    saveAllCustomTrees();
+    wrap.dataset.docid = wsId + '::' + newPath.join('›');
+    const bcCur = wrap.querySelector(':scope > .bcrumb > .bc-cur');
+    if (bcCur) bcCur.textContent = newTitle;
+    syncNotebookColumn(ws);
+  }
+  // Textbook's column header (.ch) is static chrome, shared across whatever
+  // document is open — it never showed the actual document's title before.
+  // For a real document (read-only), mirrored the exact same way the
+  // Notebook mirrors its own bound topic — straight into .ct's own text —
+  // so it inherits the SAME navy color (--hd) automatically, instead of
+  // living as a separately-colored sibling; also hides kc-docpage's own
+  // in-body title to avoid showing it twice, gated behind a class so a
+  // failed mirror leaves the original visible rather than disappearing
+  // outright. A custom document needs an actual editable INPUT, which .ct's
+  // own text can't hold — that one gets a sibling element instead (colored
+  // to match), with the real .kc-doc-title input hidden in place
+  // (everything that already reads it — KC.saveDoc/replaceSaveDocForEditor/
+  // the global autosave 'input' delegate — keeps finding it exactly where
+  // locked code put it) and a linked proxy forwarding both its value and a
+  // synthetic 'input' event back onto the real one so autosave still fires.
+  function syncTextbookHeaderTitle(ws, node) {
+    const hl = ws.querySelector('.c2 .ch .hl');
+    if (!hl) return;
+    const ct = hl.querySelector(':scope > .ct');
+    if (ct && !ct.dataset.baseLabel) ct.dataset.baseLabel = ct.textContent;
+    const oldSlot = hl.querySelector(':scope > .ch-doctitle');
+    if (oldSlot) oldSlot.remove();
+    const cb = ws.querySelector('.c2 .cb');
+    const origTitle = cb && cb.querySelector(':scope > .kc-doc:not(.kc-docpage) > .kc-doc-title');
+    const realTitleEl = cb && cb.querySelector('.kc-docpage .dp-title');
+    const dpWrap = cb && cb.querySelector('.kc-docpage');
+    if (dpWrap) dpWrap.classList.remove('kc-hdr-title-on');
+    if (!origTitle && !realTitleEl) { if (ct) ct.textContent = ct.dataset.baseLabel; return; }
+    if (realTitleEl) {
+      if (ct) ct.textContent = ct.dataset.baseLabel + ' · ' + (realTitleEl.textContent || '').trim();
+      if (dpWrap) dpWrap.classList.add('kc-hdr-title-on');
+      return;
+    }
+    if (ct) ct.textContent = ct.dataset.baseLabel;
+    const slot = document.createElement('span');
+    slot.className = 'ch-doctitle';
+    hl.appendChild(slot);
+    origTitle.style.display = 'none';
+    const wrap = origTitle.closest('.kc-doc');
+    const proxy = document.createElement('input');
+    proxy.className = 'ch-doctitle-input';
+    proxy.value = origTitle.value;
+    proxy.placeholder = origTitle.placeholder || 'Document title';
+    proxy.addEventListener('input', () => {
+      origTitle.value = proxy.value;
+      origTitle.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    if (node) {
+      proxy.addEventListener('blur', () => { commitCustomTitleRename(node, ws, wrap, proxy.value.trim()); });
+      proxy.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') proxy.blur(); });
+    }
+    slot.appendChild(proxy);
+  }
+  // Same mirroring for the Notebook's own header label ("Notebook · Monday")
+  // — while a topic is bound, swap the workspace-name suffix for the
+  // topic's own title instead (dataset.nbBaseLabel remembers the original
+  // "Notebook · <workspace>" text the first time this ever runs, since
+  // .ch/.ct here is static template.html chrome, never rebuilt, so nothing
+  // else will re-seed it later).
+  function syncNotebookHeaderTitle(ws, segs) {
+    const ct = ws.querySelector('.c3 .ch .ct');
+    if (!ct) return;
+    if (!ct.dataset.nbBaseLabel) ct.dataset.nbBaseLabel = ct.textContent;
+    const base = ct.dataset.nbBaseLabel;
+    if (segs && segs.length) ct.textContent = base.split(' · ')[0] + ' · ' + segs[segs.length - 1];
+    else ct.textContent = base;
+  }
+  // Reads whatever breadcrumb c2 already rendered for the open document —
+  // real (.dp-bc, kc-docpage.js) or custom (.bcrumb, kc-app.js's
+  // openCustomDoc) — rather than re-deriving the path independently, same
+  // as bkTopicOf already does for sticky notes.
+  function boundTopicSegments(ws) {
+    const cb = ws.querySelector('.c2 .cb');
+    if (!cb) return null;
+    const dpBc = cb.querySelector('.kc-docpage .dp-bc');
+    if (dpBc) {
+      const segs = [...dpBc.querySelectorAll(':scope > .dp-bc-i')].map((s) => (s.textContent || '').trim()).filter(Boolean);
+      if (segs.length) return segs;
+    }
+    const bcrumb = cb.querySelector(':scope > .kc-doc:not(.kc-docpage) .bcrumb');
+    if (bcrumb) {
+      const segs = [...bcrumb.querySelectorAll(':scope > span')].map((s) => (s.textContent || '').trim()).filter(Boolean);
+      if (segs.length) return segs;
+    }
+    return null;
+  }
   function syncNotebookColumn(wsEl) {
     const c3 = wsEl.querySelector('.c3'); if (!c3) return;
     const key = noteKeyForWs(wsEl.id);
@@ -441,11 +820,34 @@
       const doc = c3.querySelector('.note-doc');
       if (doc && doc.dataset.noteKey !== key) {
         const v = RemoteKV.getRaw(key);
-        doc.innerHTML = v != null ? v : '';
+        const html = v != null ? v : '';
+        // Once TipTap mounts on .note-doc (kc-api.js's own mountEditor,
+        // further down), it overrides this element's innerHTML SETTER to a
+        // no-op — c3's .note-doc is a single static node from template.html
+        // that's never recreated (unlike c2's .kc-doc-body, which
+        // openCustomDoc/openDocPage rebuild from scratch on every open), so
+        // TipTap mounts exactly once per workspace and this plain-innerHTML
+        // write silently stopped doing anything the moment that happened.
+        // Write through the editor's own command when one's registered —
+        // same registry check already used the same way in
+        // wrapSelActForEditor above.
+        const editor = window.__nbEditorRegistry && window.__nbEditorRegistry.get(doc);
+        if (editor) editor.commands.setContent(html, false);
+        else doc.innerHTML = html;
         doc.dataset.noteKey = key;
       }
-    } else if (!c3.classList.contains('slim') && window.tog) {
-      window.tog(c3.id, 'l');
+      // Just the header title (syncNotebookHeaderTitle) identifies which
+      // topic the Notebook is bound to — a full breadcrumb here would just
+      // repeat what the adjacent Textbook already shows in full, and a
+      // who/when card doesn't carry its weight for a single-author personal
+      // scratchpad the way it does for a document other people might read.
+      syncNotebookHeaderTitle(wsEl, boundTopicSegments(wsEl));
+    } else {
+      // Nothing open — opening the Notebook itself stays a manual choice
+      // (its own spine handle), not something that pops open on its own;
+      // it collapses to the spine instead, same as before.
+      if (!c3.classList.contains('slim') && window.tog) window.tog(c3.id, 'l');
+      syncNotebookHeaderTitle(wsEl, null);
     }
   }
   function syncAllNotebooks() {
@@ -573,6 +975,10 @@
       const toastEl = document.getElementById('toast');
       if (toastEl) toastEl.classList.remove('show');
       if (status) { status.classList.remove('saving'); if (t) t.textContent = 'Saved'; }
+      // Headings can be added/renamed/removed while typing — refresh the
+      // Table of contents (and Versions, cheap either way) on the same
+      // debounce, so it doesn't go stale until the doc is reopened.
+      buildRealDocStructureForCustomDoc(wrap);
     }, 650);
   }
   function installCustomDocAutosave() {
@@ -1164,7 +1570,65 @@
       // 24x24 viewBox instead of each sub-shape's own bbox), used only for
       // this one icon so #ebGrad itself (already correct for every path-
       // based icon) doesn't need to change.
-      + '.ctxmenu .lucide-plus,.add-row .lucide-plus{stroke:url(#ebGradFix)!important}';
+      + '.ctxmenu .lucide-plus,.add-row .lucide-plus{stroke:url(#ebGradFix)!important}'
+      // Textbook/Notebook header title slot (syncTextbookHeaderTitle) — the
+      // "Textbook"/"Notebook · x" label (.hl > .ct) stays put, this sits
+      // right after it and takes up the room .ch's own
+      // justify-content:space-between already leaves free before .ch-tools.
+      + '.c2 .ch .hl,.c3 .ch .hl{flex:1;min-width:0}'
+      // .ct itself is already navy (--hd, template.html) — a real document's
+      // title is written straight into .ct's own text now (matching the
+      // Notebook's own approach) so it just inherits that color for free.
+      // Only a custom document's title needs an actual sibling (it holds a
+      // real <input>, which .ct's own text can't) — colored to match .ct
+      // exactly instead of its own separate shade, so the two read as one
+      // continuous label regardless of which kind of document is open.
+      + '.ch-doctitle{flex:1 1 auto;min-width:0;overflow:hidden;display:flex;align-items:center}'
+      + '.ch-doctitle:not(:empty)::before{content:"·";margin:0 8px;color:var(--tx2,#8a8fa3);flex-shrink:0}'
+      + '.ch-doctitle{font-family:var(--font-display);font-size:13px;font-weight:600;color:var(--hd,#1e248c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
+      + '.ch-doctitle-input{flex:1;min-width:0;width:100%;border:none;background:transparent;font:inherit;color:inherit;padding:2px 4px;margin:-2px -4px;border-radius:5px}'
+      + '.ch-doctitle-input:hover{background:var(--bg2,#f4f5fb)}'
+      + '.ch-doctitle-input:focus{background:var(--bg2,#f4f5fb);outline:2px solid var(--acc2,#44b8d3);outline-offset:-1px}'
+      // kc-docpage's own in-body title (.dp-title-sm, inside the sticky
+      // .dp-tbhead) is now redundant with the mirrored header copy —
+      // hidden only once that mirror actually rendered (kc-hdr-title-on),
+      // so a failed mirror leaves the original title visible instead of
+      // vanishing outright. The breadcrumb inside .dp-tbhead stays — that's
+      // the narrow nav strip.
+      + '.kc-docpage.kc-hdr-title-on .dp-tbhead .dp-title-sm{display:none}'
+      + '.kc-docpage.kc-hdr-title-on .dp-tbhead{padding-top:2px}'
+      // A custom document's .dp-tbhead (matchRealBreadcrumbStyle) never
+      // has a title inside it at all — its title lives in the header from
+      // the start, not hidden-in-place like a real document's — so it
+      // should always get this same reduced top padding, not just when
+      // some other class happens to be set.
+      // Custom documents' .dp-tbhead never holds a title (that lives in the
+      // header bar instead, never duplicated in here) — just the
+      // breadcrumb, so it should read as a tight, single-line strip.
+      // Forced explicitly (!important) rather than relying on the cascade
+      // to land on the same computed value the real document's own
+      // .dp-tbhead happens to get — this kept coming out visibly taller
+      // despite matching every individual rule, so pin it down directly
+      // instead of continuing to hunt for whichever inherited property
+      // was still adding height.
+      + '.kc-doc:not(.kc-docpage) .dp-tbhead{padding:4px 6px!important;margin:0 -6px 8px!important;min-height:0!important;line-height:1!important}'
+      + '.kc-doc:not(.kc-docpage) .dp-tbhead .dp-bc{margin:0!important;padding:0!important;line-height:1.3!important;min-height:0!important}'
+      // A custom document's breadcrumb now carries the real .dp-bc/
+      // .dp-bc-cur/.dp-bc-sep classes directly (matchRealBreadcrumbStyle,
+      // above) instead of a hand-copied approximation — .dp-bc's own CSS
+      // (kc-docpage.js, loaded via injectCSS) handles it, EXCEPT for the
+      // current/last segment: template.html's own .bcrumb .bc-cur{...}
+      // (kept on purpose — bkTopicOf and others still read .bc-cur) is a
+      // two-class selector (0,2,0), beating kc-docpage's own single-class
+      // .dp-bc-cur (0,1,0) regardless of load order, so the last segment
+      // alone kept rendering in the wrong font/weight. Out-specifies it.
+      + '.bcrumb.dp-bc .bc-cur{font-family:var(--dp-fm);font-weight:600;color:var(--dp-navy)}'
+      // .dp-bc's base margin-bottom (20px, for a real document's own
+      // non-sticky, larger page context) only gets zeroed out inside
+      // .dp-tbhead's own scoped override — a custom document's breadcrumb
+      // isn't inside a .dp-tbhead, so it kept that full 20px gap under it
+      // instead of the tight spacing the sticky head actually uses.
+      + '.bcrumb.dp-bc{margin-bottom:0}';
     document.head.appendChild(style);
     if (!document.getElementById('ebGradFix')) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1865,7 +2329,7 @@
       return path;
     }
     function isMockNode(node) {
-      return !!node && !node.classList.contains('custom') && !node.dataset.doc;
+      return !!node && !node.classList.contains('custom') && !node.dataset.doc && !node.dataset.video;
     }
     function renderNotYetAvailable(ws, node) {
       const cb = ws.querySelector('.c2 .cb'); if (!cb) return;
@@ -2123,7 +2587,16 @@
           if (!node) return null;
           container = node.querySelector(':scope > .kids') || container;
         }
-        return node;
+        // findChildNodeByName matches by row-name text alone — a stale
+        // uiOpenTopic key from a since-deleted custom doc can silently
+        // resolve to a real (non-custom) node that just happens to share
+        // its name/path (e.g. a plain category folder), auto-"restoring"
+        // into a folder that was never really a saved topic. Only trust
+        // the match if it's genuinely the custom node this key claims to
+        // be — same category of bug as the tree-menu icon/rename issues
+        // earlier, all rooted in name-based matching with no identity
+        // check.
+        return node && node.classList.contains('custom') ? node : null;
       }
       return null;
     }
@@ -2792,7 +3265,7 @@
     function wireCustomBreadcrumbClicks(ws, node) {
       const cb = ws.querySelector('.c2 .cb');
       const wrap = cb && cb.querySelector(':scope > .kc-doc:not(.kc-docpage)');
-      const bcrumb = wrap && wrap.querySelector(':scope > .bcrumb');
+      const bcrumb = wrap && wrap.querySelector('.bcrumb');
       if (!bcrumb) return;
       const treeId = (node.closest('.tree') || {}).id || '';
       bcrumb.querySelectorAll(':scope > span').forEach((span) => {
@@ -2828,9 +3301,10 @@
         const node = rowEl && rowEl.closest && rowEl.closest('.node');
         const ws = rowEl && rowEl.closest && rowEl.closest('.workspace');
         if (ws) {
+          syncTextbookHeaderTitle(ws, node);
           if (node && node.classList.contains('custom')) {
             const wrap = ws.querySelector('.c2 .kc-doc:not(.kc-docpage)');
-            if (wrap) applyC2SaveUX(wrap, ws);
+            if (wrap) { applyC2SaveUX(wrap, ws); reorderCustomDocHeader(wrap); buildRealDocStructureForCustomDoc(wrap); }
           } else {
             hideC2Status(ws);
           }
@@ -2859,6 +3333,27 @@
       KC.DocPage.mount = function (wrap) {
         const r = fn.apply(this, arguments);
         wireRealDocCurrentBreadcrumb(wrap);
+        // A real document's own content arrives via KC.API.getDocument's
+        // fetch (openDocPage, kc-app.js) — by the time that PROMISE resolves
+        // and this mount actually runs, the KC.select call that opened it
+        // has long since returned, so syncTextbookHeaderTitle's call inside
+        // wrapSelectApplyC2SaveUX (which runs synchronously right after
+        // KC.select) never found a .dp-title to mirror — it fires here
+        // instead, right when the title element genuinely exists.
+        const ws = wrap && wrap.closest && wrap.closest('.workspace');
+        if (ws) syncTextbookHeaderTitle(ws);
+        // .dp-classbar (kc-docpage.js) is meant to show a document's
+        // series+code as a small filing reference next to its icon — for a
+        // document with neither field set, it renders as just the bare
+        // icon, unexplained (and, being the first child of an RTL flex
+        // row, lands on the right instead of the left). Not something any
+        // of this session's own edits caused — just hide the whole strip
+        // when it has nothing to say.
+        const classbar = wrap && wrap.querySelector(':scope .dp-classbar');
+        const data = window.KC && KC.DocPage && KC.DocPage.data;
+        if (classbar && data && !(data.series || '').trim() && !(data.code || '').trim()) {
+          classbar.style.display = 'none';
+        }
         return r;
       };
       KC.DocPage.mount.__nbBcWired = true;
@@ -2929,6 +3424,31 @@
             if (key === prefix || key.indexOf(prefix + '›') === 0) { delete docs[key]; changed = true; }
           });
           if (changed) API.saveCustomDocs(docs);
+          // KC.del (kc-app.js) only ever removes the tree row — the live
+          // .kc-doc editor in c2 (if this node, or a branch containing it,
+          // is what's currently open there) is completely decoupled from
+          // the tree and just keeps sitting there afterward: still showing
+          // the deleted document's title/body, still editable, still
+          // capable of resurrecting a kc_docs entry under the now-deleted
+          // id on its next autosave. closeCustomDoc (kc-app.js) already
+          // does exactly this cleanup but is a private, unexported
+          // function — replicate its one-liner body here, then fold both
+          // c2 and c3 back to their empty/collapsed state, same as when
+          // nothing's open.
+          const openWrap = ws.querySelector('.c2 .cb > .kc-doc:not(.kc-docpage)');
+          const openId = openWrap && openWrap.dataset.docid;
+          if (openId && (openId === prefix || openId.indexOf(prefix + '›') === 0)) {
+            const c2 = ws.querySelector('.c2');
+            const cb = ws.querySelector('.c2 .cb');
+            if (cb) {
+              cb.querySelectorAll('.kc-doc').forEach((e) => e.remove());
+              cb.querySelectorAll('.kc-doc-hidden').forEach((e) => e.classList.remove('kc-doc-hidden'));
+              if (KC.applyLineBk) KC.applyLineBk();
+            }
+            syncTextbookHeaderTitle(ws);
+            syncNotebookColumn(ws);
+            if (c2 && !c2.classList.contains('slim') && window.tog) window.tog(c2.id, 'r');
+          }
         }
         return fn.apply(this, arguments);
       };
@@ -3910,6 +4430,7 @@
         if (!wrapMentorRenderCosmetics()) ok = false;
         if (!wrapSelectRefreshMentorTopic()) ok = false;
         if (!wrapSelectSaveOpenTopic()) ok = false;
+        if (!replaceBylineHTML()) ok = false;
         // Registered last on purpose — reorderCtxMenu needs every other
         // menu-content wrap above (wrapMenuMoveOption/wrapMenuSendOption/
         // wrapBookMenuNodeActions/etc.) to have already run.
@@ -4075,16 +4596,32 @@
     const versions = (doc.versionHistory || []).map(v => ({ v: v.v, date: v.date, who: v.who, anchor: v.anchor || '', change: v.change || '' }));
     const created = versions.length ? { name: versions[0].who, date: versions[0].date } : { name: '', date: '' };
     const updated = versions.length ? { name: versions[versions.length - 1].who, date: versions[versions.length - 1].date } : created;
-    // Scoped to this batch: every digested document lives under this one
-    // workspace/board today (BIM Methodology & Tools > Revit). Revisit if a
-    // later batch digests a different board/workspace.
+    // The breadcrumb (DP.bcHTML) just prints this path verbatim — it used
+    // to be a fixed 3-segment template (workspace, "Revit", title), which
+    // silently dropped any category folder actually sitting between them
+    // in the tree (e.g. "Docs") for every document that has one. The real
+    // tree already knows the full path — reuse the exact same walk custom
+    // documents' own breadcrumbs are built from (nodePathFor) off this
+    // document's own row. Wrapped defensively (try/catch + shape check) —
+    // this runs on every single document open, so a bad tree match must
+    // never take the whole page down with it; falls back to the original
+    // 3-segment template on any failure. Workspace name itself is still
+    // fixed — every digested document lives under this one workspace/board
+    // today; revisit if that changes.
+    let treePath = null;
+    try {
+      const node = document.querySelector('.node[data-doc="' + sourceId + '"]');
+      const walked = node && nodePathFor(node);
+      if (Array.isArray(walked) && walked.length) treePath = walked;
+    } catch (e) { /* fall through to the safe default below */ }
+    if (!treePath) treePath = ['Revit', doc.title || ''];
     return {
       sourceId: sourceId, // read by noteKeyForWs() above, to key the per-document Notebook
       series: doc.series || '',
       title: doc.title || '',
       code: doc.code || '',
       ws: 'BIM Methodology & Tools',
-      path: ['BIM Methodology & Tools', 'Revit', doc.title || ''],
+      path: ['BIM Methodology & Tools'].concat(treePath),
       created: created,
       updated: updated,
       versions: versions,
