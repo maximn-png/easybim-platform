@@ -10,6 +10,8 @@ import {
 } from 'lucide-react'
 import { CARDS } from '@/lib/cards'
 
+export type KnowledgeRole = 'intern' | 'employee' | 'teamlead'
+
 export interface AdminUser {
   id: string
   name: string
@@ -19,6 +21,8 @@ export interface AdminUser {
   lastEvent: { type: string; app: string; at: number } | null
   admin: boolean
   apps: string[]
+  /** This person's real, resolved Knowledge Center role — 'teamlead' for admins. */
+  knowledgeRole: KnowledgeRole
   /** Admin-managed display name (publicMetadata.name) — used in invitation emails. */
   metaName: string
   /** Admin-managed company (publicMetadata.company) — used in invitation emails. */
@@ -383,6 +387,13 @@ export default function UserManagement({
     })
   }
 
+  function setKnowledgeRole(user: AdminUser, knowledgeRole: KnowledgeRole) {
+    void call(`${user.id}:knowledgeRole`, `/api/admin/users/${user.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ knowledgeRole }),
+    })
+  }
+
   function saveField(user: AdminUser, field: 'name' | 'company', value: string) {
     void call(`${user.id}:${field}`, `/api/admin/users/${user.id}`, {
       method: 'PATCH',
@@ -661,13 +672,14 @@ export default function UserManagement({
 
       {/* Users table */}
       <div className="bg-white/70 backdrop-blur-sm border border-white/90 rounded-2xl shadow-sm overflow-x-auto">
-        <table className="w-full text-sm" style={{ minWidth: 1240 }}>
+        <table className="w-full text-sm" style={{ minWidth: 1340 }}>
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide" style={{ color: '#9ca3af' }}>
               <th className="px-5 py-3 font-semibold">User</th>
               <th className="px-5 py-3 font-semibold">Name</th>
               <th className="px-5 py-3 font-semibold">Company</th>
               <th className="px-5 py-3 font-semibold">Card access</th>
+              <th className="px-5 py-3 font-semibold">KC role</th>
               <th className="px-5 py-3 font-semibold">Last sign-in</th>
               <th className="px-5 py-3 font-semibold">Admin</th>
               <th className="px-5 py-3 font-semibold text-right">Activity</th>
@@ -685,6 +697,7 @@ export default function UserManagement({
                   onToggleApp={toggleApp}
                   onToggleAllApps={toggleAllApps}
                   onToggleAdmin={toggleAdmin}
+                  onSetKnowledgeRole={setKnowledgeRole}
                   onSaveField={saveField}
                   onDelete={deleteUser}
                   onToggleDrawer={toggleDrawer}
@@ -705,8 +718,14 @@ export default function UserManagement({
   )
 }
 
+const KC_ROLE_LABEL: Record<KnowledgeRole, string> = {
+  intern: 'Onboarding',
+  employee: 'Employee',
+  teamlead: 'Team Lead',
+}
+
 function FragmentRow({
-  user, drawer, busy, onToggleApp, onToggleAllApps, onToggleAdmin, onSaveField, onDelete, onToggleDrawer, onShowMore,
+  user, drawer, busy, onToggleApp, onToggleAllApps, onToggleAdmin, onSetKnowledgeRole, onSaveField, onDelete, onToggleDrawer, onShowMore,
 }: {
   user: AdminUser
   drawer: DrawerState | undefined
@@ -714,6 +733,7 @@ function FragmentRow({
   onToggleApp: (user: AdminUser, appId: string) => void
   onToggleAllApps: (user: AdminUser) => void
   onToggleAdmin: (user: AdminUser) => void
+  onSetKnowledgeRole: (user: AdminUser, role: KnowledgeRole) => void
   onSaveField: (user: AdminUser, field: 'name' | 'company', value: string) => void
   onDelete: (user: AdminUser) => void
   onToggleDrawer: (userId: string) => void
@@ -787,6 +807,23 @@ function FragmentRow({
             )}
           </div>
         </td>
+        <td className="px-5 py-4">
+          {user.admin ? (
+            <span className="text-xs" style={{ color: '#6b7280' }}>Team Lead (admin)</span>
+          ) : (
+            <select
+              value={user.knowledgeRole}
+              disabled={busy === `${user.id}:knowledgeRole`}
+              onChange={(e) => onSetKnowledgeRole(user, e.target.value as KnowledgeRole)}
+              className="px-2 py-1.5 rounded-lg border text-xs bg-white/60 outline-none focus:ring-2 disabled:opacity-50"
+              style={{ borderColor: '#e5e7eb' }}
+            >
+              {(Object.keys(KC_ROLE_LABEL) as KnowledgeRole[]).map((role) => (
+                <option key={role} value={role}>{KC_ROLE_LABEL[role]}</option>
+              ))}
+            </select>
+          )}
+        </td>
         <td className="px-5 py-4 whitespace-nowrap">
           <div className="font-bold text-sm tabular-nums" style={{ color: '#111827' }}>
             {user.lastSignInAt ? whenLabel(user.lastSignInAt) : 'Never'}
@@ -846,7 +883,7 @@ function FragmentRow({
       </tr>
       {open && (
         <tr>
-          <td colSpan={7} className="px-5 pt-0 pb-1">
+          <td colSpan={8} className="px-5 pt-0 pb-1">
             <ActivityTimeline
               events={drawer?.events ?? []}
               days={drawer?.days ?? 7}

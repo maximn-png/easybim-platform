@@ -1,0 +1,52 @@
+/* ============================================================
+   EasyBIM — TYPOGRAPHY TOKENS
+   Hanken Grotesk = headings (modern, sharp). Inter = body / data-dense UI.
+   JetBrains Mono = labels & technical metadata (BIM IDs, coordinates, tags).
+   ============================================================ */
+:root {
+  /* ---- Families ---- */
+  --font-display: 'Hanken Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+
+  /* ---- Weights ---- */
+  --fw-regular:   400; /* @kind font */
+  --fw-medium:    500; /* @kind font */
+  --fw-semibold:  600; /* @kind font */
+  --fw-bold:      700; /* @kind font */
+  --fw-extrabold: 800; /* @kind font */
+  --fw-black:     900; /* @kind font */
+
+  /* ---- Type scale (size / line-height / tracking) ---- */
+  /* Display — Hanken Grotesk, black, tight tracking. Hero + page titles. */
+  --type-display-size:   clamp(2rem, 5vw, 3.25rem);
+  --type-display-lh:     1.1;
+  --type-display-track:  -0.02em;
+
+  /* Headline LG — section + card group titles */
+  --type-h1-size:        2rem;     /* 32px */
+  --type-h1-lh:          2.5rem;   /* 40px */
+  --type-h1-track:       -0.02em;
+
+  /* Headline MD */
+  --type-h2-size:        1.25rem;  /* 20px */
+  --type-h2-lh:          1.75rem;  /* 28px */
+
+  /* Title — card titles */
+  --type-title-size:     1rem;     /* 16px */
+  --type-title-lh:       1.4rem;
+
+  /* Body LG / MD / SM — Inter */
+  --type-body-lg-size:   1rem;     /* 16px */  --type-body-lg-lh: 1.5rem;
+  --type-body-md-size:   0.875rem; /* 14px */  --type-body-md-lh: 1.25rem;
+  --type-body-sm-size:   0.8125rem;/* 13px */  --type-body-sm-lh: 1.125rem;
+
+  /* Label — Inter medium, small UI text */
+  --type-label-size:     0.75rem;  /* 12px */
+  --type-label-lh:       1rem;
+
+  /* Label CAPS — JetBrains Mono, uppercase metadata */
+  --type-caps-size:      0.6875rem;/* 11px */
+  --type-caps-lh:        1rem;
+  --type-caps-track:     0.05em;
+}

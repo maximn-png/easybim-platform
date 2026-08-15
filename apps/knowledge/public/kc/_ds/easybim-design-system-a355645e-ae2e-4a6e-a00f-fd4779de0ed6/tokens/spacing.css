@@ -1,0 +1,25 @@
+/* ============================================================
+   EasyBIM — SPACING & RADII TOKENS
+   Strict 4px baseline grid. Generous padding (lg=24px) inside containers
+   keeps high-density data legible and "airy".
+   ============================================================ */
+:root {
+  --space-base: 4px;
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   16px;   /* default gap between cards */
+  --space-lg:   24px;   /* default padding inside primary containers */
+  --space-xl:   48px;
+  --space-gutter: 20px;
+  --margin-mobile:  16px;
+  --margin-desktop: 32px;
+
+  /* ---- Corner radii — "rounded" shape language softens engineering data ---- */
+  --radius-sm:   0.25rem;  /* 4px  */
+  --radius:      0.5rem;   /* 8px  */
+  --radius-md:   0.75rem;  /* 12px — buttons, icon tiles */
+  --radius-lg:   1rem;     /* 16px — inputs, inner cards */
+  --radius-xl:   1.5rem;   /* 24px — primary cards / containers */
+  --radius-2xl:  1.75rem;
+  --radius-full: 9999px;   /* pills, chips, badges, avatars */
+}

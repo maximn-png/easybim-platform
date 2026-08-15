@@ -1,0 +1,5 @@
+/* EasyBIM webfonts — loaded from Google Fonts.
+   Hanken Grotesk (display/headings), Inter (body/UI), JetBrains Mono (labels/metadata).
+   These are the three families named in the EasyBIM brand spec and are all freely
+   available on Google Fonts, so no substitution is required. */
+@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
