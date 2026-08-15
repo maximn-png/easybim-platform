@@ -54,11 +54,11 @@ export async function searchChunks(
   ).lean()
   const byId = new Map(winners.map((w) => [String(w._id), w]))
 
-  return top
-    .map((t) => {
-      const w = byId.get(t.id)
-      if (!w) return null
-      return { sourceId: w.sourceDocId, title: w.title, anchor: w.anchor, text: w.text, score: t.score }
-    })
-    .filter((r): r is SearchResult => r !== null)
+  const results: SearchResult[] = []
+  for (const t of top) {
+    const w = byId.get(t.id)
+    if (!w) continue
+    results.push({ sourceId: w.sourceDocId, title: w.title, anchor: w.anchor, text: w.text, score: t.score })
+  }
+  return results
 }
