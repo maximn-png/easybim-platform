@@ -4,7 +4,52 @@ Multi-agent app. Vision: see [agent-kingdom.md](./agent-kingdom.md) — ten anim
 
 **First agent built: 🦚 Peacock** — the EasyBIM LinkedIn / content agent. Plans and drafts weekly LinkedIn posts, pulls project + marketing material from Google Drive, and tracks a **content plan on the web dashboard**. Maxim reviews in the dashboard and publishes to LinkedIn manually.
 
-> **⚠️ Migrated off Monday (in progress — see the plan).** Peacock no longer uses the Monday `EasyBIM_Posts` board. Posts now live in the local `peacock_posts` store (`lib/models/PeacockPost.ts`) exposed via `/api/dashboard/peacock/posts`. The landing page is now a **dashboard** (`app/dashboard/[agentKey]/PeacockDashboard.tsx`, gated by `hasDashboard` in `presentation.ts`) with an **Ask Peacock** button that opens the existing chat as an overlay. Chat/author tools are Drive + content-plan based (`lib/agents/peacock/{drive,driveTools,posts,tools,chat}.ts`); `board.ts` and the Monday watcher webhook are retired (the webhook is a no-op kept only so a still-configured Monday automation doesn't error). The sections below marked "Monday" describe the **old** flow and are superseded. Still pending: LinkedIn analytics (stat cards / Impressions / engagement are "Connect LinkedIn" placeholders), Project Status page, newsletter link.
+> **✅ Migrated off Monday (2026-07-29).** Peacock no longer uses the Monday `EasyBIM_Posts` board — the whole board was imported into the platform and `lib/agents/peacock/board.ts` is deleted. Posts live in the local `peacock_posts` store (`lib/models/PeacockPost.ts`) exposed via `/api/dashboard/peacock/posts`. The landing page is a **dashboard** (`app/dashboard/[agentKey]/PeacockDashboard.tsx`, gated by `hasDashboard` in `presentation.ts`) with **Posts & Timeline**, **Project Status** and **Ask Peacock**. Chat/author tools are Drive + content-plan based (`lib/agents/peacock/{drive,driveTools,posts,postChat,tools,chat}.ts`). The sections below marked "Monday" describe the **old** flow and are superseded — the only Monday remnant is the no-op webhook at `app/api/webhooks/peacock/monday/route.ts`, kept so a still-configured Monday automation gets a clean 200; **delete the automation in Monday, then delete that route.** Still pending: LinkedIn analytics (Impressions / engagement are "Connect LinkedIn" placeholders), newsletter link.
+
+### Posts & Timeline (the planning surface, 2026-07-29)
+
+`app/dashboard/[agentKey]/PostsBoard.tsx` — a full-width split view replacing the Monday board: **list left, Gantt right**, sharing `ROW_H`/`HEADER_H` so each row lines up with its bar.
+- **List** mirrors the board's columns: Item (+ thread bubble with message count), Owner (Clerk avatar, `/api/dashboard/peacock/users`), Status, Publish Date (red flag when overdue), PostType — all inline-editable, plus `Add item`.
+- **Gantt** spans the planning horizon (1/2/3 months, default 2) in day columns, **starting one week in the past** so slipped posts stay visible; Fri/Sat shaded, today line, bars colored by status with a ◆ at the publish day. **Drag a bar** to reschedule (`PATCH { shiftDays }` → `shiftPostDates`, window length preserved); **drag its left edge** to resize the drafting window (clamped at the publish day). A dated post outside the window gets a clickable off-range chip instead of an empty row.
+- **Scope tabs** — `Active plan` (default) / `Archive` / `All`. Needed because the import brought 154 published posts; the list is fetched **slim** (no bodies) and the drawer loads the full draft on open.
+- **Status set** = the board's 8 labels: `idea → drafting → pending_approval → approved → ready_to_publish → scheduled → published`, plus `revise`. The author cron hands off at `pending_approval`; `approved`/`ready_to_publish`/`scheduled` are Maxim's calls and `published` is always manual.
+- Every post has a `draftStartDate` (default `publishDate − 4d`, `DRAFT_WINDOW_DAYS`) — that's the bar's left edge. `updatePost` keeps it attached to `publishDate` unless the patch sets it explicitly.
+
+**Per-post chat = Monday's Updates column, in-platform.** `AgentConversation.postId` pins a thread to one post (excluded from the personal chat sidebar; shared with the team). `PostDrawer.tsx` puts the draft (Preview/HTML, `Copy for LinkedIn`) beside that thread; `lib/agents/peacock/postChat.ts` builds a system prompt containing the **live draft** and binds every tool to that post (`update_draft`, `read_draft`, `generate_image`, `list_posts`, Drive tools, `save_guidance`) — so "תקצר את זה" edits the right post and the editor shows the rewrite when the turn returns. Route: `/api/dashboard/peacock/posts/[postId]/chat`, which returns the reply **and** the post as it now stands.
+
+### LinkedIn analytics (2026-07-29)
+
+The Impressions card and the engagement column are real now, fed by whichever of three sources exists:
+
+| Source | Needs | Status |
+|---|---|---|
+| **Paste the page export** | nothing | works today — `Import` on the Impressions card |
+| **Type a post's numbers** | nothing | works today — Performance row in the post drawer |
+| **Live API sync** | a LinkedIn app + LinkedIn's approval | wired, unverified (see below) |
+
+- `lib/agents/peacock/analytics.ts` — weekly series, 30-day summary, top posts. Page-level daily rows (`peacock_linkedin_daily`) are the primary source; a week with no page data **falls back to summing that week's per-post metrics**, so typing numbers into a few posts is enough to make the chart real. Week buckets are keyed by **local** YYYY-MM-DD (`localDayKey`) — never `toISOString()`, since local midnight in Israel is the previous day in UTC.
+- `lib/agents/peacock/analyticsImport.ts` — the export parser, deliberately pure and DB-free so it is directly testable. Finds the header row under LinkedIn's title/date-range preamble, matches columns by name (English **and** Hebrew), tolerates CSV or a spreadsheet paste, `1,204` thousands separators, and day-first `01/07/2026`. Covered by `analytics-import.test.mjs` — **26 assertions, run `node .\analytics-import.test.mjs`** (it compiles the real module, not a copy).
+- `PeacockAnalytics.tsx` — the chart is columns, one series, **no legend** (the title names it) and **no dual axis**: engagements live in the tooltip and the summary line, never a second y-scale. `#7b5cff` was checked with the dataviz palette validator (lightness band / chroma floor / ≥3:1 contrast all pass on white). Values are never tooltip-gated — there is a table-view twin, and the peak + latest columns are directly labelled.
+- Per-post metrics are embedded on the post (`metrics`), since one post is one share. `source` records whether a number was typed, imported, or synced; the sync overwrites manual entries.
+
+**Connecting LinkedIn (the part that needs you).** Nothing here is done — EasyBIM has no LinkedIn developer app, so `lib/integrations/linkedin/client.ts` is written from the documented contract but **has never been executed**. Expect the response field names to need one correction on the first real call; they're all funnelled through `rest()` and small mappers so it's a single-place fix.
+
+1. Create an app at <https://www.linkedin.com/developers/apps> owned by the **EasyBIM company page**, and verify the page association.
+2. Request the **Community Management API** product. This is an application reviewed by LinkedIn (days, sometimes weeks) — the `r_organization_social` / `rw_organization_admin` scopes are not self-serve. Everything below stays inert until it's granted.
+3. Add the callback URL exactly: `<agents-url>/api/dashboard/peacock/linkedin/callback` (locally `http://localhost:3003/...`).
+4. Set `LINKEDIN_CLIENT_ID` + `LINKEDIN_CLIENT_SECRET` in `.env.local` (and Vercel). The dashboard shows `Connect LinkedIn` only once these exist; before that it says so plainly instead of offering a button that fails.
+5. Click **Connect LinkedIn**, approve as page admin. Tokens are stored AES-256-GCM encrypted (`peacock_linkedin_account`, via `lib/utils/encryption.ts`); only non-secret display fields ever reach the browser.
+6. The daily cron `/api/cron/peacock/linkedin` (04:00, in `vercel.json`) then pulls page day-stats + per-post lifetime stats. It **no-ops with 200 when not connected**, so it's safe to leave scheduled. `shareUrnFromUrl` maps a pasted post URL to its share URN, so per-post sync needs the LinkedIn URL filled in.
+
+### Newsletter → post ideas (2026-07-29)
+
+The BIM newsletter (`apps/newsletter`, 21 issues of ~7 RSS-sourced topics) is now Peacock's idea source for **"1. Professional"** posts, so thought leadership starts from something real with a citable source.
+
+- `lib/agents/peacock/newsletter.ts` reads the `bim-newsletter` DB cross-DB (same pattern as `projects.ts` for EPM). ⚠️ **Two constraints, both learned the hard way from the live collection (21 docs, ~8MB each, 165MB total):** sort by **`_id`, never `date`** — the only indexes are `_id` and `{userId,date}`, so a bare `date` sort is an in-memory sort of the whole collection and Mongo aborts it (`QueryExceededMemoryLimitNoDiskUseAllowed`); and project the **four named topic subfields, never `topics: 1`** — topics carry `imageBase64`, so `topics: 1` is ~8MB per doc versus ~32KB for four whole issues.
+- Tools: `list_newsletter_topics`, `read_newsletter_topic`, `list_newsletter_issues` — in the author cron, the advisor chat and every post thread. `brand.ts` points the Professional pillar at them before asking Maxim for a subject.
+- `NewsletterIdeas.tsx` on the dashboard lists recent topics with the source, and **Draft post** seeds a `1. Professional` post from a topic and opens it in the drawer. `sourceUrl` is stored on the post, so a topic already used is marked **used** and won't be posted twice.
+
+**The one-off import:** `migrate-peacock-posts.mjs` (idempotent via `mondayItemId`; `--dry-run` supported). Resolves the board's columns by title, maps the 8 statuses, matches owners to Clerk users by name/email, derives each draft body from the newest long update, and replays the Updates threads (updates ≥300 chars = Peacock's draft → `assistant`; shorter ones and replies → `user`). It also normalizes legacy `ready` → `ready_to_publish` and backfills missing `draftStartDate`. Verified live: **165 posts, 103 threads, 286 messages** (154 published archive, 10 pending approval, 1 idea).
 
 **Second agent: 🐿️ Squirrel** — the price-quote management agent (`lib/agents/squirrel/`). On a Monday webhook for a new **Type-C** item on **MA-001-Price Quotes** (`6105725242`) **with a `מספר הצעה` (quote number) set**, it does the unattended plumbing that the old local Python automation did: build `Clients/<Client>/<מספר הצעה> - <item name>/{הצעות מחיר, חוזה, חומר שהתקבל מהמזמין}`, copy the Type-C Sheets template **via the SheetCopier.gs web app** (so the bound `📄 הצעת מחיר` menu keeps working), write the hidden `_meta` sheet, download the Monday attachments, and write the Sheets + GDrive links back to Monday. Then it reads the received materials and **proposes** a work-scope as a Monday update (it never fills `ToQuote` directly). The two in-document Apps Script menus (`📄 הצעת מחיר`, `📧 שליחה`) are unchanged — Squirrel reproduces the exact folder layout + `_meta` they depend on. New Google Drive/Sheets integration lives in `lib/integrations/google/client.ts` (service-account auth). Dashboard chat + how-it-works are now presentation-driven (`lib/agents/presentation.ts`), so both animals render the same UI. Monday automation to wire: *"When `מספר הצעה` changes (and `סוג פרויקט` is C) → POST `/api/webhooks/squirrel/monday?token=<MONDAY_WEBHOOK_SECRET>`"* — the handler re-validates both conditions and is idempotent.
 
@@ -72,6 +117,13 @@ NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
 NEXT_PUBLIC_PORTAL_URL=http://localhost:3000
 # GEMINI_API_KEY (Phase 3 branded image — use a FRESH key)
+# 🦚 LinkedIn analytics (optional — the dashboard runs on imports/manual entry without these).
+# Needs a LinkedIn app with the Community Management API product approved; see "Connecting LinkedIn".
+LINKEDIN_CLIENT_ID=
+LINKEDIN_CLIENT_SECRET=
+NEXT_PUBLIC_AGENTS_URL=        # this app's own base URL — the OAuth callback is built from it
+# shared with the portal, used for the dashboard's Newsletter link:
+NEXT_PUBLIC_NEWSLETTER_URL=http://localhost:3001
 # 🐿️ Squirrel (price quotes) — Google Drive/Sheets + SheetCopier:
 GOOGLE_SERVICE_ACCOUNT_JSON=   # base64 (or raw JSON) of the Finance service_account.json
 SHEET_COPIER_URL=              # SheetCopier.gs /exec web-app URL (from the PriceQuotes config.json)
@@ -86,9 +138,11 @@ PQ_CLIENTS_ROOT=Clients
 
 ---
 
-## STATUS (2026-06-26) & how to continue
+## STATUS (2026-07-29) & how to continue
 
-**Phases 1–3: VERIFIED WORKING LIVE (2026-06-26).** The whole Peacock loop runs end-to-end against the real `EasyBIM_Posts` board, plus the Agent Kingdom dashboard and branded-image-on-approval. Only the Vercel deploy + live Monday automation remain. Type-check GREEN across all workspaces.
+**Peacock is fully off Monday and plans in-platform (2026-07-29).** Posts, statuses, owners, publish dates and the Updates discussions were imported from `EasyBIM_Posts` into the local store; planning happens on **Posts & Timeline** (list + draggable 2-month Gantt) and each post carries its own Peacock thread. Build + type-check GREEN; import verified live (165 posts / 103 threads / 286 messages) and the timeline geometry checked against the real dates.
+
+The phase notes below are the earlier Monday-based history, kept for context — the Monday specifics in them no longer apply.
 
 - ✅ **Phase 1 — author + watcher (both branches) verified live.** Author drafts 2 posts → `Pending Approval`. Watcher on `Approved` → `Ready to Publish`; on `Revise` → reads Maxim's reply feedback, rewrites shorter, → `Pending Approval`. (Items `12378837665`, `12378873327`.)
 - ✅ **Phase 2 — Agent Kingdom dashboard.** Portal card → agents `/` (Kingdom, agent cards from `registry` with live status) → `/dashboard/[agentKey]` (a "why this animal" blurb, a graphical how-it-works strip, an advisor **chat**, and run history from `AgentRun` + message thread from `AgentMessage`, polling). Protected via Clerk satellite (portal session carries over, no re-login). Verified in-browser end-to-end.
@@ -104,12 +158,13 @@ PQ_CLIENTS_ROOT=Clients
 
 **Architecture decision (2026-06-26):** build the kingdom on the **custom Next.js app (this repo)**, not Claude Cowork (desktop-only, dies when the machine sleeps — can't run unattended) and not Managed Agents (container model is overkill for API-call agents like Peacock). Revisit Managed Agents later for the 🦁 Lion orchestrator (its multiagent coordinator fits) and any future container-using agents (Owl/analytics, Octopus/support).
 
-**Next, in order — the Vercel deploy (last local-first step):**
-1. **Create the Vercel project** for `apps/agents` (root dir `apps/agents`, or the monorepo with the right root). Set env vars: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MONDAY_API_TOKEN` (write scope), `MONDAY_WEBHOOK_SECRET`, `CRON_SECRET`, `MONGODB_URI`, `ENCRYPTION_SECRET`, and Clerk (`NEXT_PUBLIC_CLERK_*`, `CLERK_SECRET_KEY`) with the **production** satellite domain + `NEXT_PUBLIC_PORTAL_URL`.
-2. **Point the portal card** `NEXT_PUBLIC_AGENTS_URL` at the deployed agents URL.
-3. **Monday automation** → webhook: "when Status changes to Approved or Revise, POST to `<deployed-url>/api/webhooks/peacock/monday?token=<MONDAY_WEBHOOK_SECRET>`" (this is the only piece that needs a public URL; the handler is already proven via replayed payloads).
-4. **Cron** is in `vercel.json` (weekly Sun 06:00 → `/api/cron/peacock/author`). Smoke-test the deployed cron + webhook.
+**Next, in order (Peacock):**
+1. **Browse `/dashboard/peacock` → Posts & Timeline** signed in, and check the 11 active posts + the archive tab against what the board used to show. The Monday-era statuses/dates/owners/threads are all imported (see the import section above).
+2. **Delete the Monday automation** on `EasyBIM_Posts` ("Status → Approved/Revise → POST …/webhooks/peacock/monday"), then delete `app/api/webhooks/peacock/monday/route.ts`. That's the last Monday touchpoint for Peacock. (`MONDAY_API_TOKEN` stays — Squirrel and EPM use it, and the import script needs it if re-run.)
+3. **Author cron** — `vercel.json` weekly Sun 06:00 → `/api/cron/peacock/author`. It now writes into the local plan and hands off at `pending_approval`, and prioritizes `revise` posts. Worth one manual run to confirm against the imported plan.
+4. **Vercel deploy** for `apps/agents` (root dir `apps/agents`). Env: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MONDAY_API_TOKEN`, `CRON_SECRET`, `MONGODB_URI`, `ENCRYPTION_SECRET`, Clerk (`NEXT_PUBLIC_CLERK_*`, `CLERK_SECRET_KEY`) with the **production** satellite domain + `NEXT_PUBLIC_PORTAL_URL`. Then point the portal card's `NEXT_PUBLIC_AGENTS_URL` at it.
+5. **LinkedIn API access** — the analytics cards are real and fed by import/manual entry; the only missing piece is the live sync, which needs the developer app + LinkedIn's approval (steps in "Connecting LinkedIn" above). Until then, paste the page export.
 
-**Later (not started):** Drive/Gmail/Canva/newsletter/WhatsApp tools; the 🦁 Lion orchestrator + agent-to-agent messaging (revisit Managed Agents here); extract a shared `agent-core` package once a 2nd animal lands.
+**Later (not started):** Gmail/Canva/newsletter/WhatsApp tools; the 🦁 Lion orchestrator + agent-to-agent messaging (revisit Managed Agents here); extract a shared `agent-core` package.
 
-> Branch: `dev1`.
+> Branch: `feature/maxim-desktop`.

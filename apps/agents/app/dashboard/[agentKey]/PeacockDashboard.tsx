@@ -4,35 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft, Minus, Plus, CheckCircle2, CalendarClock, Layers, Eye,
-  CalendarRange, TrendingUp, Activity, Sparkles, ListChecks,
+  CalendarRange, Activity, Sparkles, ListChecks, CalendarDays,
 } from 'lucide-react'
 import type { AgentPresentation } from '@/lib/agents/presentation'
 import ChatShell from './ChatShell'
 import ProjectStatus from './ProjectStatus'
+import PostsBoard from './PostsBoard'
+import NewsletterIdeas from './NewsletterIdeas'
+import { compact, ImpressionsCard, LinkedInStatusRow, TopPostsCard, useAnalytics } from './PeacockAnalytics'
+import {
+  CARD, fmtDayMon, OPEN_STATUSES, POST_TYPES, PostDTO, PostStatus,
+  PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER,
+} from './postMeta'
 
-// Design palette (from Peacock Agent.dc.html)
-const PURPLE = '#7b5cff'
-const PURPLE_2 = '#9d6bff'
-const CARD = { background: '#fff', border: '1px solid #eeecf6', borderRadius: 22, boxShadow: '0 6px 20px rgba(90,70,180,.05)' }
-
-type PostStatus = 'idea' | 'drafting' | 'ready' | 'scheduled' | 'published'
-interface PostDTO {
-  id: string; title: string; body: string | null; postType: string | null
-  status: PostStatus; publishDate: string | null; imageUrl: string | null
-  linkedinUrl: string | null; createdAt: string; updatedAt: string
-}
-interface Counts { idea: number; drafting: number; ready: number; scheduled: number; published: number; total: number }
+type Counts = Record<PostStatus, number> & { total: number }
 interface RunDTO { id: string; pass: string; trigger: string; status: string; summary: string | null; error: string | null; startedAt: string }
-
-const POST_TYPES = ['1. Professional', '2. Client Connection', '3. New Employee', '4. Project', '5. Social', '6. Personal', '7. Other']
-
-const STATUS_META: Record<PostStatus, { label: string; color: string }> = {
-  idea: { label: 'Idea', color: '#c4b5fd' },
-  drafting: { label: 'Drafting', color: '#a78bfa' },
-  ready: { label: 'Ready', color: PURPLE },
-  scheduled: { label: 'Scheduled', color: '#38bdf8' },
-  published: { label: 'Published', color: '#22c55e' },
-}
 
 export default function PeacockDashboard({
   agentKey, agentName, description, presentation: p,
@@ -40,12 +26,16 @@ export default function PeacockDashboard({
   agentKey: string; agentName: string; description: string; presentation: AgentPresentation
 }) {
   const [chatOpen, setChatOpen] = useState(false)
-  const [view, setView] = useState<'dashboard' | 'projects'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'projects' | 'posts'>('dashboard')
   const [posts, setPosts] = useState<PostDTO[]>([])
   const [counts, setCounts] = useState<Counts | null>(null)
   const [runs, setRuns] = useState<RunDTO[]>([])
   const [postsPerWeek, setPostsPerWeek] = useState(2)
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set(['1. Professional', '4. Project']))
+  // A post id to open straight into the board's drawer (from Top Posts / a new
+  // newsletter draft), so those cards lead somewhere.
+  const [openPostId, setOpenPostId] = useState<string | null>(null)
+  const { data: analytics, reload: reloadAnalytics } = useAnalytics(agentKey)
 
   const load = useCallback(async () => {
     try {
@@ -60,7 +50,16 @@ export default function PeacockDashboard({
 
   useEffect(() => { load() }, [load])
 
-  // Project Status is a full-page view swap (item 6).
+  // Posts & Timeline / Project Status are full-page view swaps.
+  if (view === 'posts') {
+    return (
+      <PostsBoard
+        agentKey={agentKey}
+        initialOpenPostId={openPostId}
+        onBack={() => { setView('dashboard'); setOpenPostId(null); load(); reloadAnalytics() }}
+      />
+    )
+  }
   if (view === 'projects') {
     return <ProjectStatus agentKey={agentKey} onBack={() => setView('dashboard')} />
   }
@@ -81,12 +80,22 @@ export default function PeacockDashboard({
     )
   }
 
-  const inPipeline = counts ? counts.idea + counts.drafting + counts.ready : 0
+  const inPipeline = counts ? OPEN_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0) : 0
   const stats = [
     { label: 'Published', value: counts?.published ?? 0, icon: <CheckCircle2 size={18} />, iconBg: '#e8f9ee', iconColor: '#16a34a' },
-    { label: 'Scheduled', value: counts?.scheduled ?? 0, icon: <CalendarClock size={18} />, iconBg: '#e6f6fd', iconColor: '#0ea5e9' },
+    // The one number that means "Peacock is waiting on you".
+    { label: 'Awaiting approval', value: counts?.pending_approval ?? 0, icon: <CalendarClock size={18} />, iconBg: '#fff3e2', iconColor: '#f59e0b' },
     { label: 'In pipeline', value: inPipeline, icon: <Layers size={18} />, iconBg: '#f0ecff', iconColor: PURPLE },
-    { label: 'Impressions', value: '—', icon: <Eye size={18} />, iconBg: '#f3f4f6', iconColor: '#9ca3af', pending: true },
+    analytics?.hasData
+      ? {
+          label: 'Impressions',
+          value: compact(analytics.impressions30d),
+          icon: <Eye size={18} />,
+          iconBg: '#e6f6fd',
+          iconColor: '#0ea5e9',
+          note: 'last 30 days',
+        }
+      : { label: 'Impressions', value: '—', icon: <Eye size={18} />, iconBg: '#f3f4f6', iconColor: '#9ca3af', pending: true },
   ]
 
   return (
@@ -108,6 +117,13 @@ export default function PeacockDashboard({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setView('posts')}
+              className="flex items-center gap-2 font-bold"
+              style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}
+            >
+              <CalendarDays size={16} /> Posts &amp; Timeline
+            </button>
             <button
               onClick={() => setView('projects')}
               className="flex items-center gap-2 font-bold"
@@ -134,7 +150,9 @@ export default function PeacockDashboard({
                 <span className="flex items-center justify-center" style={{ width: 34, height: 34, borderRadius: 11, background: st.iconBg, color: st.iconColor }}>{st.icon}</span>
               </div>
               <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1 }}>{st.value}</div>
-              <div style={{ fontSize: 12, color: '#a9adb8', marginTop: 10 }}>{st.pending ? 'Connect LinkedIn' : 'from your content plan'}</div>
+              <div style={{ fontSize: 12, color: '#a9adb8', marginTop: 10 }}>
+                {st.note ?? (st.pending ? 'no numbers yet — import below' : 'from your content plan')}
+              </div>
             </div>
           ))}
         </div>
@@ -149,9 +167,14 @@ export default function PeacockDashboard({
               </div>
               <p style={{ margin: '8px 0 0', fontSize: 13, color: '#9aa0ac' }}>Design your posting week — then let Peacock draft it.</p>
             </div>
-            <button onClick={() => setChatOpen(true)} className="flex items-center gap-2 text-white font-bold" style={{ fontSize: 13.5, padding: '11px 17px', borderRadius: 12, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, boxShadow: '0 8px 20px rgba(123,92,255,.3)' }}>
-              <span style={{ fontSize: 16 }}>🦚</span> Plan with Peacock
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button onClick={() => setView('posts')} className="flex items-center gap-2 font-bold" style={{ fontSize: 13.5, padding: '11px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
+                <CalendarDays size={15} /> Open timeline
+              </button>
+              <button onClick={() => setChatOpen(true)} className="flex items-center gap-2 text-white font-bold" style={{ fontSize: 13.5, padding: '11px 17px', borderRadius: 12, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, boxShadow: '0 8px 20px rgba(123,92,255,.3)' }}>
+                <span style={{ fontSize: 16 }}>🦚</span> Plan with Peacock
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-8 items-start" style={{ gridTemplateColumns: '1fr 1.25fr' }}>
@@ -193,37 +216,43 @@ export default function PeacockDashboard({
         <div className="grid gap-4 items-start" style={{ gridTemplateColumns: '1.62fr 1fr' }}>
           {/* LEFT */}
           <div className="flex flex-col gap-4">
-            {/* impressions (LinkedIn — pending) */}
-            <div style={{ ...CARD, padding: '22px 24px' }}>
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Impressions</h3>
-                  <p style={{ margin: '5px 0 0', fontSize: 13, color: '#9aa0ac' }}>Last 8 weeks</p>
-                </div>
-                <TrendingUp size={20} style={{ color: '#c8cdd8' }} />
-              </div>
-              <PendingLinkedIn label="Impressions & engagement appear once LinkedIn is connected." />
+            <div>
+              <ImpressionsCard agentKey={agentKey} data={analytics} onImported={reloadAnalytics} />
+              <LinkedInStatusRow agentKey={agentKey} data={analytics} onChanged={reloadAnalytics} />
             </div>
 
-            {/* top posts (recent; engagement pending) */}
+            <TopPostsCard
+              data={analytics}
+              onOpenPost={(id) => { setOpenPostId(id); setView('posts') }}
+            />
+
+            <NewsletterIdeas
+              agentKey={agentKey}
+              onOpenPost={(id) => { setOpenPostId(id); setView('posts') }}
+            />
+
+            {/* recent posts */}
             <div style={{ ...CARD, padding: '22px 24px 12px' }}>
               <div className="flex items-center justify-between mb-2">
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Recent Posts</h3>
-                <span style={{ fontSize: 12, color: '#a9adb8' }}>engagement via LinkedIn</span>
+                <button onClick={() => setView('posts')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: PURPLE }}>
+                  See all →
+                </button>
               </div>
               {posts.length === 0 && <p style={{ fontSize: 13, color: '#a9adb8', padding: '14px 0' }}>No posts yet — plan one with Peacock.</p>}
               {[...posts]
                 .sort((a, b) => (b.publishDate ?? b.createdAt).localeCompare(a.publishDate ?? a.createdAt))
                 .slice(0, 4)
                 .map((post, i) => (
-                  <div key={post.id} className="flex items-center gap-4" style={{ padding: '13px 0', borderTop: '1px solid #f4f2fa' }}>
-                    <span className="flex items-center justify-center font-extrabold" style={{ width: 30, height: 30, borderRadius: 9, background: '#f0ecff', color: PURPLE, fontSize: 13 }}>{i + 1}</span>
+                  <button key={post.id} onClick={() => setView('posts')} className="flex items-center gap-4 w-full text-left"
+                    style={{ padding: '13px 0', borderTop: '1px solid #f4f2fa', border: 'none', borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: '#f4f2fa', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span className="flex items-center justify-center font-extrabold" style={{ width: 30, height: 30, borderRadius: 9, background: '#f0ecff', color: PURPLE, fontSize: 13, flex: 'none' }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#2b2f3a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</div>
-                      <div style={{ fontSize: 12, color: '#a9adb8', marginTop: 3 }}>{post.postType ?? '—'} · {fmtDate(post.publishDate)}</div>
+                      <div dir="auto" style={{ fontSize: 14, fontWeight: 600, color: '#2b2f3a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</div>
+                      <div style={{ fontSize: 12, color: '#a9adb8', marginTop: 3 }}>{post.postType ?? '—'} · {fmtDayMon(post.publishDate)}</div>
                     </div>
                     <StatusPill status={post.status} />
-                  </div>
+                  </button>
                 ))}
             </div>
           </div>
@@ -258,15 +287,6 @@ export default function PeacockDashboard({
 function StatusPill({ status }: { status: PostStatus }) {
   const m = STATUS_META[status]
   return <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, background: `${m.color}1f`, padding: '4px 10px', borderRadius: 999 }}>{m.label}</span>
-}
-
-function PendingLinkedIn({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center text-center" style={{ height: 150, border: '1px dashed #e0dcf3', borderRadius: 14, background: '#faf9ff' }}>
-      <Eye size={22} style={{ color: '#c8cdd8', marginBottom: 8 }} />
-      <div style={{ fontSize: 13, color: '#9aa0ac', maxWidth: 320 }}>{label}</div>
-    </div>
-  )
 }
 
 function WeekPreview({ posts }: { posts: PostDTO[] }) {
@@ -307,7 +327,7 @@ function WeekPreview({ posts }: { posts: PostDTO[] }) {
 }
 
 function PipelineDonut({ counts }: { counts: Counts | null }) {
-  const order: PostStatus[] = ['idea', 'drafting', 'ready', 'scheduled', 'published']
+  const order = STATUS_ORDER
   const total = counts?.total ?? 0
   let acc = 0
   const segments = order.map((s) => {
@@ -343,10 +363,6 @@ function PipelineDonut({ counts }: { counts: Counts | null }) {
   )
 }
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return 'unscheduled'
-  return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
-}
 function fmtDateTime(iso: string): string {
   return new Date(iso).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
