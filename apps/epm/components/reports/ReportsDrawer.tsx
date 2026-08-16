@@ -22,7 +22,7 @@ type Tab = 'export' | 'schedule' | 'activity'
 export default function ReportsDrawer({
   open, onClose, project, issues, assignees, issueTypes, disciplines, allStatuses,
   groupBy, filterAssignees, filterTypes, filterDisciplines, filterStatuses,
-  extraFilters, monthSel,
+  extraFilters, monthSel, pageScopeIds, pageOrder,
 }: {
   open: boolean
   onClose: () => void
@@ -40,6 +40,10 @@ export default function ReportsDrawer({
   filterStatuses: string[]
   extraFilters: { key: string; values: string[] }[]
   monthSel: string | null
+  // Table-level narrowing (chart click + column filters) as an issue-id set, and
+  // the table's sort as an id order — both inherited by the Export tab.
+  pageScopeIds: string[] | null
+  pageOrder: string[] | null
 }) {
   const [tab, setTab] = useState<Tab>('export')
   const [reports, setReports] = useState<ReportListItem[]>([])
@@ -182,6 +186,8 @@ export default function ReportsDrawer({
               defaultStatuses={filterStatuses}
               defaultExtraFilters={extraFilters}
               defaultMonth={monthSel}
+              defaultPageScopeIds={pageScopeIds}
+              pageOrder={pageOrder}
               onReportSaved={loadReports}
               onScheduleRequest={handleScheduleRequest}
             />

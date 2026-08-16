@@ -75,6 +75,8 @@ export interface IssueCreatorStat {
 export interface ProjectSnapshot {
   status:            ProjectStatus | null
   client?:           string | null           // MA-003 "Client" text column
+  rvtVersion?:       string | null           // MA-003 "RVT Version" dropdown
+  filesSystem?:      string | null           // MA-003 "Files System" dropdown
   issueCreatorStats?: IssueCreatorStat[]
   issueStatsSyncedAt?: Date | null
   milestoneProgress: number | null           // pooled completed/total across all bills
@@ -173,6 +175,8 @@ const SnapshotSchema = new Schema<ProjectSnapshot>(
       default: null,
     },
     client:                { type: String, default: null },
+    rvtVersion:            { type: String, default: null },
+    filesSystem:           { type: String, default: null },
     issueCreatorStats:     { type: [IssueCreatorStatSchema], default: undefined },
     issueStatsSyncedAt:    { type: Date, default: null },
     milestoneProgress:     { type: Number, min: 0, max: 100, default: null },

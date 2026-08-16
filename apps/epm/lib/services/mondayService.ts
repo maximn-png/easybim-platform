@@ -71,6 +71,8 @@ export interface MA003Project {
   accUrl?:        string
   mainBoardUrl?:  string
   client?:        string   // "Client" text column (text_mkpswt15)
+  rvtVersion?:    string   // "RVT Version" dropdown (dropdown_mkps4k6v)
+  filesSystem?:   string   // "Files System" dropdown (dropdown_mkps16rz)
 }
 
 export interface TS001HoursSummary {
@@ -157,7 +159,7 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
     query ($ids: [ID!]!) {
       items(ids: $ids) {
         id
-        column_values(ids: ["multiple_person_mkpsmr4k", "multiple_person_mkpskxyf", "multiple_person_mm2tw6be", "link_mkpste", "link_mkqmrce0", "text_mkpswt15"]) {
+        column_values(ids: ["multiple_person_mkpsmr4k", "multiple_person_mkpskxyf", "multiple_person_mm2tw6be", "link_mkpste", "link_mkqmrce0", "text_mkpswt15", "dropdown_mkps4k6v", "dropdown_mkps16rz"]) {
           id
           value
           text
@@ -209,6 +211,8 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
         accUrl,
         mainBoardUrl,
         client:          colMap['text_mkpswt15']?.text?.trim() || undefined,
+        rvtVersion:      colMap['dropdown_mkps4k6v']?.text?.trim() || undefined,
+        filesSystem:     colMap['dropdown_mkps16rz']?.text?.trim() || undefined,
       })
     }
   }
@@ -846,6 +850,20 @@ function pulseUrl(boardId: string | null, itemId: string): string | null {
 function updateUrl(boardId: string | null, itemId: string, updateId: string): string | null {
   const base = pulseUrl(boardId, itemId)
   return base ? `${base}/posts/${updateId}` : null
+}
+
+/**
+ * Fresh short-lived URL for a Monday asset (update attachments). Assets'
+ * public_urls are signed and EXPIRE, so URLs stored in cached update snapshots
+ * go stale — the /api/monday-asset proxy calls this on demand instead.
+ */
+export async function fetchAssetPublicUrl(assetId: string): Promise<string | null> {
+  const data = await mondayQuery(
+    `query ($ids: [ID!]!) { assets (ids: $ids) { public_url url } }`,
+    { ids: [assetId] },
+  ) as { assets: Array<{ public_url: string | null; url: string | null }> }
+  const a = data.assets?.[0]
+  return a?.public_url ?? a?.url ?? null
 }
 
 /** Extract the board id from a Monday board URL (…/boards/<digits>). */

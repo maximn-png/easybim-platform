@@ -76,6 +76,10 @@ export interface ProjectRow {
   status: 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck' | null
   /** Client name from the MA-003 "Client" text column. */
   client?: string
+  /** Revit version from the MA-003 "RVT Version" dropdown (e.g. "2024"). */
+  rvtVersion?: string
+  /** File-sharing system from the MA-003 "Files System" dropdown (e.g. "ACC", "רמדור"). */
+  filesSystem?: string
   /** Per-creator ACC issue stats, matched to team members by display name. */
   issueCreatorStats?: IssueCreatorStat[]
   milestoneProgress: number | null

@@ -43,6 +43,8 @@ function toProjectRow(doc: Record<string, unknown>): ProjectRow {
     accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
     status: (snap.status as ProjectRow['status']) ?? null,
     client: (snap.client as string | undefined) || undefined,
+    rvtVersion: (snap.rvtVersion as string | undefined) || undefined,
+    filesSystem: (snap.filesSystem as string | undefined) || undefined,
     issueCreatorStats: (snap.issueCreatorStats as ProjectRow['issueCreatorStats']) ?? undefined,
     milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
     milestoneDisciplines: (snap.milestoneDisciplines as ProjectRow['milestoneDisciplines']) ?? undefined,

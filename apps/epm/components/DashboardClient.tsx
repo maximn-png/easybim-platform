@@ -107,7 +107,8 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
         const q = searchQuery.toLowerCase()
         return (
           p.projectName.toLowerCase().includes(q) ||
-          p.projectNumber.includes(q)
+          p.projectNumber.includes(q) ||
+          (p.client ?? '').toLowerCase().includes(q)
         )
       }
       return true

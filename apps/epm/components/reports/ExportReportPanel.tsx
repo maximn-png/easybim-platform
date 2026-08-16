@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useUser, useReverification } from '@clerk/nextjs'
 import { isReverificationCancelledError } from '@clerk/nextjs/errors'
 import { toPng } from 'html-to-image'
-import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink, BarChart3, Clock } from 'lucide-react'
+import { Download, Mail, X, Check, FileText, FileSpreadsheet, Plus, Loader2, ExternalLink, BarChart3, Clock, ClipboardCopy } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import type { AccIssue, AccMember } from '@/lib/services/apsService'
 import { type GroupKey, buildGroupOptions, statusLabel, normalizeStatus, dropDraft, issueMonthKey } from '@/lib/reportGrouping'
@@ -45,6 +45,7 @@ export default function ExportReportPanel({
   project, issues, issueTypes, disciplines, allStatuses, assignees,
   defaultGroupBy, defaultAssignees, defaultTypes, defaultDisciplines,
   defaultStatuses, defaultExtraFilters, defaultMonth,
+  defaultPageScopeIds, pageOrder,
   onReportSaved, onScheduleRequest,
 }: {
   project: ProjectRow
@@ -61,6 +62,12 @@ export default function ExportReportPanel({
   defaultStatuses: string[]
   defaultExtraFilters: { key: string; values: string[] }[]
   defaultMonth: string | null
+  // Table-level narrowing inherited from the reports page (chart bar click +
+  // per-column filters), as an issue-id set. Null = table wasn't narrowed.
+  defaultPageScopeIds: string[] | null
+  // The page table's sort, as an id order over all issues — the exported
+  // PDF/Excel table follows it. Null = default issue-number order.
+  pageOrder: string[] | null
   // Lets the drawer refresh the Activity tab after a report is created.
   onReportSaved?: () => void
   // "תזמן את הדוח": hands the fully-configured report to the Schedule tab, so
@@ -90,6 +97,8 @@ export default function ExportReportPanel({
   const [extraFilters, setExtraFilters] = useState<{ key: string; values: string[] }[]>(defaultExtraFilters)
   // Month filter inherited from a reports-page month-chart click (YYYY-MM).
   const [monthFilter, setMonthFilter] = useState<string | null>(defaultMonth)
+  // Table narrowing inherited from the reports page (removable via its chip).
+  const [pageScopeIds, setPageScopeIds] = useState<string[] | null>(defaultPageScopeIds)
   const [groupBy, setGroupBy] = useState<GroupKey>(defaultGroupBy)
   // Extra table columns appended to the PDF + Excel (keys of paramValue dims).
   const [selExtraColumns, setSelExtraColumns] = useState<string[]>([])
@@ -118,6 +127,9 @@ export default function ExportReportPanel({
   // Internal (analytics-only) save — no email.
   const [savingInternal, setSavingInternal] = useState(false)
   const [savedInternal, setSavedInternal] = useState(false)
+  // Copy-for-reply: email body (text+images) → clipboard, PDF+Excel → downloads.
+  const [copying, setCopying] = useState(false)
+  const [copiedOk, setCopiedOk] = useState(false)
 
   // Email chart = status-filtered issues; doc chart = all statuses (analytics).
   const emailChartRef = useRef<HTMLDivElement>(null)
@@ -239,7 +251,7 @@ export default function ExportReportPanel({
   // discipline — overriding the page-seeded defaults when such a template is picked.
   useEffect(() => {
     if (!template.forceAllIssues) return
-    setSelAssignees([]); setSelIssueTypes([]); setSelDisciplines([]); setSelStatuses([]); setExtraFilters([]); setMonthFilter(null)
+    setSelAssignees([]); setSelIssueTypes([]); setSelDisciplines([]); setSelStatuses([]); setExtraFilters([]); setMonthFilter(null); setPageScopeIds(null)
     const disc = groupOptions.find(o => o.value.startsWith('attr:') && DISCIPLINE_LABELS.includes(o.label.trim().toLowerCase()))
     setGroupBy(disc?.value ?? 'discipline')
   }, [templateId, template.forceAllIssues, groupOptions])
@@ -253,17 +265,27 @@ export default function ExportReportPanel({
   //   distribution so the analytics stay meaningful regardless of the status filter.
   // imageIssues → the email chart image only. docIssues additionally narrowed by
   //   the status selection, so the emailed picture can focus on chosen statuses.
-  const docIssues = useMemo(() => dropDraft(issues).filter(i => {
-    if (selAssignees.length && !selAssignees.includes(i.assignedTo?.trim() || 'Unassigned')) return false
-    if (selIssueTypes.length && !selIssueTypes.includes(i.issueType)) return false
-    const disc = i.discipline?.trim() || 'No Discipline'
-    if (selDisciplines.length && !selDisciplines.includes(disc)) return false
-    for (const f of extraFilters) {
-      if (f.values.length && !f.values.includes(issueParamValue(i, f.key))) return false
+  const docIssues = useMemo(() => {
+    const scopeSet = pageScopeIds ? new Set(pageScopeIds) : null
+    const picked = dropDraft(issues).filter(i => {
+      if (scopeSet && !scopeSet.has(i.id)) return false
+      if (selAssignees.length && !selAssignees.includes(i.assignedTo?.trim() || 'Unassigned')) return false
+      if (selIssueTypes.length && !selIssueTypes.includes(i.issueType)) return false
+      const disc = i.discipline?.trim() || 'No Discipline'
+      if (selDisciplines.length && !selDisciplines.includes(disc)) return false
+      for (const f of extraFilters) {
+        if (f.values.length && !f.values.includes(issueParamValue(i, f.key))) return false
+      }
+      if (monthFilter && issueMonthKey(i.createdAt) !== monthFilter) return false
+      return true
+    })
+    // Follow the page table's sort so the PDF/Excel rows match the screen.
+    if (pageOrder) {
+      const rank = new Map(pageOrder.map((id, idx) => [id, idx]))
+      picked.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity))
     }
-    if (monthFilter && issueMonthKey(i.createdAt) !== monthFilter) return false
-    return true
-  }), [issues, selAssignees, selIssueTypes, selDisciplines, extraFilters, monthFilter])
+    return picked
+  }, [issues, selAssignees, selIssueTypes, selDisciplines, extraFilters, monthFilter, pageScopeIds, pageOrder])
 
   const imageIssues = useMemo(
     () => (selStatuses.length ? docIssues.filter(i => selStatuses.includes(i.status)) : docIssues),
@@ -282,10 +304,22 @@ export default function ExportReportPanel({
     selDisciplines.length ? `דיסציפלינה: ${selDisciplines.join(', ')}` : '',
     ...extraFilters.filter(f => f.values.length).map(f => `${groupLabelHe(f.key)}: ${f.values.join(', ')}`),
     monthFilter ? `חודש: ${monthLabelHe(monthFilter)}` : '',
+    pageScopeIds ? 'סינון מטבלת הנושאים' : '',
   ].filter(Boolean).join(' · ') || 'ללא סינון'
 
   // Payload the server uses to render the PDF + Excel.
-  const extraColumns = selExtraColumns.map(k => ({ key: k, label: groupLabelHe(k) }))
+  // The chosen group-by dimension joins the document table as a column whenever
+  // it isn't one of the fixed columns (משויך/דיסציפלינה/סטטוס/סוג) — so grouping
+  // by e.g. a custom "קומה" attribute shows that value per issue.
+  const FIXED_DOC_COLUMNS = new Set(['assignedTo', 'status', 'issueType', 'discipline'])
+  const groupByIsDiscipline =
+    groupBy.startsWith('attr:') && DISCIPLINE_LABELS.includes(groupBy.slice(5).trim().toLowerCase())
+  const extraColumns = [
+    ...(!FIXED_DOC_COLUMNS.has(groupBy) && !groupByIsDiscipline && !selExtraColumns.includes(groupBy)
+      ? [{ key: groupBy, label: groupLabelHe(groupBy) }]
+      : []),
+    ...selExtraColumns.map(k => ({ key: k, label: groupLabelHe(k) })),
+  ]
   const reportMeta: ReportMeta = {
     projectName: project.projectName,
     projectNumber: project.projectNumber,
@@ -295,6 +329,8 @@ export default function ExportReportPanel({
     filtersSummary,
     extraColumns,
     includeLegend: true, // the PDF always carries the legend; the checkbox is email-only
+    // Issues are sent pre-ordered when the page table was sorted — keep that order.
+    preserveOrder: !!pageOrder,
   }
 
   const addManual = () => {
@@ -482,6 +518,63 @@ export default function ExportReportPanel({
     }
   }
 
+  // ── Copy for an email reply ───────────────────────────────────────────────
+  // Puts the full email body (text, links, chart image, legend, screenshot — all
+  // images inlined as data URIs) on the clipboard as rich HTML, ready to paste
+  // into a Gmail reply, and downloads the PDF + Excel to attach manually.
+  // (Browsers only allow text/HTML/PNG on the web clipboard — file attachments
+  // can't be copied, hence the downloads.)
+  const fetchAndDownload = async (url: string, body: unknown, filename: string) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as { error?: string }
+      throw new Error(err.error || `HTTP ${res.status}`)
+    }
+    const blob = await res.blob()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = filename
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  const handleCopyForReply = async () => {
+    if (copying) return
+    setCopying(true); setActionError(null); setCopiedOk(false)
+    try {
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        throw new Error('הדפדפן אינו תומך בהעתקת תוכן עשיר — נסו ב-Chrome/Edge')
+      }
+      const chartPngBase64 = await chartToBase64(emailChartRef.current)
+      const screenshotPngBase64 = await screenshotToBase64()
+      const html = buildEmailHtml({
+        bodyText, links, highlightPhrases: resolved.highlightPhrases,
+        hasChart: true, hasScreenshot, hasLegend: includeLegend,
+        inline: { chartBase64: chartPngBase64, screenshotBase64: screenshotPngBase64 },
+      })
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([bodyText], { type: 'text/plain' }),
+        }),
+      ])
+      // Attachments can't ride the clipboard — download them for manual attach.
+      // One ZIP with both files: browsers throttle a second automatic download,
+      // so separate PDF+Excel downloads lose the Excel silently.
+      await fetchAndDownload(`/api/projects/${project._id}/report-bundle`,
+        { meta: reportMeta, issues: docIssues, extraColumns, pdfName, xlsxName },
+        pdfName.replace(/\.pdf$/i, '.zip'))
+      setCopiedOk(true)
+    } catch (e) {
+      setActionError('שגיאה בהעתקה: ' + String(e))
+    } finally {
+      setCopying(false)
+    }
+  }
+
   // ── Save an internal (analytics-only) report — no email ───────────────────
   const handleSaveInternal = async () => {
     if (savingInternal) return
@@ -652,6 +745,17 @@ export default function ExportReportPanel({
               </div>
             </div>
             <p className="text-[10px] text-gray-400 mt-1">סינון הסטטוס משפיע רק על התמונה במייל · ה-PDF וה-Excel כוללים תמיד את כל הסטטוסים (למעט טיוטה)</p>
+
+            {/* Table narrowing inherited from the reports page (chart click / column filters) */}
+            {pageScopeIds && (
+              <div className="flex items-center gap-2 flex-wrap bg-gray-50 border border-gray-200 rounded-xl p-3 mt-2">
+                <span className="text-[10px] font-mono uppercase text-[#1e248c]">סינון מהעמוד</span>
+                <span className="inline-flex items-center gap-1.5 bg-[#e7eefe] border border-[#c7caea] text-[#1e248c] rounded-full px-2.5 py-1 text-xs font-medium">
+                  הסינון שבוצע בטבלת הנושאים ({pageScopeIds.length} נושאים)
+                  <button onClick={() => setPageScopeIds(null)} title="הסר את הסינון שהתקבל מהעמוד" className="text-[#9094c4] hover:text-red-500"><X size={11} /></button>
+                </span>
+              </div>
+            )}
 
             {/* Month inherited from a reports-page month-chart click */}
             {monthFilter && (
@@ -888,10 +992,24 @@ export default function ExportReportPanel({
                   <Clock size={15} /> תזמן את הדוח
                 </button>
               )}
+              <button
+                onClick={handleCopyForReply}
+                disabled={copying}
+                title="מעתיק את גוף המייל (טקסט, גרף, מקרא ותמונות) ללוח — מוכן להדבקה בתשובה במייל — ומוריד את ה-PDF וה-Excel לצירוף ידני"
+                className="inline-flex items-center gap-2 px-5 py-2.5 border-2 border-[#44b8d3] text-[#0e7490] bg-white rounded-xl text-sm font-bold hover:bg-[#e1f2f7] transition disabled:opacity-60"
+              >
+                {copying ? <Loader2 size={15} className="animate-spin" /> : <ClipboardCopy size={15} />}
+                {copying ? 'מעתיק…' : 'העתק לתשובה'}
+              </button>
             </div>
 
             {draftUrl && <span className="text-[11px] text-emerald-600 flex items-center gap-1"><Check size={13} /> הטיוטה נוצרה</span>}
             {savedInternal && <span className="text-[11px] text-emerald-600 flex items-center gap-1"><Check size={13} /> נשמר לכרטיס ״פעילות ודוחות״ (ניתוח פנימי)</span>}
+            {copiedOk && (
+              <span className="text-[11px] text-emerald-600 flex items-center gap-1">
+                <Check size={13} /> גוף המייל הועתק ללוח — הדביקו בתשובה (Ctrl+V) · קובץ ZIP עם ה-PDF וה-Excel ירד להורדות לצירוף ידני
+              </span>
+            )}
 
             {needsGoogle && (
               <div className="flex flex-col gap-2 bg-[#fff7ed] border border-[#fed7aa] rounded-xl p-3">

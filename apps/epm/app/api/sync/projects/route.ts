@@ -301,6 +301,8 @@ export async function POST(req: NextRequest) {
               ...accFields,
               'snapshot.status':             p.status,
               'snapshot.client':             ma003?.client ?? null,
+              'snapshot.rvtVersion':         ma003?.rvtVersion ?? null,
+              'snapshot.filesSystem':        ma003?.filesSystem ?? null,
               'snapshot.milestoneProgress':  milestones?.overallProgress ?? null,
               'snapshot.milestoneDisciplines': milestones?.disciplines ?? [],
               // Total budget = שכט סופי ÷ 300 (formula8). Only overwrite when the
