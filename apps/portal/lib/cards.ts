@@ -1,4 +1,4 @@
-import { Newspaper, Database, BookOpen, Crown, TrainFront, Building2, type LucideIcon } from 'lucide-react'
+import { Newspaper, Database, BookOpen, Crown, TrainFront, Building2, Landmark, type LucideIcon } from 'lucide-react'
 
 // Single source of truth for the platform's app cards.
 // `id` doubles as the access grant key stored in Clerk publicMetadata.apps
@@ -57,6 +57,18 @@ export const CARDS: AppCard[] = [
     // environment — otherwise show "coming soon" instead of a dead `#` link.
     status: process.env.NEXT_PUBLIC_AGENTS_URL ? 'live' : 'coming-soon',
     color: '#7c3aed',
+  },
+  {
+    id: 'finance',
+    title: 'Finance Management',
+    description:
+      'Financial hub for the finance team — billing status, invoices, and project finance synced from Monday and Drive.',
+    icon: Landmark,
+    href: process.env.NEXT_PUBLIC_FINANCE_URL || '#',
+    // Only advertise as Live when the finance URL is configured for this
+    // environment (mirrors the agents card) — otherwise "coming soon".
+    status: process.env.NEXT_PUBLIC_FINANCE_URL ? 'live' : 'coming-soon',
+    color: '#10b981',
   },
   {
     id: 'metro',
