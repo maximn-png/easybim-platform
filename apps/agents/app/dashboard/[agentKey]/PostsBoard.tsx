@@ -33,8 +33,7 @@ const SCOPES: { key: Scope; label: string }[] = [
   { key: 'all', label: 'All' },
 ]
 
-type DragMode = 'move' | 'resize-start'
-interface DragState { id: string; mode: DragMode; days: number }
+interface DragState { id: string; days: number }
 
 export default function PostsBoard({
   agentKey, onBack, initialOpenPostId = null,
@@ -161,22 +160,12 @@ export default function PostsBoard({
     return out
   }, [days])
 
-  function commitDrag(post: PostDTO, mode: DragMode, dayDelta: number) {
-    if (mode === 'move') {
-      const shift = (iso: string | null) => (iso ? addDays(new Date(iso), dayDelta).toISOString() : null)
-      patchPost(post.id, { shiftDays: dayDelta }, {
-        publishDate: shift(post.publishDate),
-        draftStartDate: shift(post.draftStartDate),
-      })
-      return
-    }
-    // Resize the drafting window's left edge; it may not pass the publish day.
-    const publish = post.publishDate ? dayStart(post.publishDate) : null
-    if (!publish) return
-    const current = post.draftStartDate ? dayStart(post.draftStartDate) : publish
-    let next = addDays(current, dayDelta)
-    if (next > publish) next = publish
-    patchPost(post.id, { draftStartDate: isoDay(next) }, { draftStartDate: next.toISOString() })
+  function commitDrag(post: PostDTO, dayDelta: number) {
+    const shift = (iso: string | null) => (iso ? addDays(new Date(iso), dayDelta).toISOString() : null)
+    patchPost(post.id, { shiftDays: dayDelta }, {
+      publishDate: shift(post.publishDate),
+      draftStartDate: shift(post.draftStartDate),
+    })
   }
 
   const openPost = openId ? posts.find((p) => p.id === openId) ?? null : null
@@ -334,7 +323,7 @@ export default function PostsBoard({
                   drag={drag?.id === post.id ? drag : null}
                   onSelect={() => setSelectedId(post.id)}
                   onOpen={() => { setSelectedId(post.id); setOpenId(post.id) }}
-                  onDragStart={(mode, startX) => beginDrag(post, mode, startX)}
+                  onDragStart={(startX) => beginDrag(post, startX)}
                 />
               ))}
               <div style={{ height: ROW_H, borderTop: '1px solid #f6f5fb' }} />
@@ -359,9 +348,9 @@ export default function PostsBoard({
     </div>
   )
 
-  // Pointer-drag on a bar: preview while moving, one PATCH on release.
-  function beginDrag(post: PostDTO, mode: DragMode, startX: number) {
-    setDrag({ id: post.id, mode, days: 0 })
+  // Pointer-drag on a milestone: preview while moving, one PATCH on release.
+  function beginDrag(post: PostDTO, startX: number) {
+    setDrag({ id: post.id, days: 0 })
     const move = (ev: PointerEvent) => {
       setDrag((d) => (d ? { ...d, days: Math.round((ev.clientX - startX) / DAY_W) } : d))
     }
@@ -370,7 +359,7 @@ export default function PostsBoard({
       window.removeEventListener('pointerup', up)
       const dayDelta = Math.round((ev.clientX - startX) / DAY_W)
       setDrag(null)
-      if (dayDelta !== 0) commitDrag(post, mode, dayDelta)
+      if (dayDelta !== 0) commitDrag(post, dayDelta)
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -601,35 +590,25 @@ function GanttRow({
   drag: DragState | null
   onSelect: () => void
   onOpen: () => void
-  onDragStart: (mode: DragMode, startX: number) => void
+  onDragStart: (startX: number) => void
 }) {
   const meta = statusMeta(post.status)
   const movedRef = useRef(false)
 
-  // Bar geometry in whole days, with the in-flight drag applied as a preview.
-  // Returns an `outside` marker instead of null for a dated post beyond the
-  // window, so a scheduled post never renders as an unexplained empty row.
+  // A post is a single milestone on its publish day — no drafting window, so no
+  // start/due span. `left` is the centre of that day's column, with the
+  // in-flight drag applied as a preview. Returns an `outside` marker instead of
+  // null for a dated post beyond the window, so a scheduled post never renders
+  // as an unexplained empty row.
   const geo = useMemo(() => {
     if (!post.publishDate) return null
-    const shift = drag?.mode === 'move' ? drag.days : 0
-    const publishIdx = daysBetween(rangeStart, new Date(post.publishDate)) + shift
-    const rawStart = post.draftStartDate ? daysBetween(rangeStart, new Date(post.draftStartDate)) : publishIdx
-    let startIdx = rawStart + (drag?.mode === 'move' || drag?.mode === 'resize-start' ? drag.days : 0)
-    if (startIdx > publishIdx) startIdx = publishIdx
+    const publishIdx = daysBetween(rangeStart, new Date(post.publishDate)) + (drag?.days ?? 0)
     if (publishIdx < 0) return { outside: 'before' as const }
-    if (startIdx >= totalDays) return { outside: 'after' as const }
+    if (publishIdx > totalDays - 1) return { outside: 'after' as const }
+    return { left: publishIdx * DAY_W + DAY_W / 2 }
+  }, [post.publishDate, rangeStart, totalDays, drag])
 
-    const clippedStart = Math.max(0, startIdx)
-    const clippedEnd = Math.min(totalDays - 1, publishIdx)
-    return {
-      left: clippedStart * DAY_W,
-      width: Math.max(DAY_W, (clippedEnd - clippedStart + 1) * DAY_W),
-      clippedLeft: startIdx < 0,
-      publishInRange: publishIdx <= totalDays - 1,
-    }
-  }, [post.publishDate, post.draftStartDate, rangeStart, totalDays, drag])
-
-  const bar = geo && !('outside' in geo) ? geo : null
+  const milestone = geo && !('outside' in geo) ? geo : null
   const outside = geo && 'outside' in geo ? geo.outside : null
 
   return (
@@ -673,7 +652,7 @@ function GanttRow({
         </button>
       )}
 
-      {bar && (
+      {milestone && (
         <div
           onPointerDown={(e) => {
             if (e.button !== 0) return
@@ -688,36 +667,22 @@ function GanttRow({
             }
             window.addEventListener('pointermove', onMove)
             window.addEventListener('pointerup', onUp)
-            onDragStart('move', startX)
+            onDragStart(startX)
           }}
-          title={`${post.title} · ${meta.label}${post.publishDate ? ` · publish ${fmtDayMon(post.publishDate)}` : ''}\nDrag to reschedule · drag the left edge to change the drafting window`}
-          style={{ position: 'absolute', top: 9, height: ROW_H - 18, left: bar.left, width: bar.width,
-            background: `${meta.color}26`, border: `1px solid ${meta.color}80`,
-            borderTopLeftRadius: bar.clippedLeft ? 0 : 8, borderBottomLeftRadius: bar.clippedLeft ? 0 : 8,
-            borderTopRightRadius: 8, borderBottomRightRadius: 8,
-            display: 'flex', alignItems: 'center', paddingInline: 8, gap: 6, overflow: 'hidden',
-            cursor: drag ? 'grabbing' : 'grab', touchAction: 'none', zIndex: drag ? 5 : 3,
-            boxShadow: drag ? '0 6px 16px rgba(60,40,140,.18)' : 'none' }}
+          title={`${post.title} · ${meta.label} · publish ${fmtDayMon(post.publishDate)}\nDrag to reschedule`}
+          // Anchored at the day's centre and laid out rightwards, so the diamond
+          // sits exactly on its column while the title reads alongside it.
+          style={{ position: 'absolute', top: 0, height: ROW_H, left: milestone.left,
+            display: 'flex', alignItems: 'center', gap: 6, paddingInlineEnd: 10,
+            cursor: drag ? 'grabbing' : 'grab', touchAction: 'none', zIndex: drag ? 5 : 3 }}
         >
-          {/* left edge: resize the drafting window */}
-          <span
-            onPointerDown={(e) => {
-              if (e.button !== 0) return
-              e.preventDefault(); e.stopPropagation()
-              onDragStart('resize-start', e.clientX)
-            }}
-            title="Drag to change when drafting starts"
-            style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 7, cursor: 'ew-resize',
-              background: meta.color, opacity: 0.85, borderTopLeftRadius: 8, borderBottomLeftRadius: 8, touchAction: 'none' }}
-          />
-          <span dir="auto" style={{ fontSize: 11, fontWeight: 700, color: meta.color, marginInlineStart: 6,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+          <span style={{ width: 13, height: 13, background: meta.color, transform: 'translateX(-50%) rotate(45deg)',
+            flex: 'none', borderRadius: 2, pointerEvents: 'none',
+            boxShadow: drag ? '0 4px 12px rgba(60,40,140,.30)' : '0 1px 3px rgba(60,40,140,.20)' }} />
+          <span dir="auto" style={{ fontSize: 11, fontWeight: 700, color: meta.color, marginInlineStart: -3,
+            whiteSpace: 'nowrap', pointerEvents: 'none' }}>
             {post.title}
           </span>
-          {bar.publishInRange && (
-            <span style={{ marginInlineStart: 'auto', width: 9, height: 9, background: meta.color,
-              transform: 'rotate(45deg)', flex: 'none', pointerEvents: 'none' }} />
-          )}
         </div>
       )}
     </div>

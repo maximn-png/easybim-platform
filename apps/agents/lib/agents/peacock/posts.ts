@@ -136,8 +136,10 @@ export async function pipelineCounts(): Promise<PipelineCounts> {
 }
 
 /**
- * The drafting window that precedes a publish date — the Gantt bar's left edge.
- * Kept in one place so the cron, the chat tools and a drag-reschedule all agree.
+ * The drafting window that precedes a publish date. No longer drawn — the
+ * timeline plots each post as a single milestone on its publish day — but still
+ * maintained so the cron and the chat tools have a consistent "start working on
+ * this" date, and so a drag-reschedule shifts it with the publish date.
  */
 export function defaultDraftStart(publishDate: Date): Date {
   const d = new Date(publishDate)

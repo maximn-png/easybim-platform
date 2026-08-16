@@ -107,7 +107,7 @@ export interface IPeacockPost extends Document {
   postType?: string
   status: PostStatus
   publishDate?: Date
-  draftStartDate?: Date // start of the drafting window — the Gantt bar's left edge
+  draftStartDate?: Date // start of the drafting window; not drawn — the timeline is milestone-only
   imageUrl?: string // generated/branded cover (Drive link, URL, or data ref)
   driveLink?: string // package folder
   linkedinUrl?: string // set once published to LinkedIn
