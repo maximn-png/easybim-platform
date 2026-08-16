@@ -726,7 +726,9 @@ export default function ProjectDetailClient({
               <div className="lg:flex-1 lg:min-h-0 overflow-y-auto pr-1 max-h-[60vh] lg:max-h-none grid grid-cols-1 @min-[720px]:grid-cols-2 @min-[1180px]:grid-cols-3 gap-2.5 content-start">
                 {visibleUpdates.map(u => {
                   const badge  = SOURCE_BADGE[u.source.kind] ?? { label: u.source.label, cls: 'bg-gray-100 text-gray-600' }
-                  const images = u.assets.filter(a => a.isImage && a.url)
+                  // Rendered via the asset proxy (fresh signed URL per request) —
+                  // the cached snapshot's stored public_url expires and breaks.
+                  const images = u.assets.filter(a => a.isImage && a.id)
                   // Clamp on text length, but also on block markup Monday emits
                   // (tables/lists) — those render tall from very little text.
                   const long   = u.textBody.length > CLAMP_CHARS || /<(table|ul|ol|blockquote)\b/i.test(u.body ?? '')
@@ -763,9 +765,9 @@ export default function ProjectDetailClient({
                         {images.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-1.5">
                             {images.map(a => (
-                              <a key={a.id} href={a.url!} target="_blank" rel="noopener noreferrer">
+                              <a key={a.id} href={`/api/monday-asset/${a.id}`} target="_blank" rel="noopener noreferrer">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={a.url!} alt={a.name} className="h-14 w-auto rounded-lg border border-gray-200 object-cover" />
+                                <img src={`/api/monday-asset/${a.id}`} alt={a.name} className="h-14 w-auto rounded-lg border border-gray-200 object-cover" />
                               </a>
                             ))}
                           </div>

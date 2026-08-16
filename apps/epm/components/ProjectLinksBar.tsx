@@ -1,6 +1,6 @@
 'use client'
 
-import { Cloud, LayoutGrid, FolderOpen } from 'lucide-react'
+import { Cloud, LayoutGrid, FolderOpen, Box, HardDrive } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 
 // Header row of external-link pills (ACC / Monday / Drive) shown at the top of
@@ -102,6 +102,24 @@ export default function ProjectLinksBar({ project, anaView = false }: { project:
             icon={<FolderOpen size={13} />}
             className="text-[#00687a] bg-teal-50 hover:bg-teal-100"
           />
+          {/* Read-only info pills from MA-003 (RVT Version / Files System) —
+              rendered only when the sync resolved a value. */}
+          {project.rvtVersion && (
+            <span
+              title="Revit version (MA-003 'RVT Version' column)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-violet-700 bg-violet-50"
+            >
+              <Box size={13} /> Revit {project.rvtVersion}
+            </span>
+          )}
+          {project.filesSystem && (
+            <span
+              title="File-sharing system (MA-003 'Files System' column)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-slate-100"
+            >
+              <HardDrive size={13} /> {project.filesSystem}
+            </span>
+          )}
         </>
       )}
     </div>

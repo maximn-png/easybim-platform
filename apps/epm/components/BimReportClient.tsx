@@ -509,38 +509,44 @@ export default function BimReportClient({ project, anaView = false }: { project:
   )
 
   // ── Table: per-column filters + sorting (applied on top of global filters) ──
-  const tableRows = useMemo(() => {
-    const rows = filtered.filter(i => {
-      // Discipline-bar click-to-filter: restrict to the selected group (+ status).
-      if (chartSel) {
-        if (groupValue(i, groupBy) !== chartSel.group) return false
-        if (chartSel.status && i.status !== chartSel.status) return false
-      }
-      for (const col of columns) {
-        const f = col.filter
-        if (!f) continue
-        if (f.type === 'text') {
-          const q = (colText[col.key] ?? '').toLowerCase()
-          if (q && !col.sortValue(i).includes(q)) return false
-        } else {
-          const sel = colSel[col.key] ?? []
-          if (sel.length && !sel.includes(f.optionValue(i))) return false
-        }
-      }
-      return true
-    })
-    if (sortCol) {
-      const col = columns.find(c => c.key === sortCol)
-      if (col) {
-        rows.sort((a, b) => {
-          const av = col.sortValue(a), bv = col.sortValue(b)
-          const cmp = av < bv ? -1 : av > bv ? 1 : 0
-          return sortDir === 'asc' ? cmp : -cmp
-        })
+  // The table-level narrowing (chart bar click + per-column filters), as a
+  // predicate — shared by the table itself and the export scope below.
+  const matchesTableNarrowing = useMemo(() => (i: AccIssue): boolean => {
+    // Discipline-bar click-to-filter: restrict to the selected group (+ status).
+    if (chartSel) {
+      if (groupValue(i, groupBy) !== chartSel.group) return false
+      if (chartSel.status && i.status !== chartSel.status) return false
+    }
+    for (const col of columns) {
+      const f = col.filter
+      if (!f) continue
+      if (f.type === 'text') {
+        const q = (colText[col.key] ?? '').toLowerCase()
+        if (q && !col.sortValue(i).includes(q)) return false
+      } else {
+        const sel = colSel[col.key] ?? []
+        if (sel.length && !sel.includes(f.optionValue(i))) return false
       }
     }
+    return true
+  }, [columns, colText, colSel, chartSel, groupBy])
+
+  const sortComparator = useMemo(() => {
+    if (!sortCol) return null
+    const col = columns.find(c => c.key === sortCol)
+    if (!col) return null
+    return (a: AccIssue, b: AccIssue) => {
+      const av = col.sortValue(a), bv = col.sortValue(b)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sortDir === 'asc' ? cmp : -cmp
+    }
+  }, [columns, sortCol, sortDir])
+
+  const tableRows = useMemo(() => {
+    const rows = filtered.filter(matchesTableNarrowing)
+    if (sortComparator) rows.sort(sortComparator)
     return rows
-  }, [filtered, columns, colText, colSel, sortCol, sortDir, chartSel, groupBy])
+  }, [filtered, matchesTableNarrowing, sortComparator])
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
@@ -555,6 +561,22 @@ export default function BimReportClient({ project, anaView = false }: { project:
     filterStatuses.length > 0 || extraFilters.some(f => f.values.length > 0) || monthSel != null
   const hasColFilters =
     Object.values(colText).some(Boolean) || Object.values(colSel).some(v => v.length > 0)
+
+  // ── Export scope + order (inherited by the Reports drawer) ────────────────
+  // Table-level narrowing (chart click + column filters) applied to ALL issues —
+  // deliberately NOT the global filters, which the Export panel inherits as its
+  // own editable selections. Null when the table isn't narrowed.
+  const pageScopeIds = useMemo(() => {
+    if (!chartSel && !hasColFilters) return null
+    return normalizedIssues.filter(matchesTableNarrowing).map(i => i.id)
+  }, [normalizedIssues, matchesTableNarrowing, chartSel, hasColFilters])
+
+  // The page's current sort, as an id order over ALL issues, so the exported
+  // PDF/Excel table follows the on-screen order.
+  const pageOrder = useMemo(() => {
+    if (!sortComparator) return null
+    return [...normalizedIssues].sort(sortComparator).map(i => i.id)
+  }, [normalizedIssues, sortComparator])
 
   const clearGlobalFilters = () => {
     setFilterAssignees([]); setFilterTypes([]); setFilterDisciplines([])
@@ -810,7 +832,10 @@ export default function BimReportClient({ project, anaView = false }: { project:
                 <div className="glass-card rounded-2xl p-5 lg:col-span-3 flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <h2 className="font-semibold text-[#1e248c] text-sm">Issues by {groupLabel}</h2>
-                    <span className="text-xs text-gray-400">{grouped.length} {grouped.length === 1 ? 'group' : 'groups'} · click to filter</span>
+                    <span className="text-xs text-gray-400">
+                      {grouped.length} {grouped.length === 1 ? 'group' : 'groups'} ·{' '}
+                      <span className={hasGlobalFilters ? 'font-semibold text-[#1e248c]' : ''}>{totalFiltered} issues</span> · click to filter
+                    </span>
                   </div>
 
                   <div className="flex flex-col gap-3">
@@ -1057,6 +1082,8 @@ export default function BimReportClient({ project, anaView = false }: { project:
         filterStatuses={filterStatuses}
         extraFilters={extraFilters}
         monthSel={monthSel}
+        pageScopeIds={pageScopeIds}
+        pageOrder={pageOrder}
       />
     </div>
   )

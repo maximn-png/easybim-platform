@@ -21,7 +21,7 @@
 import { clerkClient } from '@clerk/nextjs/server'
 
 /** Grant keys for the platform's apps. Must match portal card ids. */
-export type AppId = 'newsletter' | 'epm' | 'agents' | 'knowledge' | (string & {})
+export type AppId = 'newsletter' | 'epm' | 'agents' | 'knowledge' | 'finance' | (string & {})
 
 export type KnowledgeRole = 'intern' | 'employee' | 'teamlead'
 const KNOWLEDGE_ROLES: KnowledgeRole[] = ['intern', 'employee', 'teamlead']

@@ -4,7 +4,7 @@
 import 'server-only'
 import ExcelJS from 'exceljs'
 import type { AccIssue } from '@/lib/services/apsService'
-import { type ExtraColumn, columnValue, statusColor, statusLabel, segmentTextColor, dropDraft } from '@/lib/reportGrouping'
+import { type ExtraColumn, columnValue, statusColor, statusLabel, segmentTextColor, dropDraft, issueDiscipline } from '@/lib/reportGrouping'
 
 // EasyBIM brand colours as ARGB.
 const NAVY      = 'FF1E248C'
@@ -66,7 +66,7 @@ export async function generateReportXlsx(allIssues: AccIssue[], extraColumns: Ex
       title:      issue.title ?? '',
       desc:       issue.description?.trim() ?? '',
       assignee:   issue.assignedTo ?? '',
-      discipline: issue.discipline ?? '',
+      discipline: issueDiscipline(issue) ?? '',
       status:     statusLabel(issue.status),
       type:       issue.issueType ?? '',
       created:    fmtDate(issue.createdAt),

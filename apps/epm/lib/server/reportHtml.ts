@@ -6,7 +6,7 @@
 import type { AccIssue } from '@/lib/services/apsService'
 import {
   type GroupKey, type ExtraColumn, GROUP_OPTIONS, groupValue, columnValue,
-  statusColor, statusLabel, segmentTextColor, dropDraft,
+  statusColor, statusLabel, segmentTextColor, dropDraft, issueDiscipline,
 } from '@/lib/reportGrouping'
 import { buildStatusLegendHtml } from '@/lib/statusLegend'
 
@@ -24,6 +24,9 @@ export interface ReportMeta {
   extraColumns?:  ExtraColumn[]
   // Hebrew status legend under the analytics (mirrors the email's legend block).
   includeLegend?: boolean
+  // true = the issues array is already in the desired row order (the reports
+  // page's table sort) — skip the default issue-number re-sort.
+  preserveOrder?: boolean
 }
 
 const esc = (s: string) =>
@@ -78,12 +81,13 @@ function buildAnalytics(issues: AccIssue[], groupBy: GroupKey): string {
   return `${rows}<div style="display:flex;flex-wrap:wrap;gap:4px;padding-top:8px;margin-top:8px;border-top:1px solid #f3f4f6">${legend}</div>`
 }
 
-function issueRows(issues: AccIssue[], extraColumns: ExtraColumn[]): string {
+function issueRows(issues: AccIssue[], extraColumns: ExtraColumn[], preserveOrder?: boolean): string {
   if (issues.length === 0) {
     return `<tr><td colspan="${7 + extraColumns.length}" style="text-align:center;color:#9ca3af">אין נושאים</td></tr>`
   }
-  // Sort by the real ACC issue number (numeric), matching the reports page.
-  const sorted = [...issues].sort(
+  // Default: sort by the real ACC issue number (numeric), matching the reports
+  // page's default. preserveOrder keeps the caller's order (the page table sort).
+  const sorted = preserveOrder ? issues : [...issues].sort(
     (a, b) => (parseInt(a.displayId ?? '', 10) || 0) - (parseInt(b.displayId ?? '', 10) || 0)
   )
   return sorted.map((i) => {
@@ -100,7 +104,7 @@ function issueRows(issues: AccIssue[], extraColumns: ExtraColumn[]): string {
       <td>${esc(i.title)}</td>
       <td dir="rtl" style="white-space:pre-wrap">${esc(i.description?.trim() || '—')}</td>
       <td>${esc(i.assignedTo ?? '—')}</td>
-      <td>${esc(i.discipline || '—')}</td>
+      <td>${esc(issueDiscipline(i) || '—')}</td>
       <td style="text-align:center">${pill}</td>
       <td>${esc(i.issueType)}</td>${extraCells}
     </tr>`
@@ -181,7 +185,7 @@ th { background: #f1f3f8; color: #1e248c; font-weight: 700; font-size: 9px; }
         </tr>
       </thead>
       <tbody>
-        ${issueRows(issues, extraColumns)}
+        ${issueRows(issues, extraColumns, meta.preserveOrder)}
       </tbody>
     </table>
   </div>
