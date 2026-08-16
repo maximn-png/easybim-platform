@@ -8,7 +8,7 @@ import {
 import MarkdownView from './Markdown'
 import {
   bodyToPlainText, engagementRate, engagementTotal, initials, isoDay, POST_TYPES, PortalUser,
-  PostDTO, PostMetrics, PostStatus, PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER, typeColor,
+  PostDTO, PostMetrics, PostStatus, PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER, statusMeta, typeColor,
 } from './postMeta'
 
 interface Msg { id: string; role: string; content: string }
@@ -138,7 +138,7 @@ export default function PostDrawer({
     } catch { /* clipboard unavailable */ }
   }
 
-  const meta = STATUS_META[p.status]
+  const meta = statusMeta(p.status)
   const owner = users.find((u) => u.id === p.ownerUserId)
 
   return (

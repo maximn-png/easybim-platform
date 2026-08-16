@@ -5,7 +5,7 @@ import { ArrowLeft, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle,
 import PostDrawer from './PostDrawer'
 import {
   addDays, CARD, dayStart, daysBetween, fmtDayMon, initials, isoDay, isOverdue,
-  POST_TYPES, PortalUser, PostDTO, PostStatus, PURPLE, STATUS_META,
+  POST_TYPES, PortalUser, PostDTO, PostStatus, PURPLE, STATUS_META, statusMeta,
   STATUS_ORDER, typeColor,
 } from './postMeta'
 
@@ -393,7 +393,7 @@ function PostRow({
   onDelete: () => void
 }) {
   const overdue = isOverdue(post)
-  const meta = STATUS_META[post.status]
+  const meta = statusMeta(post.status)
 
   return (
     <div
@@ -603,7 +603,7 @@ function GanttRow({
   onOpen: () => void
   onDragStart: (mode: DragMode, startX: number) => void
 }) {
-  const meta = STATUS_META[post.status]
+  const meta = statusMeta(post.status)
   const movedRef = useRef(false)
 
   // Bar geometry in whole days, with the in-flight drag applied as a preview.

@@ -14,7 +14,7 @@ import NewsletterIdeas from './NewsletterIdeas'
 import { compact, ImpressionsCard, LinkedInStatusRow, TopPostsCard, useAnalytics } from './PeacockAnalytics'
 import {
   CARD, fmtDayMon, OPEN_STATUSES, POST_TYPES, PostDTO, PostStatus,
-  PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER,
+  PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER, statusMeta,
 } from './postMeta'
 
 type Counts = Record<PostStatus, number> & { total: number }
@@ -285,7 +285,7 @@ export default function PeacockDashboard({
 }
 
 function StatusPill({ status }: { status: PostStatus }) {
-  const m = STATUS_META[status]
+  const m = statusMeta(status)
   return <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, background: `${m.color}1f`, padding: '4px 10px', borderRadius: 999 }}>{m.label}</span>
 }
 
@@ -316,7 +316,7 @@ function WeekPreview({ posts }: { posts: PostDTO[] }) {
             <span style={{ fontSize: 11, fontWeight: 700, color: d.isToday ? PURPLE : '#9aa0ac' }}>{d.label}</span>
             <div className="flex flex-col gap-1.5 w-full">
               {d.posts.map((post) => (
-                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${STATUS_META[post.status].color}22`, borderLeft: `3px solid ${STATUS_META[post.status].color}` }} />
+                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${statusMeta(post.status).color}22`, borderLeft: `3px solid ${statusMeta(post.status).color}` }} />
               ))}
             </div>
           </div>

@@ -90,6 +90,23 @@ export const STATUS_ORDER: PostStatus[] = [
   'published',
 ]
 
+/**
+ * Status meta for a value that came out of the database, which may predate the
+ * current enum — the pre-migration board wrote `ready` where we now use
+ * `ready_to_publish`. Falls back to a neutral chip carrying the raw value so a
+ * single stale row degrades to "looks off" instead of blanking the dashboard.
+ * Use this for any status read off a post; direct STATUS_META indexing is fine
+ * when the key comes from STATUS_ORDER.
+ */
+export function statusMeta(status: PostStatus | string | null | undefined): { label: string; color: string } {
+  return (
+    STATUS_META[status as PostStatus] ?? {
+      label: String(status ?? 'unknown').replace(/_/g, ' '),
+      color: '#9aa0ac',
+    }
+  )
+}
+
 export const STATUS_META: Record<PostStatus, { label: string; color: string }> = {
   idea: { label: 'Idea', color: '#c9c2f0' },
   drafting: { label: 'Drafting', color: '#a78bfa' },
