@@ -17,6 +17,8 @@ import {
   PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER, statusMeta,
 } from './postMeta'
 
+const TIMELINE_ID = 'posts-timeline'
+
 type Counts = Record<PostStatus, number> & { total: number }
 interface RunDTO { id: string; pass: string; trigger: string; status: string; summary: string | null; error: string | null; startedAt: string }
 
@@ -26,7 +28,7 @@ export default function PeacockDashboard({
   agentKey: string; agentName: string; description: string; presentation: AgentPresentation
 }) {
   const [chatOpen, setChatOpen] = useState(false)
-  const [view, setView] = useState<'dashboard' | 'projects' | 'posts'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'projects'>('dashboard')
   const [posts, setPosts] = useState<PostDTO[]>([])
   const [counts, setCounts] = useState<Counts | null>(null)
   const [runs, setRuns] = useState<RunDTO[]>([])
@@ -50,16 +52,14 @@ export default function PeacockDashboard({
 
   useEffect(() => { load() }, [load])
 
-  // Posts & Timeline / Project Status are full-page view swaps.
-  if (view === 'posts') {
-    return (
-      <PostsBoard
-        agentKey={agentKey}
-        initialOpenPostId={openPostId}
-        onBack={() => { setView('dashboard'); setOpenPostId(null); load(); reloadAnalytics() }}
-      />
-    )
-  }
+  // The board is a section of this page now, so "go to the timeline" is a scroll
+  // rather than a navigation. Cards that target one post also set openPostId.
+  const focusTimeline = useCallback((postId?: string) => {
+    if (postId) setOpenPostId(postId)
+    document.getElementById(TIMELINE_ID)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [])
+
+  // Posts & Timeline lives on this page; Project Status is still a view swap.
   if (view === 'projects') {
     return <ProjectStatus agentKey={agentKey} onBack={() => setView('dashboard')} />
   }
@@ -100,7 +100,7 @@ export default function PeacockDashboard({
 
   return (
     <div style={{ minHeight: '100vh', fontFamily: "'Manrope','Assistant',system-ui,sans-serif", color: '#1f2430', background: 'linear-gradient(180deg,#faf9ff 0%,#f5f3fd 100%)' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '22px 28px 60px' }}>
+      <div style={{ maxWidth: 1600, margin: '0 auto', padding: '22px 28px 60px' }}>
 
         {/* top bar */}
         <header className="flex items-center justify-between mb-7">
@@ -118,7 +118,7 @@ export default function PeacockDashboard({
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setView('posts')}
+              onClick={() => focusTimeline()}
               className="flex items-center gap-2 font-bold"
               style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}
             >
@@ -157,6 +157,18 @@ export default function PeacockDashboard({
           ))}
         </div>
 
+        {/* Posts & Timeline — the planning surface, in place rather than on a
+            separate page. No card wrapper: the split pane inside is already one,
+            and nesting them double-borders the whole board. */}
+        <div id={TIMELINE_ID} style={{ marginBottom: 20, scrollMarginTop: 16 }}>
+          <PostsBoard
+            embedded
+            agentKey={agentKey}
+            initialOpenPostId={openPostId}
+            onDrawerClosed={() => { setOpenPostId(null); load(); reloadAnalytics() }}
+          />
+        </div>
+
         {/* content plan */}
         <div style={{ ...CARD, padding: '22px 24px', marginBottom: 20 }}>
           <div className="flex items-start justify-between gap-4 mb-5">
@@ -168,7 +180,7 @@ export default function PeacockDashboard({
               <p style={{ margin: '8px 0 0', fontSize: 13, color: '#9aa0ac' }}>Design your posting week — then let Peacock draft it.</p>
             </div>
             <div className="flex items-center gap-2.5">
-              <button onClick={() => setView('posts')} className="flex items-center gap-2 font-bold" style={{ fontSize: 13.5, padding: '11px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
+              <button onClick={() => focusTimeline()} className="flex items-center gap-2 font-bold" style={{ fontSize: 13.5, padding: '11px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
                 <CalendarDays size={15} /> Open timeline
               </button>
               <button onClick={() => setChatOpen(true)} className="flex items-center gap-2 text-white font-bold" style={{ fontSize: 13.5, padding: '11px 17px', borderRadius: 12, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, boxShadow: '0 8px 20px rgba(123,92,255,.3)' }}>
@@ -223,19 +235,19 @@ export default function PeacockDashboard({
 
             <TopPostsCard
               data={analytics}
-              onOpenPost={(id) => { setOpenPostId(id); setView('posts') }}
+              onOpenPost={(id) => focusTimeline(id)}
             />
 
             <NewsletterIdeas
               agentKey={agentKey}
-              onOpenPost={(id) => { setOpenPostId(id); setView('posts') }}
+              onOpenPost={(id) => focusTimeline(id)}
             />
 
             {/* recent posts */}
             <div style={{ ...CARD, padding: '22px 24px 12px' }}>
               <div className="flex items-center justify-between mb-2">
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Recent Posts</h3>
-                <button onClick={() => setView('posts')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: PURPLE }}>
+                <button onClick={() => focusTimeline()} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: PURPLE }}>
                   See all →
                 </button>
               </div>
@@ -244,7 +256,7 @@ export default function PeacockDashboard({
                 .sort((a, b) => (b.publishDate ?? b.createdAt).localeCompare(a.publishDate ?? a.createdAt))
                 .slice(0, 4)
                 .map((post, i) => (
-                  <button key={post.id} onClick={() => setView('posts')} className="flex items-center gap-4 w-full text-left"
+                  <button key={post.id} onClick={() => focusTimeline(post.id)} className="flex items-center gap-4 w-full text-left"
                     style={{ padding: '13px 0', borderTop: '1px solid #f4f2fa', border: 'none', borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: '#f4f2fa', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
                     <span className="flex items-center justify-center font-extrabold" style={{ width: 30, height: 30, borderRadius: 9, background: '#f0ecff', color: PURPLE, fontSize: 13, flex: 'none' }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">

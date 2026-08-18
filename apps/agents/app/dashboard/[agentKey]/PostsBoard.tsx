@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle, User } from 'lucide-react'
+import { ArrowLeft, CalendarRange, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle, User } from 'lucide-react'
 import PostDrawer from './PostDrawer'
 import {
   addDays, CARD, dayStart, daysBetween, fmtDayMon, initials, isoDay, isOverdue,
-  POST_TYPES, PortalUser, PostDTO, PostStatus, PURPLE, STATUS_META, statusMeta,
+  POST_TYPES, PortalUser, PostDTO, PostStatus, PURPLE, PURPLE_2, STATUS_META, statusMeta,
   STATUS_ORDER, typeColor,
 } from './postMeta'
 
@@ -36,12 +36,19 @@ const SCOPES: { key: Scope; label: string }[] = [
 interface DragState { id: string; days: number }
 
 export default function PostsBoard({
-  agentKey, onBack, initialOpenPostId = null,
+  agentKey, onBack, initialOpenPostId = null, embedded = false, onDrawerClosed,
 }: {
   agentKey: string
-  onBack: () => void
+  /** Omitted when embedded — there is nowhere to go back to. */
+  onBack?: () => void
   /** Open straight into one post's drawer (arriving from a dashboard card). */
   initialOpenPostId?: string | null
+  /** Render as a section of the dashboard rather than its own page: no page
+   *  chrome, no back button, and the parent owns the padding. */
+  embedded?: boolean
+  /** Embedded only — lets the parent clear the post it asked us to open, so
+   *  clicking the same card twice opens the drawer again. */
+  onDrawerClosed?: () => void
 }) {
   const [posts, setPosts] = useState<PostDTO[]>([])
   const [users, setUsers] = useState<PortalUser[]>([])
@@ -68,6 +75,16 @@ export default function PostsBoard({
   }, [agentKey, scope])
 
   useEffect(() => { load() }, [load])
+
+  // Embedded, the board outlives the click that asks for a post, so the id
+  // arrives as a prop change rather than as initial state. It may be a
+  // published post, so widen the scope to one that actually contains it.
+  useEffect(() => {
+    if (!initialOpenPostId) return
+    setOpenId(initialOpenPostId)
+    setSelectedId(initialOpenPostId)
+    setScope((s) => (s === 'active' ? 'all' : s))
+  }, [initialOpenPostId])
 
   // Owner options (Clerk portal users). Non-fatal if it fails — the picker just stays empty.
   useEffect(() => {
@@ -170,16 +187,20 @@ export default function PostsBoard({
 
   const openPost = openId ? posts.find((p) => p.id === openId) ?? null : null
 
-  return (
-    <div style={{ minHeight: '100vh', fontFamily: "'Manrope','Assistant',system-ui,sans-serif", color: '#1f2430', background: 'linear-gradient(180deg,#faf9ff 0%,#f5f3fd 100%)' }}>
-      <div style={{ padding: '20px 24px 48px' }}>
+  const body = (
+    <>
         {/* header */}
         <header className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <span style={{ fontSize: 28 }}>🦚</span>
+            {!embedded && <span style={{ fontSize: 28 }}>🦚</span>}
+            {embedded && (
+              <span className="flex items-center justify-center text-white" style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, flex: 'none' }}>
+                <CalendarRange size={17} />
+              </span>
+            )}
             <div>
               <div className="flex items-center gap-2.5">
-                <span style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-.02em' }}>Posts &amp; Timeline</span>
+                <span style={{ fontSize: embedded ? 16 : 21, fontWeight: 800, letterSpacing: '-.02em' }}>Posts &amp; Timeline</span>
                 <span style={{ fontSize: 11.5, fontWeight: 700, color: PURPLE, background: '#f0ecff', padding: '4px 10px', borderRadius: 999 }}>
                   {rows.length} posts
                 </span>
@@ -214,10 +235,12 @@ export default function PostsBoard({
                 </button>
               ))}
             </div>
-            <button onClick={onBack} className="flex items-center gap-2 font-bold"
-              style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
-              <ArrowLeft size={15} /> Dashboard
-            </button>
+            {!embedded && onBack && (
+              <button onClick={onBack} className="flex items-center gap-2 font-bold"
+                style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
+                <ArrowLeft size={15} /> Dashboard
+              </button>
+            )}
           </div>
         </header>
 
@@ -332,19 +355,32 @@ export default function PostsBoard({
         </div>
 
         <Legend />
-      </div>
+    </>
+  )
 
-      {openPost && (
-        <PostDrawer
-          agentKey={agentKey}
-          post={openPost}
-          users={users}
-          onClose={() => setOpenId(null)}
-          onPostChanged={(p) => setPosts((xs) => xs.map((x) => (x.id === p.id ? p : x)))}
-          onPatch={patchPost}
-          onDelete={() => deletePost(openPost.id)}
-        />
-      )}
+  // The drawer is fixed-position, so it sits outside the body in both modes.
+  const drawer = openPost && (
+    <PostDrawer
+      agentKey={agentKey}
+      post={openPost}
+      users={users}
+      onClose={() => { setOpenId(null); onDrawerClosed?.() }}
+      onPostChanged={(p) => setPosts((xs) => xs.map((x) => (x.id === p.id ? p : x)))}
+      onPatch={patchPost}
+      onDelete={() => deletePost(openPost.id)}
+    />
+  )
+
+  // Embedded: the dashboard owns the page shell and the padding, so contribute
+  // nothing but the section itself.
+  if (embedded) {
+    return <div>{body}{drawer}</div>
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', fontFamily: "'Manrope','Assistant',system-ui,sans-serif", color: '#1f2430', background: 'linear-gradient(180deg,#faf9ff 0%,#f5f3fd 100%)' }}>
+      <div style={{ padding: '20px 24px 48px' }}>{body}</div>
+      {drawer}
     </div>
   )
 
