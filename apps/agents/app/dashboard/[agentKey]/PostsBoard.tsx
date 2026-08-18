@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CalendarRange, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle, User } from 'lucide-react'
+import { ArrowLeft, CalendarRange, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle } from 'lucide-react'
 import PostDrawer from './PostDrawer'
 import {
-  addDays, CARD, dayStart, daysBetween, fmtDayMon, initials, isoDay, isOverdue,
+  addDays, CARD, dayStart, daysBetween, fmtDayMon, isoDay, isOverdue,
   POST_TYPES, PortalUser, PostDTO, PostStatus, PURPLE, PURPLE_2, STATUS_META, statusMeta,
   STATUS_ORDER, typeColor,
 } from './postMeta'
@@ -77,14 +77,21 @@ export default function PostsBoard({
   useEffect(() => { load() }, [load])
 
   // Embedded, the board outlives the click that asks for a post, so the id
-  // arrives as a prop change rather than as initial state. It may be a
-  // published post, so widen the scope to one that actually contains it.
-  useEffect(() => {
-    if (!initialOpenPostId) return
-    setOpenId(initialOpenPostId)
-    setSelectedId(initialOpenPostId)
-    setScope((s) => (s === 'active' ? 'all' : s))
-  }, [initialOpenPostId])
+  // arrives as a prop change rather than as initial state. This is React's
+  // "adjust state when a prop changes" pattern — during render rather than in an
+  // effect, so it costs no extra commit. Tracking the id in both directions
+  // matters: the parent clears it on close, and without recording that the same
+  // card clicked twice would compare equal and never reopen. The post may be a
+  // published one, so widen the scope to one that actually contains it.
+  const [requestedPostId, setRequestedPostId] = useState(initialOpenPostId)
+  if (initialOpenPostId !== requestedPostId) {
+    setRequestedPostId(initialOpenPostId)
+    if (initialOpenPostId) {
+      setOpenId(initialOpenPostId)
+      setSelectedId(initialOpenPostId)
+      if (scope === 'active') setScope('all')
+    }
+  }
 
   // Owner options (Clerk portal users). Non-fatal if it fails — the picker just stays empty.
   useEffect(() => {
@@ -249,10 +256,9 @@ export default function PostsBoard({
           {/* ---------- LEFT: list ---------- */}
           <div style={{ borderRight: '1px solid #eeecf6', minWidth: 0 }}>
             <div className="grid items-center"
-              style={{ gridTemplateColumns: '1fr 58px 150px 104px 132px', height: HEADER_H, padding: '0 16px',
+              style={{ gridTemplateColumns: '1fr 150px 104px 132px', height: HEADER_H, padding: '0 16px',
                 borderBottom: '1px solid #f2f1f8', fontSize: 12, fontWeight: 700, color: '#9aa0ac' }}>
               <span>Item</span>
-              <span className="text-center">Owner</span>
               <span>Status</span>
               <span>Publish Date</span>
               <span>PostType</span>
@@ -269,7 +275,6 @@ export default function PostsBoard({
               <PostRow
                 key={post.id}
                 post={post}
-                users={users}
                 selected={selectedId === post.id}
                 onSelect={() => setSelectedId(post.id)}
                 onOpen={() => { setSelectedId(post.id); setOpenId(post.id) }}
@@ -407,10 +412,9 @@ export default function PostsBoard({
 // ---------------------------------------------------------------------------
 
 function PostRow({
-  post, users, selected, onSelect, onOpen, onPatch, onDelete,
+  post, selected, onSelect, onOpen, onPatch, onDelete,
 }: {
   post: PostDTO
-  users: PortalUser[]
   selected: boolean
   onSelect: () => void
   onOpen: () => void
@@ -424,7 +428,7 @@ function PostRow({
     <div
       className="grid items-center group"
       onClick={onSelect}
-      style={{ gridTemplateColumns: '1fr 58px 150px 104px 132px', height: ROW_H, padding: '0 16px',
+      style={{ gridTemplateColumns: '1fr 150px 104px 132px', height: ROW_H, padding: '0 16px',
         borderTop: '1px solid #f6f5fb', background: selected ? '#f8f5ff' : '#fff', cursor: 'pointer',
         boxShadow: selected ? `inset 3px 0 0 ${PURPLE}` : 'none' }}
     >
@@ -451,23 +455,6 @@ function PostRow({
           {post.commentCount ? <MessageSquare size={15} /> : <MessageSquarePlus size={15} />}
           {post.commentCount > 0 && <span style={{ fontSize: 11, fontWeight: 800 }}>{post.commentCount}</span>}
         </button>
-      </div>
-
-      {/* owner */}
-      <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
-        <Dropdown
-          trigger={<OwnerAvatar post={post} />}
-          items={[
-            { key: '', label: 'Unassigned' },
-            ...users.map((u) => ({ key: u.id, label: u.name })),
-          ]}
-          activeKey={post.ownerUserId ?? ''}
-          onPick={(key) => {
-            const u = users.find((x) => x.id === key)
-            onPatch(post.id, { ownerUserId: key || null, ownerName: u?.name ?? null, ownerImageUrl: u?.imageUrl ?? null },
-              { ownerUserId: key || null, ownerName: u?.name ?? null, ownerImageUrl: u?.imageUrl ?? null })
-          }}
-        />
       </div>
 
       {/* status */}
@@ -518,28 +505,6 @@ function PostRow({
         </button>
       </div>
     </div>
-  )
-}
-
-function OwnerAvatar({ post }: { post: PostDTO }) {
-  if (post.ownerImageUrl) {
-    // eslint-disable-next-line @next/next/no-img-element -- Clerk avatar, external host
-    return <img src={post.ownerImageUrl} alt={post.ownerName ?? 'owner'} title={post.ownerName ?? undefined}
-      style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
-  }
-  if (post.ownerName) {
-    return (
-      <span className="flex items-center justify-center" title={post.ownerName}
-        style={{ width: 28, height: 28, borderRadius: '50%', background: '#f0ecff', color: PURPLE, fontSize: 11, fontWeight: 800 }}>
-        {initials(post.ownerName)}
-      </span>
-    )
-  }
-  return (
-    <span className="flex items-center justify-center" title="Unassigned"
-      style={{ width: 28, height: 28, borderRadius: '50%', background: '#f5f4fa', color: '#c6cad4' }}>
-      <User size={15} />
-    </span>
   )
 }
 
