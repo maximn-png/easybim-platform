@@ -5,6 +5,7 @@ import AgentRun from '@/lib/models/AgentRun'
 import { BRAND_VOICE, CADENCE } from './brand'
 import { addGuidance, getGuidance, guidanceBlock } from './guidance'
 import { driveTools } from './driveTools'
+import { newsletterTools } from './newsletterTools'
 import { makePostTools } from './posts'
 
 export const AGENT_KEY = 'peacock'
@@ -16,7 +17,9 @@ const CHAT_BASE = `
 כללים:
 - ענה בשפת המשתמש (עברית או אנגלית), בקצרה וקונקרטית. בלי פתיחות מנופחות.
 - תוכנית התוכן נשמרת אצלך (לא במאנדיי). נהל אותה עם הכלים: list_posts (הצג), create_post (הוסף רעיון/טיוטה), update_post (פתח טיוטה, קבע תאריך/סוג, קדם סטטוס).
-- טיוטה מוכנה: העבר ל-Status="ready". אל תסמן "published" — מקסים מפרסם בלינקדאין ידנית.
+- כאן, בשיחה הכללית, אתה עוסק בתכנון: איזה פוסטים לתכנן, באיזה קצב, איך לפרוס אותם על החודשיים הקרובים. עבודה על נוסח של פוסט מסוים נעשית בשיחה שעל הפוסט עצמו (מקסים לוחץ על הפוסט ב-Posts & Timeline ומדבר איתך שם). אם מקסים מבקש לשפר פוסט ספציפי, אפשר לעשות זאת, אבל כדאי להציע לו לפתוח את הפוסט כדי לראות את הטיוטה משתנה מול העיניים.
+- טיוטה מוכנה: העבר ל-Status="pending_approval" (ממתין לאישור מקסים). "approved" היא החלטה של מקסים, ו-"published" נקבע ידנית אחרי פרסום בלינקדאין.
+- כשמקסים מבקש לתכנן חודש/חודשיים קדימה: פרוס את הפוסטים על ימי שני וחמישי, גוון בין הסוגים, וקבע Publish Date לכל אחד — כך הם מופיעים כפסים ב-Timeline.
 - לפוסט מסוג "4. Project": משוך חומר אמיתי מהדרייב (list_project_files / read_project_doc), וצרף תמונה קיימת אם צריך (list_marketing_images). אפשר גם לייצר תמונה ממותגת עם generate_image.
 - כשמקסים נותן העדפה או הנחיה קבועה לאופן הכתיבה/ההתנהגות בפוסטים עתידיים (למשל "תקצר את הפוסטים", "יותר Case Studies", "הימנע מנושא X") קרא ל-save_guidance עם ניסוח תמציתי בשורה אחת, ואשר ששמרת. אל תשמור שאלות חד פעמיות או שיחת חולין כהנחיה.
 `.trim()
@@ -40,7 +43,7 @@ export async function buildChatSystem(): Promise<string> {
   return [
     CHAT_BASE,
     '',
-    'מה אתה עושה: כל שבוע (cron) אתה כותב 2 טיוטות פוסטים לתוכנית התוכן ומעביר ל-Status="ready" לסקירת מקסים. מקסים סוקר בדשבורד, מבקש שינויים בצ׳אט, ומפרסם בלינקדאין ידנית.',
+    'מה אתה עושה: כל שבוע (cron) אתה כותב 2 טיוטות פוסטים לתוכנית התוכן ומעביר ל-Status="pending_approval" לסקירת מקסים. מקסים סוקר בדשבורד (Posts & Timeline), נכנס לפוסט ומבקש שינויים בשיחה שעל הפוסט, ומפרסם בלינקדאין ידנית.',
     '',
     BRAND_VOICE,
     '',
@@ -64,5 +67,5 @@ export function makeChatTools(userId?: string) {
     },
   })
 
-  return [...driveTools, ...makePostTools(userId), saveGuidance]
+  return [...driveTools, ...newsletterTools, ...makePostTools(userId), saveGuidance]
 }

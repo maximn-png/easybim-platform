@@ -17,7 +17,7 @@ Visual vision board: [Agent Kingdom (Artifact)](https://claude.ai/code/artifact/
 | 🐿️ Squirrel | Price-quote setup + index | Treasury | **LIVE** | Deepen (draft-from-past) before anything new |
 | 🦁 Lion | CEO / executive advisor | Crown | Not built | **Capstone — build last**; only as smart as the spines beneath it (absorbs Eagle) |
 | 🦫 Beaver | Technical governance: health, standards, QA | Crown | Not built | Runtime health now (plain infra); full animal Phase C |
-| 🐕 Dog | Collections / contracts | Treasury | Not built | **Build next** — cleanest money-loop agent |
+| 🐕 Dog | Collections / contracts | Treasury | **LIVE (contracts half)** | Agreement review ships; collections still to build |
 | 🐜 Ant | Finance / cashflow | Treasury | Not built | Build after Dog (needs accounting data source) |
 | 🐆 Tiger | Sales | Treasury | Not built | Gated on a real lead/CRM source |
 | 🦉 Owl | Data / analytics | Clients | Not built | Pure analytics — the Lion's data feed |
@@ -28,7 +28,9 @@ Visual vision board: [Agent Kingdom (Artifact)](https://claude.ai/code/artifact/
 | 🦦 Otter | Culture & fun | Hive | Not built | **Near-term** — cheapest to be wrong, best delight-per-effort |
 | 🐘 Elephant | People development | Hive | Not built | Later — low frequency at small-team size |
 
-**Two animals live, both earning their keep.** The rest is a wishlist until it survives the test in §3.
+**Three animals live, all earning their keep.** The rest is a wishlist until it survives the test in §3.
+
+> **🐕 Dog landed contracts-first, not collections-first** (see §4 Phase B). The trigger was an existing, proven local automation — a Python desktop tool that compared a client's agreement against the price quote we sent and produced a Hebrew findings letter. Porting it cleared every §3 bar at once: recurring pain, a data source that already exists (Squirrel's project folders), cheap to be wrong (nothing is sent without review), and it shares the money spine rather than needing a new one. Collections is the same animal's second pass.
 
 > **The Hive is the newest house** — people & culture. The kingdom was built entirely outward-facing (marketing, money, clients); the Hive is the internal, employee-facing side that was missing. It shares a lightweight "team" data source (a Monday staff board / sheet), *not* the money spine.
 
@@ -72,7 +74,7 @@ The point of Phase A is to make the *next* five agents cheap to build, and to sq
 ### Phase B — Next (close the money loop)
 Squirrel owns the *front* of the money spine (quote → contract → invoice → payment). Extend backward down that spine, sharing one "deals/money" data layer.
 
-4. **🐕 Dog — collections / contracts.** Cleanest to scope: watch overdue invoices and contract milestones, chase persistently, never forget an open debt. Clear trigger (invoice overdue), clear action (reminder + escalation), human approves tone.
+4. **🐕 Dog — collections / contracts.** ✅ *Contracts half shipped* — agreement review against the quote we sent (see README). **Still to build:** the collections half — watch overdue invoices and contract milestones, chase persistently, never forget an open debt. Clear trigger (invoice overdue), clear action (reminder + escalation), human approves tone.
 5. **🐜 Ant — finance / cashflow.** After Dog. Needs an accounting/invoice data source; strong ROI once that source is wired.
 6. **🐆 Tiger — sales.** Gated: only build when there's a real lead/CRM source on Monday. High value, but no data source = no agent.
 

@@ -38,12 +38,17 @@ export async function ensureLegacyConversation(agentKey: string): Promise<void> 
   )
 }
 
-/** All conversations the user may see: their own + the shared archive. */
+/**
+ * All conversations the user may see in the sidebar: their own + the shared
+ * archive. Per-post draft threads are excluded — they belong to their post, not
+ * to the personal chat list.
+ */
 export async function listConversations(agentKey: string, userId: string) {
   await connectDB()
   await ensureLegacyConversation(agentKey)
   const docs = await AgentConversation.find({
     agentKey,
+    postId: { $exists: false },
     $or: [{ userId }, { shared: true }],
   })
     .sort({ lastMessageAt: -1 })
@@ -68,6 +73,48 @@ export async function getReadableConversation(
   if (!convo) return null
   if (convo.shared || convo.userId === userId) return convo
   return null
+}
+
+/**
+ * The thread pinned to one post (Monday's Updates column, in-platform). Shared
+ * by the whole team rather than owned by one user, and created on first open.
+ */
+export async function getOrCreatePostConversation(
+  agentKey: string,
+  postId: string,
+  postTitle: string
+): Promise<IAgentConversation> {
+  await connectDB()
+  const existing = await AgentConversation.findOne({ agentKey, postId })
+  if (existing) return existing
+  return AgentConversation.create({
+    agentKey,
+    postId,
+    title: postTitle.slice(0, 80) || 'טיוטה',
+    lastMessageAt: new Date(),
+  })
+}
+
+/** Message count per post thread — backs the list's comment-bubble badge. */
+export async function postCommentCounts(agentKey: string): Promise<Record<string, number>> {
+  await connectDB()
+  const convos = await AgentConversation.find({ agentKey, postId: { $exists: true } })
+    .select({ _id: 1, postId: 1 })
+    .lean()
+  if (convos.length === 0) return {}
+
+  const byConvo = new Map(convos.map((c) => [String(c._id), String(c.postId)]))
+  const rows = await AgentMessage.aggregate<{ _id: unknown; n: number }>([
+    { $match: { conversationId: { $in: convos.map((c) => c._id) }, role: { $in: ['user', 'assistant'] } } },
+    { $group: { _id: '$conversationId', n: { $sum: 1 } } },
+  ])
+
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    const postId = byConvo.get(String(r._id))
+    if (postId) out[postId] = r.n
+  }
+  return out
 }
 
 /** Derive a sidebar title from the first user message. */

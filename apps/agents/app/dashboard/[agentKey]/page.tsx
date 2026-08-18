@@ -7,6 +7,7 @@ import RunHistory from './RunHistory'
 import HowItWorks from './HowItWorks'
 import ChatShell from './ChatShell'
 import PeacockDashboard from './PeacockDashboard'
+import DogDashboard from './DogDashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,10 +17,11 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
   if (!agent) notFound()
   const p = getPresentation(agentKey)
 
-  // Dashboard-first agents (Peacock): the dashboard is the landing; chat/about
-  // open as overlays from it.
+  // Dashboard-first agents: the dashboard is the landing; chat/about open as
+  // overlays from it. Each such agent brings its own dashboard component.
   if (p.hasDashboard) {
-    return <PeacockDashboard agentKey={agentKey} agentName={agent.name} description={agent.description} presentation={p} />
+    const Dashboard = agentKey === 'dog' ? DogDashboard : PeacockDashboard
+    return <Dashboard agentKey={agentKey} agentName={agent.name} description={agent.description} presentation={p} />
   }
 
   // Chat-enabled agents get the full-page chat workspace (chat is the hero;
