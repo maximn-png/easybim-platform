@@ -3,45 +3,41 @@ import mongoose, { Schema, Document, Model } from 'mongoose'
 // A LinkedIn post Peacock plans/drafts. This is the local post store that
 // replaces the Monday EasyBIM_Posts board — posts live here now.
 //
-// The status set mirrors the retired board's 8 labels, so the review loop
-// survives the migration: Peacock drafts → pending_approval; Maxim approves in
-// the dashboard (or sends it back with `revise`) → ready_to_publish → scheduled
-// → published (published is always set by hand, after posting to LinkedIn).
+// Five states, one per real decision — down from the retired board's 8, which
+// carried duplicates: `drafting` said nothing `idea` didn't, and
+// `ready_to_publish`/`scheduled` both just meant "approved, goes out on its
+// publishDate" — a date the post already carries.
+//
+// Peacock drafts → pending_approval; Maxim approves in the dashboard (or sends
+// it back with `revise`, which the author cron treats as top priority) →
+// approved → published. `published` is always set by hand, after posting to
+// LinkedIn.
 export type PostStatus =
   | 'idea'
-  | 'drafting'
   | 'pending_approval'
   | 'approved'
-  | 'ready_to_publish'
-  | 'scheduled'
   | 'published'
   | 'revise'
 
 export const POST_STATUSES: PostStatus[] = [
   'idea',
-  'drafting',
   'pending_approval',
   'approved',
-  'ready_to_publish',
-  'scheduled',
   'published',
   'revise',
 ]
 
-/** Board-style display labels (what the Monday Status column showed). */
+/** Display labels for the Status column. */
 export const POST_STATUS_LABELS: Record<PostStatus, string> = {
   idea: 'Idea',
-  drafting: 'Drafting',
   pending_approval: 'Pending Approval',
   approved: 'Approved',
-  ready_to_publish: 'Ready to Publish',
-  scheduled: 'Scheduled',
   published: 'Published',
   revise: 'Revise',
 }
 
 /** Statuses that still need work from Peacock or Maxim (drives "in pipeline"). */
-export const OPEN_STATUSES: PostStatus[] = ['idea', 'drafting', 'pending_approval', 'approved', 'revise']
+export const OPEN_STATUSES: PostStatus[] = ['idea', 'pending_approval', 'approved', 'revise']
 
 // Post pillars (mirror of the old board PostType taxonomy — see brand.ts).
 export const POST_TYPES = [

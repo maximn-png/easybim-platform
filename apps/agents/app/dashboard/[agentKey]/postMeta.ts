@@ -4,11 +4,8 @@
 
 export type PostStatus =
   | 'idea'
-  | 'drafting'
   | 'pending_approval'
   | 'approved'
-  | 'ready_to_publish'
-  | 'scheduled'
   | 'published'
   | 'revise'
 
@@ -76,25 +73,23 @@ export const CARD = {
 }
 
 /**
- * Funnel order: idea → drafting → pending_approval (waiting on Maxim) → revise
- * (bounced back to Peacock) → approved → ready_to_publish → scheduled → published.
+ * Funnel order: idea → pending_approval (waiting on Maxim) → revise (bounced
+ * back to Peacock) → approved → published.
  */
 export const STATUS_ORDER: PostStatus[] = [
   'idea',
-  'drafting',
   'pending_approval',
   'revise',
   'approved',
-  'ready_to_publish',
-  'scheduled',
   'published',
 ]
 
 /**
  * Status meta for a value that came out of the database, which may predate the
- * current enum — the pre-migration board wrote `ready` where we now use
- * `ready_to_publish`. Falls back to a neutral chip carrying the raw value so a
- * single stale row degrades to "looks off" instead of blanking the dashboard.
+ * current enum — the old board wrote `ready`, and `drafting`/`ready_to_publish`/
+ * `scheduled` were retired when the set shrank to five. Falls back to a neutral
+ * chip carrying the raw value so a single stale row degrades to "looks off"
+ * instead of blanking the dashboard.
  * Use this for any status read off a post; direct STATUS_META indexing is fine
  * when the key comes from STATUS_ORDER.
  */
@@ -108,18 +103,17 @@ export function statusMeta(status: PostStatus | string | null | undefined): { la
 }
 
 export const STATUS_META: Record<PostStatus, { label: string; color: string }> = {
-  idea: { label: 'Idea', color: '#c9c2f0' },
-  drafting: { label: 'Drafting', color: '#a78bfa' },
+  // `idea` takes the stronger purple now that `drafting` is folded into it — the
+  // pale tint only existed to separate the two.
+  idea: { label: 'Idea', color: '#a78bfa' },
   pending_approval: { label: 'Pending Approval', color: '#fdab3d' },
   revise: { label: 'Revise', color: '#e2445c' },
   approved: { label: 'Approved', color: '#00c875' },
-  ready_to_publish: { label: 'Ready to Publish', color: '#0ea5e9' },
-  scheduled: { label: 'Scheduled', color: '#6366f1' },
   published: { label: 'Published', color: '#0f7a3d' },
 }
 
 /** Statuses still needing work from either side — the "in pipeline" stat. */
-export const OPEN_STATUSES: PostStatus[] = ['idea', 'drafting', 'pending_approval', 'revise', 'approved']
+export const OPEN_STATUSES: PostStatus[] = ['idea', 'pending_approval', 'revise', 'approved']
 
 export const POST_TYPES = [
   '1. Professional',
