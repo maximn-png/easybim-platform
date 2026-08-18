@@ -22,7 +22,7 @@ const DISCIPLINE_LABELS = ['discipline', 'disciplines', 'תחום', 'דיסצי�
 const DISCIPLINE_FIELD_TITLES = ['discipline', 'disciplines']
 import IssuesByMonthChart from './IssuesByMonthChart'
 import MultiSelect from './MultiSelect'
-import ExportReportModal from './ExportReportModal'
+import ReportsDrawer from './reports/ReportsDrawer'
 import ProjectLinksBar from './ProjectLinksBar'
 
 // Readable pill text colour: light pastels get a dark gray, saturated colours keep their hue.
@@ -48,7 +48,7 @@ function Breadcrumb({ project, anaView = false }: { project: ProjectRow; anaView
         <ChevronRight size={12} />
         <Link href={`/ana/${project._id}`} className="hover:text-[#1e248c]" dir="rtl">{project.projectName}</Link>
         <ChevronRight size={12} />
-        <span className="text-[#1e248c] font-medium">Reports</span>
+        <span className="text-[#1e248c] font-medium">Forma Issues Status</span>
       </nav>
     )
   }
@@ -60,7 +60,7 @@ function Breadcrumb({ project, anaView = false }: { project: ProjectRow; anaView
       <ChevronRight size={12} />
       <Link href={`/dashboard/${project._id}`} className="hover:text-[#1e248c]" dir="rtl">{project.projectName}</Link>
       <ChevronRight size={12} />
-      <span className="text-[#1e248c] font-medium">Reports</span>
+      <span className="text-[#1e248c] font-medium">Forma Issues Status</span>
     </nav>
   )
 }
@@ -238,8 +238,19 @@ export default function BimReportClient({ project, anaView = false }: { project:
   const [sortCol, setSortCol] = useState<string | null>('displayId')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
-  // Export Report modal
-  const [exportOpen, setExportOpen] = useState(false)
+  // Reports drawer (Export · Schedule · Activity)
+  const [reportsOpen, setReportsOpen] = useState(false)
+
+  // Deep-link support: ?createdBy=<name> (the dashboard's "8/12" badges) seeds
+  // the CREATED BY filter chip. Read from window.location so no Suspense
+  // boundary is needed around useSearchParams.
+  useEffect(() => {
+    const createdBy = new URLSearchParams(window.location.search).get('createdBy')
+    if (!createdBy) return
+    setExtraFilters(prev => prev.some(f => f.key === 'createdBy')
+      ? prev
+      : [...prev, { key: 'createdBy', values: [createdBy] }])
+  }, [])
 
   useEffect(() => {
     fetch(`/api/projects/${project._id}/issues`)
@@ -498,38 +509,44 @@ export default function BimReportClient({ project, anaView = false }: { project:
   )
 
   // ── Table: per-column filters + sorting (applied on top of global filters) ──
-  const tableRows = useMemo(() => {
-    const rows = filtered.filter(i => {
-      // Discipline-bar click-to-filter: restrict to the selected group (+ status).
-      if (chartSel) {
-        if (groupValue(i, groupBy) !== chartSel.group) return false
-        if (chartSel.status && i.status !== chartSel.status) return false
-      }
-      for (const col of columns) {
-        const f = col.filter
-        if (!f) continue
-        if (f.type === 'text') {
-          const q = (colText[col.key] ?? '').toLowerCase()
-          if (q && !col.sortValue(i).includes(q)) return false
-        } else {
-          const sel = colSel[col.key] ?? []
-          if (sel.length && !sel.includes(f.optionValue(i))) return false
-        }
-      }
-      return true
-    })
-    if (sortCol) {
-      const col = columns.find(c => c.key === sortCol)
-      if (col) {
-        rows.sort((a, b) => {
-          const av = col.sortValue(a), bv = col.sortValue(b)
-          const cmp = av < bv ? -1 : av > bv ? 1 : 0
-          return sortDir === 'asc' ? cmp : -cmp
-        })
+  // The table-level narrowing (chart bar click + per-column filters), as a
+  // predicate — shared by the table itself and the export scope below.
+  const matchesTableNarrowing = useMemo(() => (i: AccIssue): boolean => {
+    // Discipline-bar click-to-filter: restrict to the selected group (+ status).
+    if (chartSel) {
+      if (groupValue(i, groupBy) !== chartSel.group) return false
+      if (chartSel.status && i.status !== chartSel.status) return false
+    }
+    for (const col of columns) {
+      const f = col.filter
+      if (!f) continue
+      if (f.type === 'text') {
+        const q = (colText[col.key] ?? '').toLowerCase()
+        if (q && !col.sortValue(i).includes(q)) return false
+      } else {
+        const sel = colSel[col.key] ?? []
+        if (sel.length && !sel.includes(f.optionValue(i))) return false
       }
     }
+    return true
+  }, [columns, colText, colSel, chartSel, groupBy])
+
+  const sortComparator = useMemo(() => {
+    if (!sortCol) return null
+    const col = columns.find(c => c.key === sortCol)
+    if (!col) return null
+    return (a: AccIssue, b: AccIssue) => {
+      const av = col.sortValue(a), bv = col.sortValue(b)
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sortDir === 'asc' ? cmp : -cmp
+    }
+  }, [columns, sortCol, sortDir])
+
+  const tableRows = useMemo(() => {
+    const rows = filtered.filter(matchesTableNarrowing)
+    if (sortComparator) rows.sort(sortComparator)
     return rows
-  }, [filtered, columns, colText, colSel, sortCol, sortDir, chartSel, groupBy])
+  }, [filtered, matchesTableNarrowing, sortComparator])
 
   const toggleSort = (col: string) => {
     if (sortCol === col) {
@@ -544,6 +561,22 @@ export default function BimReportClient({ project, anaView = false }: { project:
     filterStatuses.length > 0 || extraFilters.some(f => f.values.length > 0) || monthSel != null
   const hasColFilters =
     Object.values(colText).some(Boolean) || Object.values(colSel).some(v => v.length > 0)
+
+  // ── Export scope + order (inherited by the Reports drawer) ────────────────
+  // Table-level narrowing (chart click + column filters) applied to ALL issues —
+  // deliberately NOT the global filters, which the Export panel inherits as its
+  // own editable selections. Null when the table isn't narrowed.
+  const pageScopeIds = useMemo(() => {
+    if (!chartSel && !hasColFilters) return null
+    return normalizedIssues.filter(matchesTableNarrowing).map(i => i.id)
+  }, [normalizedIssues, matchesTableNarrowing, chartSel, hasColFilters])
+
+  // The page's current sort, as an id order over ALL issues, so the exported
+  // PDF/Excel table follows the on-screen order.
+  const pageOrder = useMemo(() => {
+    if (!sortComparator) return null
+    return [...normalizedIssues].sort(sortComparator).map(i => i.id)
+  }, [normalizedIssues, sortComparator])
 
   const clearGlobalFilters = () => {
     setFilterAssignees([]); setFilterTypes([]); setFilterDisciplines([])
@@ -581,7 +614,7 @@ export default function BimReportClient({ project, anaView = false }: { project:
             <Breadcrumb project={project} anaView={anaView} />
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               <h1 className="text-3xl font-bold text-[#1e248c]">
-                Reports –{' '}
+                Forma Issues Status –{' '}
                 <span dir="rtl" className="inline-block">{project.projectName}</span>
               </h1>
               <span className="text-sm font-bold px-2.5 py-1 rounded-full bg-white/70 border border-[#1e248c]/15 text-[#1e248c] whitespace-nowrap">
@@ -606,10 +639,11 @@ export default function BimReportClient({ project, anaView = false }: { project:
                 </a>
               )}
               <button
-                onClick={() => setExportOpen(true)}
+                onClick={() => setReportsOpen(true)}
+                title="Export, schedule, and review this project's reports"
                 className="flex items-center gap-2 px-4 py-2 bg-[#1e248c] text-white rounded-xl text-sm font-medium hover:bg-[#44b8d3] transition-colors shadow-sm"
               >
-                <FileDown size={15} /> Export Report
+                <FileDown size={15} /> Reports
               </button>
             </div>
           )}
@@ -798,7 +832,10 @@ export default function BimReportClient({ project, anaView = false }: { project:
                 <div className="glass-card rounded-2xl p-5 lg:col-span-3 flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <h2 className="font-semibold text-[#1e248c] text-sm">Issues by {groupLabel}</h2>
-                    <span className="text-xs text-gray-400">{grouped.length} {grouped.length === 1 ? 'group' : 'groups'} · click to filter</span>
+                    <span className="text-xs text-gray-400">
+                      {grouped.length} {grouped.length === 1 ? 'group' : 'groups'} ·{' '}
+                      <span className={hasGlobalFilters ? 'font-semibold text-[#1e248c]' : ''}>{totalFiltered} issues</span> · click to filter
+                    </span>
                   </div>
 
                   <div className="flex flex-col gap-3">
@@ -1029,22 +1066,24 @@ export default function BimReportClient({ project, anaView = false }: { project:
         )}
       </div>
 
-      <ExportReportModal
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
+      <ReportsDrawer
+        open={reportsOpen}
+        onClose={() => setReportsOpen(false)}
         project={project}
         issues={normalizedIssues}
         allStatuses={allStatuses}
         issueTypes={issueTypes}
         disciplines={disciplines}
         assignees={assignees}
-        defaultGroupBy={groupBy}
-        defaultAssignees={filterAssignees}
-        defaultTypes={filterTypes}
-        defaultDisciplines={filterDisciplines}
-        defaultStatuses={filterStatuses}
-        defaultExtraFilters={extraFilters}
-        defaultMonth={monthSel}
+        groupBy={groupBy}
+        filterAssignees={filterAssignees}
+        filterTypes={filterTypes}
+        filterDisciplines={filterDisciplines}
+        filterStatuses={filterStatuses}
+        extraFilters={extraFilters}
+        monthSel={monthSel}
+        pageScopeIds={pageScopeIds}
+        pageOrder={pageOrder}
       />
     </div>
   )

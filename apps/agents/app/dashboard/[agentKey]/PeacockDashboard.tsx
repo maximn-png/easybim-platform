@@ -22,6 +22,22 @@ const TIMELINE_ID = 'posts-timeline'
 type Counts = Record<PostStatus, number> & { total: number }
 interface RunDTO { id: string; pass: string; trigger: string; status: string; summary: string | null; error: string | null; startedAt: string }
 
+const POST_TYPES = ['1. Professional', '2. Client Connection', '3. New Employee', '4. Project', '5. Social', '6. Personal', '7. Other']
+
+const STATUS_META: Record<PostStatus, { label: string; color: string }> = {
+  idea: { label: 'Idea', color: '#c4b5fd' },
+  drafting: { label: 'Drafting', color: '#a78bfa' },
+  ready: { label: 'Ready', color: PURPLE },
+  scheduled: { label: 'Scheduled', color: '#38bdf8' },
+  published: { label: 'Published', color: '#22c55e' },
+}
+
+// Neutral fallback so an unrecognized status (e.g. legacy/migrated data) never
+// crashes the render — the dashboard degrades to an "Other" chip instead.
+const UNKNOWN_META = { label: 'Other', color: '#c8cdd8' }
+const metaFor = (status: string): { label: string; color: string } =>
+  STATUS_META[status as PostStatus] ?? UNKNOWN_META
+
 export default function PeacockDashboard({
   agentKey, agentName, description, presentation: p,
 }: {
@@ -298,6 +314,7 @@ export default function PeacockDashboard({
 
 function StatusPill({ status }: { status: PostStatus }) {
   const m = statusMeta(status)
+  const m = metaFor(status)
   return <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, background: `${m.color}1f`, padding: '4px 10px', borderRadius: 999 }}>{m.label}</span>
 }
 
@@ -329,6 +346,7 @@ function WeekPreview({ posts }: { posts: PostDTO[] }) {
             <div className="flex flex-col gap-1.5 w-full">
               {d.posts.map((post) => (
                 <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${statusMeta(post.status).color}22`, borderLeft: `3px solid ${statusMeta(post.status).color}` }} />
+                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${metaFor(post.status).color}22`, borderLeft: `3px solid ${metaFor(post.status).color}` }} />
               ))}
             </div>
           </div>

@@ -13,6 +13,14 @@ export function apsCookieNames(hub?: ApsHub | null): { access: string; refresh: 
   return { access: `aps_access_token${suffix}`, refresh: `aps_refresh_token${suffix}` }
 }
 
+// The raw refresh token from the request cookies, if this browser has one.
+// Used to backfill the persisted store (see lib/server/apsTokenStore) for users
+// who connected Autodesk before background runs existed.
+export async function readApsRefreshCookie(hub?: ApsHub | null): Promise<string | null> {
+  const jar = await cookies()
+  return jar.get(apsCookieNames(hub).refresh)?.value ?? null
+}
+
 // Returns a valid 3-legged access token for the hub's app (EasyBIM by default),
 // transparently refreshing and re-setting cookies when the access token expired.
 // Null → no usable token; the caller should respond with needsApsAuth.
@@ -38,6 +46,16 @@ export async function getApsUserToken(hub?: ApsHub | null): Promise<string | nul
         httpOnly: true, secure, sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 30, path: '/',
       })
+      // Autodesk rotated the token — keep the background copy in step, or the
+      // user's scheduled reports would keep refreshing from a dead token.
+      try {
+        const { auth } = await import('@clerk/nextjs/server')
+        const { userId } = await auth()
+        if (userId) {
+          const { saveApsRefreshToken } = await import('@/lib/server/apsTokenStore')
+          await saveApsRefreshToken(userId, refreshed.newRefreshToken, hub)
+        }
+      } catch { /* best-effort */ }
     }
     return refreshed.accessToken
   } catch {

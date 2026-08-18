@@ -1,0 +1,86 @@
+// MongoDB-backed stale-while-revalidate cache for the project page's slow,
+// externally-sourced panels (Monday updates ~30s, ACC coordination models
+// ~10-30s, Monday hours ~10s). The in-memory caches these replace died with
+// every cold serverless instance, so most page views paid the full live cost.
+//
+// Semantics: the FIRST view of a project pays the live cost and stores a
+// snapshot; every later view answers instantly from Mongo, and when the
+// snapshot is older than its TTL a background refresh (after()) re-fetches
+// and re-stores it AFTER the response is sent. A failing refresh keeps the
+// last good snapshot — transient Monday/ACC errors no longer blank a panel.
+
+import mongoose, { Schema, type Model } from 'mongoose'
+import { after } from 'next/server'
+import { connectDB } from '@easybim/db'
+
+interface PageCacheDoc {
+  key: string
+  payload: unknown
+  updatedAt: Date
+}
+
+const PageCacheSchema = new Schema<PageCacheDoc>(
+  {
+    key:       { type: String, required: true, unique: true, index: true },
+    payload:   { type: Schema.Types.Mixed },
+    updatedAt: { type: Date, required: true },
+  },
+  { collection: 'epm_page_cache', versionKey: false },
+)
+
+const PageCache: Model<PageCacheDoc> =
+  (mongoose.models.EpmPageCache as Model<PageCacheDoc>) ??
+  mongoose.model<PageCacheDoc>('EpmPageCache', PageCacheSchema)
+
+// Refreshes already in flight in this instance, so a burst of stale hits
+// doesn't fan out into N identical background fetches.
+const inflight = new Set<string>()
+
+async function revalidate(key: string, fetcher: () => Promise<unknown>) {
+  if (inflight.has(key)) return
+  inflight.add(key)
+  try {
+    const payload = await fetcher()
+    await PageCache.updateOne(
+      { key },
+      { $set: { payload, updatedAt: new Date() } },
+      { upsert: true },
+    )
+  } catch (err) {
+    console.warn(`[pageCache] background refresh failed for ${key} (kept last snapshot):`, err)
+  } finally {
+    inflight.delete(key)
+  }
+}
+
+/**
+ * Serve `key` from the Mongo snapshot when present (refreshing in the
+ * background once it's older than ttlMs); fetch live only on the first call
+ * ever or when `forceRefresh` is set. The fetcher's payload must be JSON-able.
+ */
+export async function swrCache<T>(
+  key: string,
+  ttlMs: number,
+  forceRefresh: boolean,
+  fetcher: () => Promise<T>,
+): Promise<{ data: T; cachedAt: Date | null }> {
+  await connectDB()
+
+  if (!forceRefresh) {
+    const hit = await PageCache.findOne({ key }).lean() as PageCacheDoc | null
+    if (hit) {
+      if (Date.now() - hit.updatedAt.getTime() > ttlMs) {
+        after(() => revalidate(key, fetcher))
+      }
+      return { data: hit.payload as T, cachedAt: hit.updatedAt }
+    }
+  }
+
+  const payload = await fetcher()
+  await PageCache.updateOne(
+    { key },
+    { $set: { payload, updatedAt: new Date() } },
+    { upsert: true },
+  )
+  return { data: payload, cachedAt: null }
+}

@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     '/api/projects/*/gmail-draft': ['../../node_modules/@sparticuz/chromium/**'],
     '/api/projects/*/report-pdf': ['../../node_modules/@sparticuz/chromium/**'],
+    // Scheduled reports render the same PDF + an analytics chart PNG.
+    '/api/projects/*/report-schedules/*': ['../../node_modules/@sparticuz/chromium/**'],
+    '/api/cron/report-schedules': ['../../node_modules/@sparticuz/chromium/**'],
   },
 }
 

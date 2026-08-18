@@ -32,6 +32,14 @@ export interface MilestoneDiscipline {
   progress: number
 }
 
+// Per-creator ACC issue stats (mirrors IssueCreatorStat in the model):
+// completed = issues with status "completed"; active = all except "closed".
+export interface IssueCreatorStat {
+  name: string
+  completed: number
+  active: number
+}
+
 export interface ProjectSyncMeta {
   lastSyncedAt: string | null
   syncStatus: 'ok' | 'partial' | 'error' | 'never'
@@ -66,6 +74,14 @@ export interface ProjectRow {
   // OAuth + project-list routes so they use the partner app's credentials.
   accHubKey?: string
   status: 'Working on it' | 'On Hold' | 'Not Started' | 'Done' | 'Stuck' | null
+  /** Client name from the MA-003 "Client" text column. */
+  client?: string
+  /** Revit version from the MA-003 "RVT Version" dropdown (e.g. "2024"). */
+  rvtVersion?: string
+  /** File-sharing system from the MA-003 "Files System" dropdown (e.g. "ACC", "רמדור"). */
+  filesSystem?: string
+  /** Per-creator ACC issue stats, matched to team members by display name. */
+  issueCreatorStats?: IssueCreatorStat[]
   milestoneProgress: number | null
   milestoneDisciplines?: MilestoneDiscipline[]
   hoursProgress: number | null
@@ -93,6 +109,8 @@ export interface ReportListItem {
   createdByName?: string
   createdAt: string | null
   hasSnapshot?: boolean   // has issuesSnapshot → usable in the Progress comparison
+  scheduleName?: string   // set when a report schedule produced this report
+  sentAt?: string | null  // actually delivered (auto-send), not just drafted
 }
 
 export interface ProjectsApiResponse {

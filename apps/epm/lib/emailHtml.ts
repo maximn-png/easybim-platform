@@ -2,6 +2,7 @@
 // so everything is inline-styled. The chart + screenshot are referenced as CID
 // inline images (the actual image bytes are attached as related parts by the API route).
 import { segmentBodyText, type BodyLink } from './reportTemplates'
+import { buildStatusLegendHtml } from './statusLegend'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -16,6 +17,8 @@ export function buildEmailHtml(opts: {
   highlightPhrases?: string[]
   hasChart: boolean
   hasScreenshot: boolean
+  // Small HTML status-legend block after the chart (no image involved).
+  hasLegend?: boolean
   // Image source, in priority order:
   //   inline → self-contained data: URLs (saved history preview)
   //   urls   → hosted https URLs (the SENT email — reliable across clients)
@@ -23,7 +26,7 @@ export function buildEmailHtml(opts: {
   inline?: { chartBase64?: string; screenshotBase64?: string }
   urls?: { chart?: string; screenshot?: string }
 }): string {
-  const { bodyText, links, highlightPhrases, hasChart, hasScreenshot, inline, urls } = opts
+  const { bodyText, links, highlightPhrases, hasChart, hasScreenshot, hasLegend, inline, urls } = opts
   const chartSrc = inline?.chartBase64
     ? `data:image/png;base64,${inline.chartBase64}`
     : (urls?.chart ?? 'cid:chart@easybim')
@@ -51,6 +54,10 @@ export function buildEmailHtml(opts: {
     ? `<div dir="rtl" style="margin:18px 0;direction:rtl;text-align:right"><img src="${chartSrc}" alt="Issues analytics" style="display:block;max-width:100%;border:1px solid #e5e7eb;border-radius:8px" /></div>`
     : ''
 
+  const legend = hasLegend
+    ? `<div dir="rtl" style="margin:14px 0;direction:rtl;text-align:right">${buildStatusLegendHtml()}</div>`
+    : ''
+
   const screenshot = hasScreenshot
     ? `<div dir="rtl" style="margin:18px 0;direction:rtl;text-align:right"><img src="${screenshotSrc}" alt="" style="display:block;max-width:100%;border:1px solid #e5e7eb;border-radius:8px" /></div>`
     : ''
@@ -60,7 +67,7 @@ export function buildEmailHtml(opts: {
   return `<div dir="rtl" style="direction:rtl;text-align:right;color:#374151">
 <table dir="rtl" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;direction:rtl">
 <tr><td align="right" style="text-align:right;direction:rtl;font-family:Arial,Assistant,sans-serif;color:#374151;max-width:680px">
-${paragraphs}${chart}${screenshot}
+${paragraphs}${chart}${legend}${screenshot}
 </td></tr>
 </table>
 </div>`

@@ -17,6 +17,33 @@ body {
   color: var(--foreground);
 }
 
+/* One-screen pages (the project detail page) opt in by marking their root with
+   .epm-one-screen. A `flex-1 min-h-0` chain can only CONSTRAIN a child when some
+   ancestor has a definite height — with the shell's default `min-h-full` the body
+   grows with its content instead, so the inner scroll containers never bound
+   themselves. This pins the shell to exactly the viewport for those pages only;
+   every other EPM page keeps scrolling the window as before. Below lg the lock
+   is released so narrow screens can scroll normally. */
+@media (min-width: 1024px) {
+  body:has(.epm-one-screen) {
+    height: 100%;
+    overflow: hidden;
+  }
+}
+
+/* Short laptops (1366x768 and friends): densify the stat rail so all three
+   cards still fit one screen; overflow-y on the rail is the last-resort valve. */
+@media (min-width: 1024px) and (max-height: 860px) {
+  .epm-one-screen .epm-rail        { gap: 8px; }
+  .epm-one-screen .epm-rail > div  { padding: 9px 11px; row-gap: 7px; }
+  .epm-one-screen .epm-ring        { width: 56px; height: 56px; }
+  .epm-one-screen .epm-ring-cap    { display: none; }
+  .epm-one-screen .epm-thru        { display: none; }
+  .epm-one-screen .epm-people      { row-gap: 5px; }
+  .epm-one-screen .epm-people img,
+  .epm-one-screen .epm-people .w-7 { width: 24px; height: 24px; }
+}
+
 .glass-card {
   background-color: rgba(255, 255, 255, 0.65);
   backdrop-filter: blur(20px);
@@ -28,4 +55,39 @@ body {
 .glass-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 16px rgba(0, 1, 119, 0.08);
+}
+
+/* Rendered Monday update bodies (sanitized HTML from the updates feed). Styles
+   the rich content Monday produces — tables, lists, links, @mentions, images. */
+.monday-body p { margin: 0 0 0.375rem; }
+.monday-body p:last-child { margin-bottom: 0; }
+.monday-body table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 11px;
+}
+.monday-body td,
+.monday-body th {
+  border: 1px solid #e5e7eb;
+  padding: 4px 8px;
+  vertical-align: top;
+  text-align: right;
+}
+.monday-body th { background: #f9fafb; font-weight: 600; }
+.monday-body a { color: #44b8d3; text-decoration: underline; word-break: break-word; }
+.monday-body a.user_mention_editor { color: #1e248c; font-weight: 500; text-decoration: none; }
+.monday-body ul { list-style: disc; padding-inline-start: 1.25rem; margin: 0.25rem 0; }
+.monday-body ol { list-style: decimal; padding-inline-start: 1.25rem; margin: 0.25rem 0; }
+.monday-body ul[data-checklist-holder] { list-style: none; padding-inline-start: 0; }
+.monday-body img { max-width: 100%; height: auto; border-radius: 8px; margin: 0.25rem 0; }
+.monday-body h1, .monday-body h2, .monday-body h3,
+.monday-body h4, .monday-body h5, .monday-body h6 { font-weight: 600; margin: 0.375rem 0; }
+.monday-body blockquote {
+  border-inline-start: 2px solid #e5e7eb;
+  padding-inline-start: 0.5rem;
+  color: #6b7280;
+  margin: 0.25rem 0;
 }

@@ -3,6 +3,12 @@ import {
   fetchProjectHoursBreakdown, fetchProjectBanks,
   type HoursBreakdown, type DisciplineBanks,
 } from '@/lib/services/mondayService'
+import { swrCache } from '@/lib/server/pageCache'
+
+// Snapshots stored in Mongo (stale-while-revalidate, see pageCache.ts): only
+// a project's first-ever view pays the ~10s Monday timesheet sweep; later
+// views answer instantly and refresh in the background. ?refresh=1 forces live.
+const CACHE_TTL_MS = 5 * 60_000
 
 // Small mock used for local dev when MongoDB or the Monday token is absent,
 // so the analytics page still renders something.
@@ -30,7 +36,7 @@ const EMPTY_BREAKDOWN: HoursBreakdown = {
 const EMPTY_BANKS: DisciplineBanks = { modelMgmt: null, superposition: null, total: null }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
@@ -56,12 +62,19 @@ export async function GET(
       return NextResponse.json({ breakdown: EMPTY_BREAKDOWN, banks: EMPTY_BANKS, noMa003: true })
     }
 
-    const [breakdown, banks] = await Promise.all([
-      fetchProjectHoursBreakdown(ma003ItemId),
-      ma004ItemId ? fetchProjectBanks(ma004ItemId) : Promise.resolve(EMPTY_BANKS),
-    ])
+    const refresh = req.nextUrl.searchParams.get('refresh') === '1'
+    const { data, cachedAt } = await swrCache<{ breakdown: HoursBreakdown; banks: DisciplineBanks }>(
+      `hours:${id}`, CACHE_TTL_MS, refresh,
+      async () => {
+        const [breakdown, banks] = await Promise.all([
+          fetchProjectHoursBreakdown(ma003ItemId),
+          ma004ItemId ? fetchProjectBanks(ma004ItemId) : Promise.resolve(EMPTY_BANKS),
+        ])
+        return { breakdown, banks }
+      },
+    )
 
-    return NextResponse.json({ breakdown, banks })
+    return NextResponse.json({ ...data, ...(cachedAt ? { cachedAt } : {}) })
   } catch (err) {
     console.error('[GET /api/projects/[id]/hours-breakdown]', err)
     const msg = err instanceof Error ? err.message : String(err)

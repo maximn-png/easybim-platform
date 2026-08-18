@@ -1,0 +1,52 @@
+/* ============================================================
+   EasyBIM — ELEVATION, BLUR & MOTION TOKENS
+   Hierarchy comes from backdrop blur + tonal layering, NOT heavy shadows.
+   Shadows are soft, diffused, and tinted with navy at very low opacity.
+   ============================================================ */
+:root {
+  /* ---- Backdrop blur (glassmorphism) ---- */
+  --blur-card:   blur(12px); /* @kind other */
+  --blur-header: blur(8px);  /* @kind other */
+  --blur-heavy:  blur(20px); /* @kind other */
+
+  /* ---- Shadows — navy-tinted, soft ---- */
+  --shadow-sm:   0 1px 3px rgba(30,36,140,0.05), 0 1px 2px rgba(30,36,140,0.04);
+  --shadow-card: 0 4px 12px rgba(30,36,140,0.05);
+  --shadow-md:   0 8px 20px rgba(30,36,140,0.08);
+  --shadow-lg:   0 14px 34px rgba(30,36,140,0.12);
+  --shadow-xl:   0 22px 48px rgba(30,36,140,0.16);
+  /* Colored action shadows — primary navy / accent cyan glows */
+  --shadow-navy: 0 10px 24px rgba(30,36,140,0.25);
+  --shadow-cyan: 0 10px 24px rgba(68,184,211,0.30);
+
+  /* ---- Borders ---- */
+  --border-width: 1px; /* @kind spacing */
+  --ring-focus:   0 0 0 2px rgba(68,184,211,0.55); /* @kind shadow */
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1); /* @kind other */
+  --dur-fast:   150ms; /* @kind other */
+  --dur-base:   200ms; /* @kind other */
+  --dur-slow:   300ms; /* @kind other */
+  /* Interaction signature: cards "lift" -2px on hover with a deepened tinted shadow;
+     primary buttons shift navy → cyan and translate -2px. */
+  --lift-hover: translateY(-2px); /* @kind other */
+}
+
+/* Shared keyframes used across cards, kits, and slides */
+@keyframes eb-fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes eb-float {
+  0%, 100% { transform: translateY(0) scale(1);     opacity: 0.45; }
+  50%      { transform: translateY(-14px) scale(1.25); opacity: 0.75; }
+}
+@keyframes eb-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes eb-ping {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}

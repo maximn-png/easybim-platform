@@ -64,8 +64,21 @@ export interface HoursConfig {
   subjectTeam: Record<string, HoursTeam>
 }
 
+// Per-creator ACC issue stats ("8/12" next to team avatars on the dashboard).
+// completed = issues with status "completed"; active = all except "closed".
+export interface IssueCreatorStat {
+  name:      string
+  completed: number
+  active:    number
+}
+
 export interface ProjectSnapshot {
   status:            ProjectStatus | null
+  client?:           string | null           // MA-003 "Client" text column
+  rvtVersion?:       string | null           // MA-003 "RVT Version" dropdown
+  filesSystem?:      string | null           // MA-003 "Files System" dropdown
+  issueCreatorStats?: IssueCreatorStat[]
+  issueStatsSyncedAt?: Date | null
   milestoneProgress: number | null           // pooled completed/total across all bills
   milestoneDisciplines?: MilestoneDiscipline[]
   hoursProgress:     number | null
@@ -145,6 +158,15 @@ const MilestoneDisciplineSchema = new Schema<MilestoneDiscipline>(
   { _id: false }
 )
 
+const IssueCreatorStatSchema = new Schema<IssueCreatorStat>(
+  {
+    name:      { type: String, required: true },
+    completed: { type: Number, required: true },
+    active:    { type: Number, required: true },
+  },
+  { _id: false }
+)
+
 const SnapshotSchema = new Schema<ProjectSnapshot>(
   {
     status: {
@@ -152,6 +174,11 @@ const SnapshotSchema = new Schema<ProjectSnapshot>(
       enum:    ['Working on it', 'On Hold', 'Not Started', 'Done', 'Stuck'],
       default: null,
     },
+    client:                { type: String, default: null },
+    rvtVersion:            { type: String, default: null },
+    filesSystem:           { type: String, default: null },
+    issueCreatorStats:     { type: [IssueCreatorStatSchema], default: undefined },
+    issueStatsSyncedAt:    { type: Date, default: null },
     milestoneProgress:     { type: Number, min: 0, max: 100, default: null },
     milestoneDisciplines:  { type: [MilestoneDisciplineSchema], default: undefined },
     hoursProgress:     { type: Number, min: 0, max: 100, default: null },

@@ -1,0 +1,75 @@
+/* ============================================================
+   EasyBIM — COLOR TOKENS
+   Anchored by deep navy (#1e248c) for authority + primary actions,
+   with a high-visibility cyan accent (#44b8d3) for interactive states.
+   Values reconciled from the live platform code and the brand spec.
+   ============================================================ */
+:root {
+  /* ---- Brand core ---- */
+  --eb-navy:            #1e248c;  /* primary — structural authority, primary actions */
+  --eb-navy-deep:       #000177;  /* deepest navy from brand spec, logo base */
+  --eb-cyan:            #44b8d3;  /* accent — interactive states, progress, highlights */
+  --eb-indigo:          #818cf8;  /* tertiary accent — "coming soon" / softer category */
+  --eb-black:           #1f1f1f;  /* true-ish black — high-impact tertiary actions */
+
+  /* ---- Navy ramp ---- */
+  --eb-navy-900:        #000177;
+  --eb-navy-800:        #1e248c;
+  --eb-navy-700:        #333a9f;
+  --eb-navy-200:        #bec2ff;
+  --eb-navy-100:        #e0e0ff;
+  --eb-navy-050:        #f0f2ff;  /* soft navy chip / hover fill */
+
+  /* ---- Cyan ramp ---- */
+  --eb-cyan-600:        #00687a;
+  --eb-cyan-500:        #44b8d3;
+  --eb-cyan-200:        #76e3ff;
+  --eb-cyan-100:        #adecff;
+
+  /* ---- Neutrals (UI greys) ---- */
+  --eb-ink:             #0a0a1a;  /* darkest text */
+  --eb-ink-900:         #111827;
+  --eb-ink-700:         #374151;
+  --eb-ink-600:         #4b5563;
+  --eb-ink-500:         #6b7280;  /* secondary / muted body */
+  --eb-ink-400:         #9ca3af;  /* tertiary / captions */
+  --eb-line:            #e8eaff;  /* default hairline border (navy-tinted) */
+  --eb-line-soft:       #eef0fb;
+  --eb-white:           #ffffff;
+
+  /* ---- Surfaces ---- */
+  --eb-surface:         #f8f9ff;  /* app base */
+  --eb-surface-2:       #f0f4ff;
+  --eb-surface-3:       #eef6fb;
+  --eb-glass:           rgba(255,255,255,0.65);  /* frosted card */
+  --eb-glass-strong:    rgba(255,255,255,0.80);  /* frosted header */
+  --eb-glass-border:    rgba(255,255,255,0.90);  /* 1px white card edge */
+
+  /* App background — soft tri-stop gradient that lends depth to the workspace */
+  --eb-bg-gradient:     linear-gradient(135deg, #eef6fb 0%, #f8f9ff 45%, #f0f4ff 100%); /* @kind color */
+  /* Brand gradient — used on logo glyph, icon tiles, hero accents */
+  --eb-brand-gradient:  linear-gradient(135deg, #1e248c 0%, #44b8d3 100%); /* @kind color */
+
+  /* ---- Semantic status ---- */
+  --eb-success:         #15803d;  --eb-success-bg: #dcfce7;  --eb-success-line: #bbf7d0;
+  --eb-warning:         #b45309;  --eb-warning-bg: #fef3c7;  --eb-warning-line: #fde68a;
+  --eb-error:           #ba1a1a;  --eb-error-bg:   #ffdad6;  --eb-error-line: #ffb4ab;
+  --eb-info:            #1e248c;  --eb-info-bg:    #e7eefe;
+
+  /* ---- Semantic aliases (use these in components) ---- */
+  --text-strong:        var(--eb-ink-900);
+  --text-heading:       var(--eb-navy);     /* headings are always navy */
+  --text-body:          var(--eb-ink-500);
+  --text-muted:         var(--eb-ink-400);
+  --text-on-brand:      var(--eb-white);
+
+  --surface-app:        var(--eb-surface);
+  --surface-card:       var(--eb-glass);
+  --surface-card-solid: var(--eb-white);
+  --border-card:        var(--eb-glass-border);
+  --border-hairline:    var(--eb-line);
+
+  --action-primary:     var(--eb-navy);
+  --action-primary-hover: var(--eb-cyan);   /* navy → cyan on hover */
+  --action-accent:      var(--eb-cyan);
+}

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { Search, RefreshCw } from 'lucide-react'
+import Link from 'next/link'
+import { Search, RefreshCw, Clock } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import FilterTabs from './FilterTabs'
 import ProjectsTable from './ProjectsTable'
@@ -106,7 +107,8 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
         const q = searchQuery.toLowerCase()
         return (
           p.projectName.toLowerCase().includes(q) ||
-          p.projectNumber.includes(q)
+          p.projectNumber.includes(q) ||
+          (p.client ?? '').toLowerCase().includes(q)
         )
       }
       return true
@@ -130,6 +132,15 @@ export default function DashboardClient({ projects, lastSyncedAt }: DashboardCli
         />
 
         <div className="flex items-center gap-2">
+          {/* Recurring reports, across all projects. */}
+          <Link
+            href="/dashboard/schedules"
+            title="Manage scheduled reports across all projects"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/80 border border-white/90 text-[#1e248c] hover:bg-blue-50 transition-colors"
+          >
+            <Clock size={12} /> Schedules
+          </Link>
+
           {/* Sync button + last sync time. The caption hangs below the button
               (absolute) so it doesn't push the button above the row's center. */}
           <div className="relative">

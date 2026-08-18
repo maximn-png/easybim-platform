@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import type { ProjectRow, ReportListItem } from '@/lib/types'
+import type { ProjectRow } from '@/lib/types'
 import { mockProjects } from '@/lib/mockProjects'
 import { deriveHoursProgress } from '@/lib/hours'
 import { resolveAccUrl } from '@/lib/services/apsService'
@@ -8,38 +8,6 @@ import ProjectDetailClient from '@/components/ProjectDetailClient'
 
 // Render on request so detail data reflects the latest sync (not a build snapshot).
 export const dynamic = 'force-dynamic'
-
-// Saved report drafts for this project (metadata only), newest first.
-async function fetchReports(id: string): Promise<ReportListItem[]> {
-  if (!process.env.MONGODB_URI) return []
-  try {
-    const { connectDB } = await import('@easybim/db')
-    const Report = (await import('@/app/models/Report')).default
-    await connectDB()
-    const docs = await Report.find({ projectId: id })
-      .select('kind title subject recipients draftId gmailUrl issueCount createdByName createdAt issuesSnapshot._id')
-      .sort({ createdAt: -1 })
-      .limit(100)
-      .lean() as unknown as Array<Record<string, unknown>>
-    return docs.map(d => ({
-      _id: String(d._id),
-      // Fallback for rows saved before `kind` existed: internal reports have no
-      // recipients (the email flow always has ≥1), so empty ⇒ internal.
-      kind: (d.kind as 'email' | 'internal') ?? (((d.recipients as string[])?.length ?? 0) > 0 ? 'email' : 'internal'),
-      title: d.title as string,
-      subject: d.subject as string,
-      recipients: (d.recipients as string[]) ?? [],
-      draftId: d.draftId as string | undefined,
-      gmailUrl: d.gmailUrl as string | undefined,
-      issueCount: d.issueCount as number | undefined,
-      createdByName: d.createdByName as string | undefined,
-      createdAt: d.createdAt ? new Date(d.createdAt as string).toISOString() : null,
-      hasSnapshot: Array.isArray(d.issuesSnapshot) && d.issuesSnapshot.length > 0,
-    }))
-  } catch {
-    return []
-  }
-}
 
 async function fetchProject(id: string): Promise<{ project: ProjectRow } | null> {
   if (!process.env.MONGODB_URI) {
@@ -77,6 +45,9 @@ async function fetchProject(id: string): Promise<{ project: ProjectRow } | null>
         accHubName: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.name,
         accHubKey: getPartnerHubByAccountId(ext.accHubId as string | undefined)?.key,
         status: (snap.status as ProjectRow['status']) ?? null,
+        client: (snap.client as string | undefined) || undefined,
+        rvtVersion: (snap.rvtVersion as string | undefined) || undefined,
+        filesSystem: (snap.filesSystem as string | undefined) || undefined,
         milestoneProgress: (snap.milestoneProgress as number | null) ?? null,
         milestoneDisciplines: (snap.milestoneDisciplines as ProjectRow['milestoneDisciplines']) ?? undefined,
         hoursProgress: deriveHoursProgress(actualHours, budgetHours),
@@ -113,11 +84,11 @@ export default async function ProjectDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, reports] = await Promise.all([fetchProject(id), fetchReports(id)])
+  const data = await fetchProject(id)
 
   if (!data) notFound()
 
-  return (
-    <ProjectDetailClient project={data.project} reports={reports} />
-  )
+  // Report history is no longer rendered here — it lives on the Reports page,
+  // reached from the header's "Forma Status & Reports" button.
+  return <ProjectDetailClient project={data.project} />
 }

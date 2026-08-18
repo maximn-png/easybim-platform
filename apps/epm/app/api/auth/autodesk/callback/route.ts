@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { auth } from '@clerk/nextjs/server'
 import { getPartnerHubs } from '@/lib/services/apsHubs'
 import { apsCookieNames } from '@/lib/services/apsUserToken'
+import { saveApsRefreshToken } from '@/lib/server/apsTokenStore'
 
 const APS_TOKEN_URL = 'https://developer.api.autodesk.com/authentication/v2/token'
 
@@ -93,6 +95,11 @@ export async function GET(req: NextRequest) {
       maxAge: 60 * 60 * 24 * 30, // 30 days
       path: '/',
     })
+
+    // Persist a copy for background runs (scheduled reports), which have no
+    // cookies to read. Keyed by the Clerk user so a run acts as that person.
+    const { userId } = await auth()
+    if (userId) await saveApsRefreshToken(userId, data.refresh_token, hub)
   }
 
   // Redirect back to the original page
