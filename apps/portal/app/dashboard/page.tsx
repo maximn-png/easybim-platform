@@ -7,6 +7,7 @@ import { CARDS } from '@/lib/cards'
 import { getAccess } from '@/lib/access'
 import AppHeader from '@/components/AppHeader'
 import CardLink from '@/components/CardLink'
+import HeaderMePanel from '@/components/HeaderMePanel'
 import CursorEffect from '@/components/CursorEffect'
 import PhotoGallery from '@/components/PhotoGallery'
 
@@ -73,16 +74,19 @@ export default async function DashboardPage() {
 
       <AppHeader
         rightSlot={
-          admin && (
-            <Link
-              href="/admin/users"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
-              style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
-            >
-              <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
-              User Management
-            </Link>
-          )
+          <>
+            {canAccessApp(access, 'epm') && <HeaderMePanel />}
+            {admin && (
+              <Link
+                href="/admin/users"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
+                style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
+              >
+                <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
+                User Management
+              </Link>
+            )}
+          </>
         }
       />
 

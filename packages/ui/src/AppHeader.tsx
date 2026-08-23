@@ -32,7 +32,16 @@ export default function AppHeader({
       </Link>
       <div className="flex items-center gap-3">
         {rightSlot}
-        <UserButton />
+        {/* additionalOAuthScopes: lets any signed-in user grant the extra Google
+            scopes from Manage account → Connected accounts → Reconnect. Needed
+            by EPM's My Space calendar (and already-granted gmail.compose). */}
+        <UserButton
+          userProfileProps={{
+            additionalOAuthScopes: {
+              google: ['https://www.googleapis.com/auth/calendar.readonly'],
+            },
+          }}
+        />
       </div>
     </header>
   )
