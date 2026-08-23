@@ -38,8 +38,19 @@ function clerkBootTags(): string {
   if (process.env.NEXT_PUBLIC_CLERK_DOMAIN) options.domain = process.env.NEXT_PUBLIC_CLERK_DOMAIN
   if (process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL) options.signInUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL
   if (process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL) options.signUpUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL
+  // After load, also force a token refresh every 45s via getToken() — a
+  // belt-and-braces guarantee on top of clerk-js's own cookie poller (the
+  // session token expires at 60s). The console lines make the keepalive's
+  // health visible in the browser devtools when debugging auth issues.
+  const boot =
+    'window.__kcClerkInit=function(){' +
+    `window.Clerk.load(${JSON.stringify(options)}).then(function(){` +
+    "console.log('kc: clerk session keepalive active');" +
+    'setInterval(function(){try{if(window.Clerk&&window.Clerk.session){window.Clerk.session.getToken().catch(function(e){' +
+    "console.error('kc: clerk token refresh failed',e)})}}catch(e){}},45000)" +
+    "}).catch(function(e){console.error('kc: clerk-js load failed',e)})}"
   return (
-    `<script>window.__kcClerkInit=function(){window.Clerk.load(${JSON.stringify(options)}).catch(function(e){console.error('kc: clerk-js load failed',e)})}</script>` +
+    `<script>${boot}</script>` +
     `<script async crossorigin="anonymous" data-clerk-publishable-key="${pk}" src="https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" onload="window.__kcClerkInit()"></script>`
   )
 }

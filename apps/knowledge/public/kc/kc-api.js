@@ -2032,13 +2032,30 @@
   // window.KC.goTo only reveals/highlights a row (see wrapOpenBookmark's own
   // comment above for why) — mirror that same open-after-goTo pattern so a
   // source citation actually opens the document, not just scrolls to it.
-  function mentorGoToSource(treeId, title) {
+  function mentorGoToSource(treeId, title, anchor) {
     if (window.KC && KC.goTo) KC.goTo(treeId, title);
     setTimeout(() => {
       const tree = document.getElementById(treeId); if (!tree) return;
       const target = [...tree.querySelectorAll('.row-name')].find((rn) => rn.textContent.trim() === title);
       const row = target && target.closest('.row');
       if (row && KC.select) KC.select(row);
+      if (!anchor) return;
+      // The doc body renders asynchronously after select — poll until the
+      // heading with this chunk's anchor id exists (kc-docpage.js renders
+      // real-document headings with id=anchor), then reuse the same scroll
+      // the TOC uses. Give up quietly after ~5s (e.g. anchorless docs).
+      let tries = 0;
+      const poll = setInterval(() => {
+        tries += 1;
+        const el = document.getElementById(anchor);
+        if (el) {
+          clearInterval(poll);
+          if (window.KC && KC.DocPage && KC.DocPage.goToSection) KC.DocPage.goToSection(anchor);
+          else el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (tries > 25) {
+          clearInterval(poll);
+        }
+      }, 200);
     }, 100);
   }
   window.__kcMentorGoTo = mentorGoToSource;
@@ -2046,26 +2063,39 @@
     const node = document.querySelector('.node[data-doc="' + source.sourceId + '"]');
     const tree = node && node.closest('.tree');
     if (!tree) return esc(source.title);
-    return '<span class="kblink" onclick="window.__kcMentorGoTo(' + JSON.stringify(tree.id) + ',' + JSON.stringify(source.title) + ');event.stopPropagation()">' + esc(source.title) + '</span>';
+    // Args travel via a data attribute (with quotes entity-escaped — esc()
+    // doesn't escape quotes) instead of being spliced into the onclick
+    // string, where a title containing a double quote would break out of
+    // the attribute.
+    const args = esc(JSON.stringify([tree.id, source.title, source.anchor || ''])).replace(/"/g, '&quot;');
+    return '<span class="kblink" dir="auto" data-args="' + args + '" onclick="window.__kcMentorGoTo.apply(null,JSON.parse(this.dataset.args));event.stopPropagation()">' + esc(source.title) + '</span>';
   }
   function mentorAnswerHTML(data) {
     if (!data || data.error) return esc((data && data.error) || 'Something went wrong — please try again.');
     const seen = {};
     const links = (data.sources || []).filter((s) => { if (seen[s.sourceId]) return false; seen[s.sourceId] = true; return true; }).map(mentorSourceLinkHTML);
-    const cite = links.length ? ('<div class="kc-mentor-sources">Sources: ' + links.join(', ') + '</div>') : '';
-    return '<span class="kb-badge"><i data-lucide="sparkles"></i>Knowledge Base</span>' + esc(data.answer).replace(/\n/g, '<br>') + cite;
+    const cite = links.length ? ('<div class="kc-mentor-sources" dir="auto">Sources: ' + links.join(', ') + '</div>') : '';
+    // dir="auto" so Hebrew answers lay out right-to-left (the kb-badge is
+    // English, so the direction has to come from the answer's own text —
+    // it can't be inherited from the bubble).
+    return '<span class="kb-badge"><i data-lucide="sparkles"></i>Knowledge Base</span><div class="kc-mentor-ans" dir="auto">' + esc(data.answer).replace(/\n/g, '<br>') + '</div>' + cite;
   }
   function mentorAsk(wsId, question) {
     const mode = mentorCurrentMode(wsId);
     const ws = document.getElementById(wsId);
     const topicKey = mode === 'topic' ? currentTopicKey(ws) : null;
-    paintMentorBubble(wsId, 'me', esc(question));
-    appendMentorReal(wsId, mode, topicKey, 'me', esc(question));
+    const qHtml = '<div dir="auto">' + esc(question) + '</div>';
+    paintMentorBubble(wsId, 'me', qHtml);
+    appendMentorReal(wsId, mode, topicKey, 'me', qHtml);
     const thinking = paintMentorBubble(wsId, 'ai', '<span class="kb-badge"><i data-lucide="loader-2"></i>Thinking…</span>');
     fetch('/api/kc/mentor/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
+      // 'manual' so an auth redirect surfaces as a detectable
+      // opaqueredirect response instead of fetch chasing it cross-origin
+      // and rejecting with an unhelpful TypeError.
+      redirect: 'manual',
       body: JSON.stringify({ question: question, sourceId: mode === 'topic' ? currentOpenSourceId(ws) : undefined })
     })
       .then((r) => {
