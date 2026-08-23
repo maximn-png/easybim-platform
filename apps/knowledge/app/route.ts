@@ -14,6 +14,36 @@ import { logAppVisit } from '@easybim/db'
 // from its matcher — "/" is not.
 let cachedHtml: string | null = null
 
+// Clerk session tokens expire every 60 seconds and are normally kept fresh
+// by clerk-js in the browser. This page bypasses the root layout's
+// ClerkProvider, so without these tags nothing ever refreshes the session
+// cookie — every API call made more than ~60s after page load was 307'd
+// into Clerk's handshake by proxy.ts, and the mentor/state calls failed
+// with generic errors. Loading bare clerk-js (no UI, just Clerk.load())
+// restores the refresh loop. Config mirrors what @clerk/nextjs reads from
+// env in the other apps; the frontend-API host is decoded from the
+// publishable key (its base64 payload is the host + '$').
+function clerkBootTags(): string {
+  const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  if (!pk) return ''
+  let frontendApi = ''
+  try {
+    frontendApi = Buffer.from(pk.split('_')[2] ?? '', 'base64').toString('utf8').replace(/\$$/, '')
+  } catch {
+    return ''
+  }
+  if (!frontendApi) return ''
+  const options: Record<string, unknown> = {}
+  if (process.env.NEXT_PUBLIC_CLERK_IS_SATELLITE === 'true') options.isSatellite = true
+  if (process.env.NEXT_PUBLIC_CLERK_DOMAIN) options.domain = process.env.NEXT_PUBLIC_CLERK_DOMAIN
+  if (process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL) options.signInUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL
+  if (process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL) options.signUpUrl = process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL
+  return (
+    `<script>window.__kcClerkInit=function(){window.Clerk.load(${JSON.stringify(options)}).catch(function(e){console.error('kc: clerk-js load failed',e)})}</script>` +
+    `<script async crossorigin="anonymous" data-clerk-publishable-key="${pk}" src="https://${frontendApi}/npm/@clerk/clerk-js@5/dist/clerk.browser.js" onload="window.__kcClerkInit()"></script>`
+  )
+}
+
 // Cached in production only — the file is immutable for the life of a
 // deploy there, so re-reading it on every request would be pure waste. In
 // dev, the server process runs for hours across many edits to this file;
@@ -22,7 +52,10 @@ let cachedHtml: string | null = null
 async function loadHtml() {
   if (cachedHtml && process.env.NODE_ENV === 'production') return cachedHtml
   const filePath = path.join(process.cwd(), 'lib/kc/template.html')
-  const html = await readFile(filePath, 'utf8')
+  const raw = await readFile(filePath, 'utf8')
+  // Replacement is a function so '$'-sequences in the tags can't be
+  // interpreted as replace() patterns.
+  const html = raw.replace('</head>', () => `${clerkBootTags()}</head>`)
   cachedHtml = html
   return html
 }

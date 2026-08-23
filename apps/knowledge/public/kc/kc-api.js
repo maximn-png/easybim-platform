@@ -2068,8 +2068,23 @@
       credentials: 'include',
       body: JSON.stringify({ question: question, sourceId: mode === 'topic' ? currentOpenSourceId(ws) : undefined })
     })
-      .then((r) => r.json())
+      .then((r) => {
+        // An expired Clerk session gets 307'd into the auth handshake
+        // instead of reaching the API — the response comes back redirected
+        // and/or as HTML. Reloading the page re-runs the auth flow; clerk-js
+        // (injected by app/route.ts) should keep this from ever happening,
+        // so this is a belt-and-braces fallback.
+        const ct = (r.headers.get('content-type') || '');
+        if (r.redirected || ct.indexOf('json') === -1) {
+          const bub = thinking && thinking.querySelector('.bub');
+          if (bub) bub.innerHTML = 'Your session expired — reloading the page…';
+          setTimeout(function () { location.reload(); }, 1500);
+          return null;
+        }
+        return r.json();
+      })
       .then((data) => {
+        if (!data) return;
         const html = mentorAnswerHTML(data);
         const bub = thinking && thinking.querySelector('.bub');
         if (bub) bub.innerHTML = html;
