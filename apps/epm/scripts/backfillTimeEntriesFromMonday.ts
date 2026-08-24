@@ -60,6 +60,18 @@ const STRAY_MA003_TO_PROJECT_NUMBER: Record<string, string> = {
   '8874964834': '22120',
 }
 
+// TS-002 client codes → EPM "ליווי BIM משרדי" project numbers (user-confirmed
+// 2026-08-24). Codes NOT listed here (AFK, WV, MES) deliberately stay as
+// synthetic interior:<code> keys until the user assigns them a project.
+const INTERIOR_CODE_TO_PROJECT_NUMBER: Record<string, string> = {
+  DBA: '22101', // בר עקיבא
+  LDN: '22120', // לודן צפון
+  LBL: '22132', // לבל
+  SNT: '22139', // סניט
+  NHR: '22158', // הררי
+  BAR: '22162', // קבוצת בראל
+}
+
 // Subject labels on the boards are already clean; EasyBIM maps to the portal's
 // internal subject. Blank falls back to 'General' (same as the live breakdown).
 const SUBJECT_MAP: Record<string, string> = {
@@ -402,7 +414,11 @@ async function main() {
     let projectKey: string, projectId: Types.ObjectId | null = null, projectName: string
     if (row.kind === 'interior') {
       const code = row.dropdownLabel.split(',')[0]?.trim() ?? ''
-      if (!code || code.toLowerCase() === 'easybim') {
+      const mappedNum = INTERIOR_CODE_TO_PROJECT_NUMBER[code]
+      const mapped = mappedNum ? byNumber.get(mappedNum) : undefined
+      if (mapped) {
+        projectKey = String(mapped._id); projectId = mapped._id; projectName = mapped.projectName
+      } else if (!code || code.toLowerCase() === 'easybim') {
         projectKey = 'internal'; projectName = 'EasyBIM Internal'
       } else {
         projectKey = `interior:${code}`; projectName = `InteriorBIM — ${code}`
