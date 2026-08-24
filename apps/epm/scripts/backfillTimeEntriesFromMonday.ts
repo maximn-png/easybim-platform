@@ -33,17 +33,32 @@ import Project from '../app/models/Project'
 const DRY_RUN = process.argv.includes('--dry-run')
 const MONDAY_API_URL = 'https://api.monday.com/v2'
 
-const BOARDS: Array<{ id: string; label: string; internalDefault: boolean }> = [
-  { id: '6802118492',  label: 'TS-001 Projects',           internalDefault: false },
-  { id: '18396186789', label: 'TS-003 EasyBIM',            internalDefault: true  }, // EasyBIM internal timesheet
-  { id: '18393331343', label: 'TS-004 Completed Projects', internalDefault: false },
-  { id: '18411540568', label: 'TS-005 Medical Projects',   internalDefault: false },
+// 'standard' boards share the TS-001 column layout (board_relation + Subject/
+// Subtopic status columns). TS-002 (InteriorBIM, workspace "01. Interior BIM
+// MGMT") has its own layout: the project is a CLIENT CODE dropdown (DBA, NHR,
+// LBL, ...) with no EPM project behind it — those rows import under synthetic
+// keys 'interior:<CODE>' so the hours stay attributed per client and per person.
+const BOARDS: Array<{ id: string; label: string; kind: 'standard' | 'interior'; internalDefault: boolean }> = [
+  { id: '6802118492',  label: 'TS-001 Projects',           kind: 'standard', internalDefault: false },
+  { id: '8103706724',  label: 'TS-002 InteriorBIM',        kind: 'interior', internalDefault: true  },
+  { id: '18396186789', label: 'TS-003 EasyBIM',            kind: 'standard', internalDefault: true  }, // EasyBIM internal timesheet
+  { id: '18393331343', label: 'TS-004 Completed Projects', kind: 'standard', internalDefault: false },
+  { id: '18411540568', label: 'TS-005 Medical Projects',   kind: 'standard', internalDefault: false },
 ]
 
-const COL_IDS = [
+const STANDARD_COL_IDS = [
   'board_relation_mkqd3xgf', 'date4', 'numeric', 'label__1', 'color__1',
   'people', 'dropdown__1', 'dropdown_mkz3tdn3', 'text_mkkrwzwy',
 ]
+// TS-002: dropdown__1 = client code (פרויקט), status0 = Subject (נושא),
+// status_1 = Subtopic (תת נושא), people = the EasyBIM employee.
+const INTERIOR_COL_IDS = ['dropdown__1', 'date4', 'numeric', 'status0', 'status_1', 'people']
+
+// Stray MA-003 items manually mapped to an EPM project number (user decisions).
+// 8874964834 "פרויקט שפדן" → 22120 "לודן צפון - ליווי BIM משרדי" (2026-08-24).
+const STRAY_MA003_TO_PROJECT_NUMBER: Record<string, string> = {
+  '8874964834': '22120',
+}
 
 // Subject labels on the boards are already clean; EasyBIM maps to the portal's
 // internal subject. Blank falls back to 'General' (same as the live breakdown).
@@ -91,6 +106,7 @@ async function mondayQuery(query: string, variables?: Record<string, unknown>) {
 interface RawRow {
   boardId: string
   boardLabel: string
+  kind: 'standard' | 'interior'
   itemId: string
   ma003ItemId: string | null
   date: string            // '' when undated
@@ -99,11 +115,11 @@ interface RawRow {
   subtopicRaw: string
   personIds: string[]
   personText: string
-  dropdownLabel: string   // dropdown__1, else dropdown_mkz3tdn3
+  dropdownLabel: string   // standard: dropdown__1 else dropdown_mkz3tdn3; interior: client code
   note: string
 }
 
-async function fetchBoardRows(board: { id: string; label: string }): Promise<RawRow[]> {
+async function fetchBoardRows(board: { id: string; label: string; kind: 'standard' | 'interior' }): Promise<RawRow[]> {
   const query = `
     query ($boardId: ID!, $cursor: String, $colIds: [String!]) {
       boards(ids: [$boardId]) {
@@ -122,10 +138,11 @@ async function fetchBoardRows(board: { id: string; label: string }): Promise<Raw
       }
     }
   `
+  const interior = board.kind === 'interior'
   const rows: RawRow[] = []
   let cursor: string | null = null
   do {
-    const data = await mondayQuery(query, { boardId: board.id, cursor, colIds: COL_IDS }) as {
+    const data = await mondayQuery(query, { boardId: board.id, cursor, colIds: interior ? INTERIOR_COL_IDS : STANDARD_COL_IDS }) as {
       boards: Array<{ items_page: { cursor: string | null; items: Array<{ id: string; column_values: Array<{ id: string; text: string | null; value: string | null; linked_item_ids?: string[] }> }> } }>
     }
     const page = data.boards[0]?.items_page
@@ -140,16 +157,19 @@ async function fetchBoardRows(board: { id: string; label: string }): Promise<Raw
       rows.push({
         boardId: board.id,
         boardLabel: board.label,
+        kind: board.kind,
         itemId: item.id,
-        ma003ItemId: col['board_relation_mkqd3xgf']?.linked_item_ids?.[0] ?? null,
+        ma003ItemId: interior ? null : col['board_relation_mkqd3xgf']?.linked_item_ids?.[0] ?? null,
         date: (col['date4']?.text ?? '').trim(),
         hours: parseFloat(col['numeric']?.text ?? '0') || 0,
-        subjectRaw: (col['label__1']?.text ?? '').trim(),
-        subtopicRaw: (col['color__1']?.text ?? '').trim(),
+        subjectRaw: (col[interior ? 'status0' : 'label__1']?.text ?? '').trim(),
+        subtopicRaw: (col[interior ? 'status_1' : 'color__1']?.text ?? '').trim(),
         personIds,
         personText: (col['people']?.text ?? '').trim(),
-        dropdownLabel: (col['dropdown__1']?.text ?? '').trim() || (col['dropdown_mkz3tdn3']?.text ?? '').trim(),
-        note: (col['text_mkkrwzwy']?.text ?? '').trim(),
+        dropdownLabel: interior
+          ? (col['dropdown__1']?.text ?? '').trim()
+          : (col['dropdown__1']?.text ?? '').trim() || (col['dropdown_mkz3tdn3']?.text ?? '').trim(),
+        note: interior ? '' : (col['text_mkkrwzwy']?.text ?? '').trim(),
       })
     }
   } while (cursor)
@@ -349,10 +369,15 @@ async function main() {
     const names = await fetchItemNames(strayMa003)
     for (const id of strayMa003) {
       const name = names.get(id)
-      const hit = name ? resolveLabel(name.replace(/^פרויקט\s+/, '')) : 'unmatched'
+      // Manual override first (user-decided mappings), then name matching.
+      const overrideNum = STRAY_MA003_TO_PROJECT_NUMBER[id]
+      const override = overrideNum ? byNumber.get(overrideNum) : undefined
+      const hit = override
+        ? { key: String(override._id), id: override._id, name: override.projectName }
+        : name ? resolveLabel(name.replace(/^פרויקט\s+/, '')) : 'unmatched'
       ma003NameResolution.set(id, typeof hit === 'object' ? hit : null)
       if (typeof hit !== 'object') console.log(`  stray MA-003 ${id} ("${name ?? '?'}") — no matching EPM project`)
-      else console.log(`  stray MA-003 ${id} ("${name}") → matched project "${hit.name}"`)
+      else console.log(`  stray MA-003 ${id} ("${name}") → ${override ? 'OVERRIDE' : 'matched'} project "${hit.name}"`)
     }
   }
 
@@ -372,8 +397,17 @@ async function main() {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) { stats.skippedUndated++; stats.undatedHours += row.hours; continue }
 
     // Project resolution: relation → dropdown label → board default.
+    // Interior rows: the dropdown is a client code, not an EPM project — keep it
+    // as a synthetic key so per-client attribution survives the migration.
     let projectKey: string, projectId: Types.ObjectId | null = null, projectName: string
-    if (row.ma003ItemId && INTERNAL_MA003_IDS.has(row.ma003ItemId)) {
+    if (row.kind === 'interior') {
+      const code = row.dropdownLabel.split(',')[0]?.trim() ?? ''
+      if (!code || code.toLowerCase() === 'easybim') {
+        projectKey = 'internal'; projectName = 'EasyBIM Internal'
+      } else {
+        projectKey = `interior:${code}`; projectName = `InteriorBIM — ${code}`
+      }
+    } else if (row.ma003ItemId && INTERNAL_MA003_IDS.has(row.ma003ItemId)) {
       projectKey = 'internal'; projectName = 'EasyBIM Internal'
     } else if (row.ma003ItemId) {
       const p = byMa003.get(row.ma003ItemId)
@@ -422,9 +456,13 @@ async function main() {
       b.rows++; b.hours += row.hours
     }
 
-    const subject = mapSubject(row.subjectRaw, report)
+    // Interior subjects are the board's own Hebrew taxonomy — keep them verbatim
+    // (prefix-stripped) instead of reporting each one as unknown.
+    const subject = row.kind === 'interior'
+      ? (row.subjectRaw.replace(/^\d+\.\s*/, '').trim() || SUBJECT_FALLBACK)
+      : mapSubject(row.subjectRaw, report)
     const subtopic = mapSubtopic(row.subtopicRaw)
-    if (!TAXONOMY_SUBTOPICS.has(subtopic)) report.nonTaxonomySubtopics[subtopic] = (report.nonTaxonomySubtopics[subtopic] ?? 0) + 1
+    if (row.kind !== 'interior' && !TAXONOMY_SUBTOPICS.has(subtopic)) report.nonTaxonomySubtopics[subtopic] = (report.nonTaxonomySubtopics[subtopic] ?? 0) + 1
 
     const key = [person.userId, projectKey, row.date, subject, subtopic].join('|')
     const slot = slots.get(key) ?? {
