@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { auth, clerkClient } from '@clerk/nextjs/server'
 import { withMeCors } from '@/lib/server/meCors'
 import type { TimeEntryDTO } from '@/lib/meTypes'
 
 export const runtime = 'nodejs'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// userId → display name, so every entry is written self-describing (the
+// project hours breakdown groups by name without a per-request Clerk join).
+const nameCache = new Map<string, string>()
+async function displayName(userId: string): Promise<string | undefined> {
+  const hit = nameCache.get(userId)
+  if (hit !== undefined) return hit || undefined
+  try {
+    const user = await (await clerkClient()).users.getUser(userId)
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ')
+    nameCache.set(userId, name)
+    return name || undefined
+  } catch {
+    return undefined
+  }
+}
 
 async function db() {
   const { connectDB } = await import('@easybim/db')
@@ -89,7 +105,8 @@ export async function POST(req: NextRequest) {
     const { Types } = await import('mongoose')
     const projectId = Types.ObjectId.isValid(projectKey) ? new Types.ObjectId(projectKey) : undefined
 
-    const common = { projectName: body?.projectName, ...(projectId ? { projectId } : {}) }
+    const userName = await displayName(userId)
+    const common = { projectName: body?.projectName, ...(projectId ? { projectId } : {}), ...(userName ? { userName } : {}) }
     const update = add
       ? {
           $inc: { hours },

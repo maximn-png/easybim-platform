@@ -9,7 +9,8 @@ import mongoose, { Document, Schema, Types } from 'mongoose'
 // calendar days in the user's local sense, and Date objects would reintroduce
 // timezone drift between the grid, the API and Mongo.
 export interface ITimeEntry extends Document {
-  userId:      string             // Clerk user id
+  userId:      string             // Clerk user id, or 'ext:<email>' for people without a portal account (historical Monday imports)
+  userName?:   string             // denormalized display name — required in practice for 'ext:' users, set on imports
   date:        string             // 'YYYY-MM-DD'
   projectKey:  string             // Project _id as string, or 'internal' for EasyBIM internal work
   projectId?:  Types.ObjectId     // set when projectKey is a real project
@@ -18,8 +19,9 @@ export interface ITimeEntry extends Document {
   subject:     string             // Model MGMT / Superposition / Modelling / EasyBIM Internal ('' = uncategorized)
   subtopic:    string             // Meetings / ProjectWork / Training / R&D ('' = uncategorized)
   note?:       string
-  source:      'manual' | 'calendar' | 'chat' | 'suggested'
+  source:      'manual' | 'calendar' | 'chat' | 'suggested' | 'monday'
   eventIds?:   string[]           // Google Calendar event ids logged into this entry
+  mondayItemIds?: string[]        // source:'monday' — contributing Monday TS row ids (one doc aggregates a slot)
   createdAt:   Date
   updatedAt:   Date
 }
@@ -27,6 +29,7 @@ export interface ITimeEntry extends Document {
 const TimeEntrySchema = new Schema<ITimeEntry>(
   {
     userId:      { type: String, required: true, index: true },
+    userName:    { type: String },
     date:        { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     projectKey:  { type: String, required: true },
     projectId:   { type: Schema.Types.ObjectId, ref: 'Project' },
@@ -35,8 +38,9 @@ const TimeEntrySchema = new Schema<ITimeEntry>(
     subject:     { type: String, default: '' },
     subtopic:    { type: String, default: '' },
     note:        { type: String },
-    source:      { type: String, enum: ['manual', 'calendar', 'chat', 'suggested'], default: 'manual' },
+    source:      { type: String, enum: ['manual', 'calendar', 'chat', 'suggested', 'monday'], default: 'manual' },
     eventIds:    { type: [String], default: undefined },
+    mondayItemIds: { type: [String], default: undefined },
   },
   { timestamps: true }
 )

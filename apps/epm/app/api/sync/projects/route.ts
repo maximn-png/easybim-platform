@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     const [
       { connectDB },
       ProjectModule,
-      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject, fetchAllTimesheetHours },
+      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject },
       { driveEnabled, findProjectFolders },
     ] = await Promise.all([
       import('@easybim/db'),
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch MA-004 projects + existing MongoDB ma003ItemIds in parallel
     const [allMa004Projects, existingDocs] = await Promise.all([
       fetchActiveMA004Projects(),
-      Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
+      Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ _id: { toString(): string }; projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
     ])
 
     // Active projects always sync. Done projects also get the full per-project
@@ -167,16 +167,20 @@ export async function POST(req: NextRequest) {
       errors.push(`Milestones: ${err instanceof Error ? err.message : String(err)}`)
     }
 
-    // 1f. Actual hours per project from TS-001/003/004/005, keyed by MA-003 item
-    // id — one bulk pass across all timesheet boards; best-effort. This is the
-    // same live figure the project page's Hours Analytics card computes, so the
-    // dashboard hours column now matches it (replaces the manual updateHours.ts).
-    let timesheetHours = new Map<string, import('@/lib/services/mondayService').TS001HoursSummary>()
+    // 1f. Actual hours per project from the TimeEntry collection (portal-logged
+    // entries + historical Monday imports, see backfillTimeEntriesFromMonday.ts),
+    // keyed by Project _id — this is the same figure the project page's Hours
+    // Analytics card computes (replaces the Monday timesheet sweep); best-effort.
+    let timeEntryHours = new Map<string, number>()
     try {
-      timesheetHours = await fetchAllTimesheetHours()
+      const { sumHoursByProject } = await import('@/lib/server/hoursService')
+      timeEntryHours = await sumHoursByProject()
     } catch (err) {
-      errors.push(`Timesheet hours: ${err instanceof Error ? err.message : String(err)}`)
+      errors.push(`TimeEntry hours: ${err instanceof Error ? err.message : String(err)}`)
     }
+
+    // projectNumber → Mongo _id, for the hours join in the upsert loop.
+    const existingIdMap = new Map(existingDocs.map(d => [d.projectNumber, String(d._id)]))
 
     // 2. Collect all MA-003 item IDs — live from board_relation + stored fallbacks
     const allMa003Ids = [...new Set([
@@ -209,10 +213,11 @@ export async function POST(req: NextRequest) {
         // Milestone completion (joined by MA-004 item id). Absent → leave null/[].
         const milestones = milestoneStats.get(p.itemId)
 
-        // Actual hours (joined by MA-003 item id) + derived progress vs budget.
-        // Only overwrite when a value resolved, so a transient empty read can't
+        // Actual hours (joined by Project _id from TimeEntry) + derived progress
+        // vs budget. Only overwrite when a value resolved, so an empty read can't
         // wipe good stored hours. Progress mirrors deriveHoursProgress().
-        const actualHours   = ma003Id ? timesheetHours.get(ma003Id)?.actualHours ?? null : null
+        const mongoId       = existingIdMap.get(p.projectNumber)
+        const actualHours   = mongoId ? timeEntryHours.get(mongoId) ?? null : null
         const hoursProgress =
           actualHours != null && p.budgetHours && p.budgetHours > 0
             ? Math.min(999, Math.max(0, Math.round((actualHours / p.budgetHours) * 100)))
