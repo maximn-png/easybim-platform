@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema, Types } from 'mongoose'
 
-// One person-day-project hours entry, written from the My Space week grid.
+// One categorized hours entry: user × project × day × Subject × Subtopic.
+// A week-grid cell (user × project × day) is the SUM of its category entries.
 // This is the platform-native replacement for rows on the Monday TS boards
 // (clean cut-over decided 2026-08 — no dual-write back to Monday).
 //
@@ -14,10 +15,11 @@ export interface ITimeEntry extends Document {
   projectId?:  Types.ObjectId     // set when projectKey is a real project
   projectName?: string            // denormalized for display / exports
   hours:       number             // 0.25 .. 24
-  subject?:    string             // discipline (Model MGMT / Superposition / ...), optional in v1
+  subject:     string             // Model MGMT / Superposition / Modelling / EasyBIM Internal ('' = uncategorized)
+  subtopic:    string             // Meetings / ProjectWork / Training / R&D ('' = uncategorized)
   note?:       string
   source:      'manual' | 'calendar' | 'chat' | 'suggested'
-  eventIds?:   string[]           // Google Calendar event ids logged into this cell
+  eventIds?:   string[]           // Google Calendar event ids logged into this entry
   createdAt:   Date
   updatedAt:   Date
 }
@@ -30,7 +32,8 @@ const TimeEntrySchema = new Schema<ITimeEntry>(
     projectId:   { type: Schema.Types.ObjectId, ref: 'Project' },
     projectName: { type: String },
     hours:       { type: Number, required: true, min: 0, max: 24 },
-    subject:     { type: String },
+    subject:     { type: String, default: '' },
+    subtopic:    { type: String, default: '' },
     note:        { type: String },
     source:      { type: String, enum: ['manual', 'calendar', 'chat', 'suggested'], default: 'manual' },
     eventIds:    { type: [String], default: undefined },
@@ -38,8 +41,8 @@ const TimeEntrySchema = new Schema<ITimeEntry>(
   { timestamps: true }
 )
 
-// The week grid has exactly one cell per user × project × day.
-TimeEntrySchema.index({ userId: 1, projectKey: 1, date: 1 }, { unique: true })
+// One entry per category slot of a grid cell.
+TimeEntrySchema.index({ userId: 1, projectKey: 1, date: 1, subject: 1, subtopic: 1 }, { unique: true })
 // "All my hours this week" and future per-project aggregations.
 TimeEntrySchema.index({ userId: 1, date: 1 })
 TimeEntrySchema.index({ projectId: 1, date: 1 })

@@ -12,8 +12,10 @@ export default async function MePage() {
     'there'
 
   return (
+    // epm-one-screen: locks the body to the viewport (≥1024px) — the three
+    // cards fill the remaining height and scroll internally instead.
     <div
-      className="flex-1 -mx-6 -my-6 px-6 py-6"
+      className="epm-one-screen flex-1 min-h-0 flex flex-col -mx-6 -my-6 px-6 py-4"
       style={{ background: 'linear-gradient(135deg, #f0f3ff 0%, #e7eefe 100%)' }}
     >
       <MySpaceClient userName={userName} />

@@ -47,8 +47,55 @@ export interface TimeEntryDTO {
   projectKey: string  // project _id or 'internal'
   projectName?: string
   hours: number
-  // Google Calendar event ids already logged into this cell.
+  subject: string     // '' = uncategorized (legacy entries)
+  subtopic: string
+  // Google Calendar event ids already logged into this entry.
   eventIds?: string[]
+}
+
+// The Subject → Subtopic taxonomy of the week grid (mirrors the Monday TS
+// boards' Subject/Subtopic columns, trimmed to the agreed list).
+export const TAXONOMY: ReadonlyArray<{ subject: string; subtopics: readonly string[] }> = [
+  { subject: 'Model MGMT', subtopics: ['Meetings', 'ProjectWork'] },
+  { subject: 'Superposition', subtopics: ['Meetings', 'ProjectWork'] },
+  { subject: 'Modelling', subtopics: ['Meetings', 'ProjectWork'] },
+  { subject: 'EasyBIM Internal', subtopics: ['Training', 'Meetings', 'R&D', 'Social', 'Management'] },
+]
+
+// Which Subject a user's meeting hours land in, by their role on the project.
+export const ROLE_SUBJECT: Record<MyRole, string> = {
+  'BIM Manager': 'Model MGMT',
+  'MEP Coordinator': 'Superposition',
+  'BIM Modeller': 'Modelling',
+}
+
+export interface AgendaMilestone {
+  milestoneName: string
+  billName: string
+  project: string     // "22130 ארנה אשדוד"
+  team: string
+  date: string        // YYYY-MM-DD
+  status: string
+  url: string
+}
+
+export interface AgendaTask {
+  name: string
+  boardName: string
+  date: string        // YYYY-MM-DD
+  status: string | null
+  overdue: boolean
+  url: string
+}
+
+export interface MeAgenda {
+  milestones: AgendaMilestone[]
+  tasks: AgendaTask[]
+  // The all-boards task sweep is slow; on a cold cache it builds in the
+  // background and this flag tells the UI to say so and poll again.
+  tasksBuilding: boolean
+  // false = no Monday identity found for this user, so tasks can't be matched.
+  mondayIdFound: boolean
 }
 
 export interface CalendarEventDTO {
@@ -58,6 +105,9 @@ export interface CalendarEventDTO {
   startTime: string | null  // 'HH:mm' local, null for all-day
   durationHours: number     // rounded to 0.25, all-day events report 0
   allDay: boolean
+  // Projects recognized in the event title. Multiple matches → the meeting's
+  // hours are split between them on approval.
+  matches?: Array<{ projectId: string; projectName: string; projectNumber: string }>
 }
 
 export interface CalendarResponse {

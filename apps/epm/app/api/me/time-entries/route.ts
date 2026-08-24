@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
       projectKey: d.projectKey,
       projectName: d.projectName,
       hours: d.hours,
+      subject: d.subject ?? '',
+      subtopic: d.subtopic ?? '',
       eventIds: d.eventIds,
     }))
     return withMeCors(req, NextResponse.json({ entries }))
@@ -48,21 +50,23 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/me/time-entries
-// Body: { date, projectKey, projectName?, hours, add?, eventId? }
-// Default: upserts the single grid cell (user × project × day); hours <= 0 deletes it.
-// add: true — increments the cell instead (used when logging a calendar event
-// into a day that already has hours), tagging the entry with the event id.
+// Body: { date, projectKey, projectName?, subject?, subtopic?, hours, add?, eventId? }
+// Default: upserts one category entry (user × project × day × subject × subtopic);
+// hours <= 0 deletes it. add: true — increments the entry instead (used when
+// logging a calendar event on top of existing hours), tagging it with the event id.
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null) as
-    { date?: string; projectKey?: string; projectName?: string; hours?: number; add?: boolean; eventId?: string } | null
+    { date?: string; projectKey?: string; projectName?: string; hours?: number; add?: boolean; eventId?: string; subject?: string; subtopic?: string } | null
   const date = body?.date ?? ''
   const projectKey = (body?.projectKey ?? '').trim()
   const hours = Number(body?.hours)
   const add = body?.add === true
   const eventId = typeof body?.eventId === 'string' && body.eventId ? body.eventId : undefined
+  const subject = typeof body?.subject === 'string' ? body.subject.slice(0, 60) : ''
+  const subtopic = typeof body?.subtopic === 'string' ? body.subtopic.slice(0, 60) : ''
 
   if (!DATE_RE.test(date)) return NextResponse.json({ error: 'date must be YYYY-MM-DD' }, { status: 400 })
   if (!projectKey) return NextResponse.json({ error: 'projectKey is required' }, { status: 400 })
@@ -77,8 +81,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const TimeEntry = await db()
+    const filter = { userId, projectKey, date, subject, subtopic }
     if (!add && hours === 0) {
-      await TimeEntry.deleteOne({ userId, projectKey, date })
+      await TimeEntry.deleteOne(filter)
       return NextResponse.json({ ok: true, deleted: true })
     }
     const { Types } = await import('mongoose')
@@ -97,11 +102,7 @@ export async function POST(req: NextRequest) {
           $setOnInsert: { source: 'manual' },
         }
 
-    const doc = await TimeEntry.findOneAndUpdate(
-      { userId, projectKey, date },
-      update,
-      { upsert: true, new: true, runValidators: true }
-    )
+    const doc = await TimeEntry.findOneAndUpdate(filter, update, { upsert: true, new: true, runValidators: true })
     return NextResponse.json({ ok: true, hours: doc?.hours ?? hours })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

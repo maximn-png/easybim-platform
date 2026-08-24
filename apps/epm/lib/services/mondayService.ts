@@ -1351,3 +1351,232 @@ export async function fetchBoardDocUpdates(boardId: string): Promise<MondayUpdat
   }
   return out
 }
+
+// ── My Space agenda: personal milestones & tasks ────────────────────────────
+
+export interface MyMilestoneBill {
+  milestoneId:   string
+  milestoneName: string
+  billName:      string   // the הגשה subitem
+  projectItemId: string   // linked MA-004 item id
+  team:          string   // צוות label on the milestone
+  date:          string   // YYYY-MM-DD (תאריך הגשת חשבון)
+  status:        string   // סטאטוס הגשה label
+  url:           string
+}
+
+// MI-001 milestones for a set of projects: each milestone's bill subitems carry
+// the date + status; a bill is "relevant" when its date falls in [start, end].
+export async function fetchMyMilestones(
+  ma004ItemIds: string[],
+  start: string,
+  end: string,
+): Promise<MyMilestoneBill[]> {
+  if (ma004ItemIds.length === 0) return []
+
+  const query = `
+    query ($boardId: ID!, $limit: Int!, $cursor: String, $queryParams: ItemsQuery) {
+      boards(ids: [$boardId]) {
+        items_page(limit: $limit, cursor: $cursor, query_params: $queryParams) {
+          cursor
+          items {
+            id
+            name
+            column_values(ids: ["board_relation_mkywzj9x", "color_mm06m73n"]) {
+              id
+              text
+              ... on BoardRelationValue { linked_item_ids }
+            }
+            subitems {
+              id
+              name
+              column_values(ids: ["date_mkyk6jwj", "color_mkyk8mbx"]) {
+                id
+                text
+              }
+            }
+          }
+        }
+      }
+    }
+  `
+  // board_relation filtering requires linked item ids as NUMBERS — strings yield zero matches.
+  const queryParams = {
+    rules: [{ column_id: 'board_relation_mkywzj9x', compare_value: ma004ItemIds.map(Number), operator: 'any_of' }],
+  }
+
+  const out: MyMilestoneBill[] = []
+  let cursor: string | null = null
+  let first = true
+
+  do {
+    // query_params can only be sent on the first request; later pages use the cursor alone.
+    const variables = first
+      ? { boardId: MILESTONES_BOARD_ID, limit: 50, queryParams }
+      : { boardId: MILESTONES_BOARD_ID, limit: 50, cursor }
+
+    const data = await mondayQuery(query, variables) as {
+      boards: Array<{ items_page: { cursor: string | null; items: Array<{
+        id: string
+        name: string
+        column_values: Array<{ id: string; text: string; linked_item_ids?: string[] }>
+        subitems: Array<{ id: string; name: string; column_values: Array<{ id: string; text: string }> }> | null
+      }> } }>
+    }
+    const page = data.boards?.[0]?.items_page
+    cursor = page?.cursor ?? null
+    first = false
+
+    for (const item of page?.items ?? []) {
+      const colMap = Object.fromEntries(item.column_values.map(c => [c.id, c]))
+      const projectItemId = colMap['board_relation_mkywzj9x']?.linked_item_ids?.[0]
+      if (!projectItemId) continue
+      const team = (colMap['color_mm06m73n']?.text ?? '').trim()
+
+      for (const bill of item.subitems ?? []) {
+        const date = (bill.column_values.find(c => c.id === 'date_mkyk6jwj')?.text ?? '').trim()
+        if (!date || date < start || date > end) continue
+        out.push({
+          milestoneId:   item.id,
+          milestoneName: item.name,
+          billName:      bill.name,
+          projectItemId,
+          team,
+          date,
+          status: (bill.column_values.find(c => c.id === 'color_mkyk8mbx')?.text ?? '').trim(),
+          url:    pulseUrl(MILESTONES_BOARD_ID, item.id) ?? '',
+        })
+      }
+    }
+  } while (cursor)
+
+  return out.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export interface MyBoardTask {
+  id:        string
+  name:      string
+  boardName: string
+  date:      string          // YYYY-MM-DD
+  status:    string | null
+  overdue:   boolean
+  url:       string
+}
+
+// Statuses that mean "nothing left to do" — such items never show as tasks.
+const TASK_DONE_STATUSES = new Set([
+  'done', 'submitted', 'completed', 'work completed', 'closed', 'rejected', 'canceled', 'cancelled',
+  'הושלם', 'בוצע', 'סגור', 'אושר', 'הוגש',
+])
+
+// Boards that are not task sources: timesheets (TS-* and the many legacy
+// per-project "..._Timesheet" boards), milestones, and subitem shadows.
+function isTaskBoard(name: string): boolean {
+  const n = name.trim().toLowerCase()
+  return (
+    !n.startsWith('ts-') &&
+    !n.startsWith('mi-') &&
+    !n.startsWith('subitems of') &&
+    !n.includes('timesheet')
+  )
+}
+
+// Items assigned to a Monday user across ALL active boards (minus timesheet/
+// milestone/subitem boards): overdue since `overdueSince` plus everything due
+// through `monthEnd`. Columns are read generically by TYPE (people/date/status)
+// so any board shape works. This sweeps the whole account — call it behind a
+// cache, ideally in the background.
+export async function fetchMyTasksAllBoards(
+  mondayUserId: string,
+  overdueSince: string,
+  today: string,
+  monthEnd: string,
+): Promise<MyBoardTask[]> {
+  if (!mondayUserId) return []
+
+  // 1. Discover boards (paged; Monday caps boards-per-page).
+  const boardsQuery = `
+    query ($page: Int!) {
+      boards(limit: 200, page: $page, state: active) {
+        id
+        name
+        type
+      }
+    }
+  `
+  const boardIds: Array<{ id: string; name: string }> = []
+  for (let page = 1; page <= 10; page++) {
+    const data = await mondayQuery(boardsQuery, { page }) as {
+      boards: Array<{ id: string; name: string; type: string }>
+    }
+    const boards = data.boards ?? []
+    for (const b of boards) {
+      if (b.type === 'board' && isTaskBoard(b.name)) boardIds.push({ id: b.id, name: b.name })
+    }
+    if (boards.length < 200) break
+  }
+
+  // 2. Sweep items in chunks, reading only what the filter needs (text is
+  // requested only on status columns — it's the expensive part of the query).
+  const itemsQuery = `
+    query ($ids: [ID!]) {
+      boards(ids: $ids) {
+        id
+        name
+        items_page(limit: 50) {
+          items {
+            id
+            name
+            url
+            column_values {
+              id
+              type
+              ... on PeopleValue { persons_and_teams { id } }
+              ... on DateValue { date }
+              ... on StatusValue { text }
+            }
+          }
+        }
+      }
+    }
+  `
+  const out: MyBoardTask[] = []
+  for (let i = 0; i < boardIds.length; i += 6) {
+    const chunk = boardIds.slice(i, i + 6)
+    try {
+      const data = await mondayQuery(itemsQuery, { ids: chunk.map(b => b.id) }) as {
+        boards: Array<{ id: string; name: string; items_page: { items: Array<{
+          id: string
+          name: string
+          url: string
+          column_values: Array<{
+            id: string; type: string; text: string | null
+            persons_and_teams?: Array<{ id: string }>
+            date?: string | null
+          }>
+        }> } | null }>
+      }
+      for (const board of data.boards ?? []) {
+        for (const item of board.items_page?.items ?? []) {
+          const mine = item.column_values.some(
+            c => c.type === 'people' && c.persons_and_teams?.some(p => String(p.id) === String(mondayUserId))
+          )
+          if (!mine) continue
+          const date = item.column_values.find(c => c.type === 'date' && c.date)?.date ?? ''
+          if (!date || date > monthEnd || date < overdueSince) continue
+          const status = item.column_values.find(c => c.type === 'status' && c.text)?.text ?? null
+          if (status && TASK_DONE_STATUSES.has(status.trim().toLowerCase())) continue
+          out.push({
+            id: item.id, name: item.name, boardName: board.name,
+            date, status, overdue: date < today, url: item.url,
+          })
+        }
+      }
+    } catch (err) {
+      // One bad chunk (archived board, no access) must not empty the whole card.
+      console.warn('[fetchMyTasksAllBoards] chunk failed:', chunk.map(b => b.name), err)
+    }
+  }
+
+  return out.sort((a, b) => a.date.localeCompare(b.date))
+}
