@@ -75,8 +75,20 @@ export default function NewVersionPicker({
     }
   }
 
+  function requestClose() {
+    if (running && !window.confirm('הבדיקה ממשיכה ברקע ותופיע ברשימה כשתסתיים. לסגור את החלון?')) return
+    onClose()
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(15,23,42,.45)' }} onClick={onClose}>
+    // stopPropagation on the overlay too: this picker renders inside the
+    // drawer's backdrop, and without it a backdrop click here would bubble up
+    // and close the drawer as well.
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(15,23,42,.45)' }}
+      onClick={(e) => { e.stopPropagation(); if (!running) onClose() }}
+    >
       <div
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
@@ -86,7 +98,7 @@ export default function NewVersionPicker({
           <h2 className="flex items-center gap-2" style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>
             <GitCompare size={18} style={{ color: TEAL }} /> בדיקת גרסה מתוקנת
           </h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9aa0ac' }}>
+          <button onClick={requestClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9aa0ac' }}>
             <X size={18} />
           </button>
         </div>

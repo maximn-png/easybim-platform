@@ -13,6 +13,8 @@ export const CARD: CSSProperties = {
 
 export const MAX_PREVIOUS_CONTRACTS = 3
 
+export type Verification = 'confirmed' | 'suspect'
+
 export interface IssueRow {
   page: string
   section: string
@@ -21,6 +23,9 @@ export interface IssueRow {
   dropped?: boolean
   /** one note per compared contract, in the order of the review's previousLabels */
   prevNotes?: string[]
+  /** evidence-verification outcome; absent until the verify pass judged the row */
+  verification?: Verification
+  verificationNote?: string
 }
 
 /** A contract already signed with this client, offered for comparison. */
@@ -56,6 +61,9 @@ export interface ReviewDTO {
   verdictCounts: Record<Verdict, number> | null
   status: 'analyzing' | 'ready' | 'error'
   error: string | null
+  /** state of the evidence-verification pass; null on reviews that predate it */
+  verifyStatus: 'pending' | 'running' | 'done' | 'error' | null
+  verifyError: string | null
   issues: IssueRow[]
   issueCount: number
   openCount: number
@@ -152,6 +160,8 @@ export interface FindingVerdict {
   note?: string
   remaining?: string
   dropped?: boolean
+  verification?: Verification
+  verificationNote?: string
 }
 
 /** Ordered for the summary bar: wins first, then what still needs chasing. */

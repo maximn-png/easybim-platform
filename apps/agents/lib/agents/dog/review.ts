@@ -7,6 +7,8 @@ import AgreementReview, {
   ReviewIssue,
   Verdict,
   VERDICTS,
+  Verification,
+  VERIFICATIONS,
 } from '@/lib/models/AgreementReview'
 import { getGuidance, guidanceBlock } from '@/lib/core/guidance'
 import { getChecklist } from './checklist'
@@ -155,14 +157,20 @@ export async function analyze(
     { type: 'text', text: reviewInstruction(previous.map((p) => p.label)) },
   ]
 
+  // Streamed so the request never trips HTTP timeouts, with thinking depth
+  // turned up — a legal read is exactly the work worth spending tokens on.
   const c = client()
-  const res = await c.messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system,
-    tools: [REPORT_TOOL],
-    messages: [{ role: 'user', content }],
-  })
+  const res = await c.messages
+    .stream({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+      tools: [REPORT_TOOL],
+      messages: [{ role: 'user', content }],
+    })
+    .finalMessage()
 
   let inputTokens = res.usage?.input_tokens ?? 0
   let outputTokens = res.usage?.output_tokens ?? 0
@@ -261,6 +269,8 @@ export async function startReview(args: StartReviewArgs): Promise<IAgreementRevi
     review.status = 'ready'
     review.issues = result.issues
     review.issuesOriginal = result.issues.map((i) => ({ ...i }))
+    // Queue the evidence-verification pass; the drawer fires it as its own request.
+    review.verifyStatus = result.issues.length > 0 ? 'pending' : 'done'
     review.checklistVersion = result.checklistVersion
     review.inputTokens = result.inputTokens
     review.outputTokens = result.outputTokens
@@ -308,6 +318,9 @@ export interface ReviewDTO {
   verdictCounts: Record<Verdict, number> | null
   status: string
   error: string | null
+  /** state of the evidence-verification pass; null on reviews that predate it */
+  verifyStatus: string | null
+  verifyError: string | null
   issues: ReviewIssue[]
   issueCount: number
   openCount: number
@@ -356,6 +369,8 @@ export function toDTO(r: IAgreementReview, opts: { slim?: boolean } = {}): Revie
     verdictCounts: verdicts.length ? countVerdicts(verdicts) : null,
     status: r.status,
     error: r.error ?? null,
+    verifyStatus: r.verifyStatus ?? null,
+    verifyError: r.verifyError ?? null,
     issues: opts.slim ? [] : issues,
     issueCount: issues.length,
     openCount: issues.filter((i) => !i.dropped).length,
@@ -381,6 +396,11 @@ export async function getReview(id: string): Promise<IAgreementReview | null> {
  * rows too. `issuesOriginal` is never touched — it is the frozen model output the
  * edit diff is measured against.
  */
+/** Round-trip a verification tag from client data without trusting arbitrary strings. */
+function asVerification(v: unknown): Verification | undefined {
+  return (VERIFICATIONS as string[]).includes(String(v)) ? (v as Verification) : undefined
+}
+
 export async function updateIssues(
   id: string,
   issues: ReviewIssue[],
@@ -405,6 +425,10 @@ export async function updateIssues(
         note: String(v?.note ?? ''),
         remaining: String(v?.remaining ?? ''),
         dropped: !!v?.dropped,
+        // Verification is server-owned: keep what the verify pass wrote, never
+        // what the client sends (rows are index-aligned; verdicts can't be added).
+        verification: original?.verification,
+        verificationNote: original?.verificationNote,
       }
     })
   }
@@ -417,6 +441,10 @@ export async function updateIssues(
     description: String(i.description ?? ''),
     fix: String(i.fix ?? ''),
     dropped: !!i.dropped,
+    // Issue rows can be added/removed, so index-matching the stored doc is not
+    // safe — the client carries the verification tag through its local state.
+    verification: asVerification(i.verification),
+    verificationNote: i.verificationNote ? String(i.verificationNote) : undefined,
     ...(prevCount > 0
       ? { prevNotes: Array.from({ length: prevCount }, (_, n) => String(i.prevNotes?.[n] ?? '')) }
       : {}),

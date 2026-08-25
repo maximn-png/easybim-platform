@@ -8,6 +8,14 @@ import mongoose, { Schema, Document, Model } from 'mongoose'
 export type ReviewStatus = 'analyzing' | 'ready' | 'error'
 export const REVIEW_STATUSES: ReviewStatus[] = ['analyzing', 'ready', 'error']
 
+/** The evidence-verification pass that runs after a review lands. */
+export type VerifyStatus = 'pending' | 'running' | 'done' | 'error'
+export const VERIFY_STATUSES: VerifyStatus[] = ['pending', 'running', 'done', 'error']
+
+/** Per-item outcome of that pass. Absent = the pass never judged this item. */
+export type Verification = 'confirmed' | 'suspect'
+export const VERIFICATIONS: Verification[] = ['confirmed', 'suspect']
+
 /** One finding. Mirrors the columns of the old report table. */
 export interface ReviewIssue {
   page: string
@@ -22,6 +30,10 @@ export interface ReviewIssue {
    * The old report's X1/X2/X3 columns, as plain fields.
    */
   prevNotes?: string[]
+  /** did the verification pass find the quote/section in the document? */
+  verification?: Verification
+  /** why the item is suspect (Hebrew, from the verification pass) */
+  verificationNote?: string
 }
 
 const ReviewIssueSchema = new Schema<ReviewIssue>(
@@ -32,6 +44,8 @@ const ReviewIssueSchema = new Schema<ReviewIssue>(
     fix: { type: String, default: '' },
     dropped: { type: Boolean, default: false },
     prevNotes: { type: [String], default: undefined },
+    verification: { type: String, enum: VERIFICATIONS, default: undefined },
+    verificationNote: String,
   },
   { _id: false }
 )
@@ -85,6 +99,10 @@ export interface FindingVerdict {
   remaining?: string
   /** left out of the follow-up letter (kept on the record) */
   dropped?: boolean
+  /** did the verification pass find the evidence quote supporting the verdict? */
+  verification?: Verification
+  /** why the verdict is suspect (Hebrew, from the verification pass) */
+  verificationNote?: string
 }
 
 const FindingVerdictSchema = new Schema<FindingVerdict>(
@@ -102,6 +120,8 @@ const FindingVerdictSchema = new Schema<FindingVerdict>(
     note: String,
     remaining: String,
     dropped: { type: Boolean, default: false },
+    verification: { type: String, enum: VERIFICATIONS, default: undefined },
+    verificationNote: String,
   },
   { _id: false }
 )
@@ -126,6 +146,9 @@ export interface IAgreementReview extends Document {
   previousContracts: PreviousContract[]
   status: ReviewStatus
   error?: string
+  /** state of the evidence-verification pass (absent on reviews that predate it) */
+  verifyStatus?: VerifyStatus
+  verifyError?: string
   /**
    * The findings. In round 1 these are the review; in a follow-up round they are
    * the problems the revision *introduced* — the verdicts carry the old agenda.
@@ -156,6 +179,8 @@ const AgreementReviewSchema = new Schema<IAgreementReview>(
     previousContracts: { type: [PreviousContractSchema], default: [] },
     status: { type: String, enum: REVIEW_STATUSES, default: 'analyzing', index: true },
     error: String,
+    verifyStatus: { type: String, enum: VERIFY_STATUSES, default: undefined },
+    verifyError: String,
     issues: { type: [ReviewIssueSchema], default: [] },
     issuesOriginal: { type: [ReviewIssueSchema], default: [] },
     checklistVersion: Number,

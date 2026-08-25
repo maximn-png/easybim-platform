@@ -114,11 +114,18 @@ export default function NewReviewPanel({
     }
   }
 
+  // A run costs minutes and real money — a stray backdrop click must not lose
+  // it. The X still works mid-run, with a heads-up that the run continues.
+  function requestClose() {
+    if (running && !window.confirm('הבדיקה ממשיכה ברקע ותופיע ברשימה כשתסתיים. לסגור את החלון?')) return
+    onClose()
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{ background: 'rgba(15,23,42,.45)' }}
-      onClick={onClose}
+      onClick={() => { if (!running) onClose() }}
     >
       <div
         dir="rtl"
@@ -127,7 +134,7 @@ export default function NewReviewPanel({
       >
         <div className="flex items-center justify-between mb-1">
           <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>בדיקת הסכם חדשה</h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9aa0ac' }}>
+          <button onClick={requestClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9aa0ac' }}>
             <X size={18} />
           </button>
         </div>

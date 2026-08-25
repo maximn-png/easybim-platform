@@ -50,6 +50,28 @@ export default function DogDashboard({
 
   useEffect(() => { load() }, [load])
 
+  // Reviews run for minutes server-side; keep the list honest while any run or
+  // verification pass is in flight (same interval pattern as RunHistory).
+  const busy = reviews.some(
+    (r) => r.status === 'analyzing' || r.verifyStatus === 'pending' || r.verifyStatus === 'running'
+  )
+  useEffect(() => {
+    if (!busy) return
+    const t = setInterval(load, 20_000)
+    return () => clearInterval(t)
+  }, [busy, load])
+
+  // A run finished while the tab was in the background? Refresh on return.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') load() }
+    window.addEventListener('focus', load)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('focus', load)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [load])
+
   const openFindings = reviews.reduce((n, r) => n + (r.status === 'ready' ? r.openCount : 0), 0)
   const unedited = reviews.filter((r) => r.status === 'ready' && !r.edited).length
 
@@ -153,6 +175,9 @@ export default function DogDashboard({
                 </div>
                 {r.edited && (
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: '#6b7280', background: '#f3f4f6', padding: '4px 9px', borderRadius: 999 }}>נערך</span>
+                )}
+                {r.status === 'ready' && (r.verifyStatus === 'pending' || r.verifyStatus === 'running') && (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: '#b54708', background: '#fffaeb', padding: '4px 9px', borderRadius: 999, flex: 'none' }}>מאמת…</span>
                 )}
                 <StatusPill status={r.status} />
               </button>
