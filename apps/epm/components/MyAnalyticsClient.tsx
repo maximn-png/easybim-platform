@@ -17,6 +17,7 @@ import ColumnHeaderMenu, { type FilterValue, type SortDir } from './ColumnHeader
 const INTERNAL_KEY = 'internal'
 const INTERNAL_NAME = 'EasyBIM internal'
 const MONTHLY_TARGET = 160
+const PORTAL_URL = process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:3000'
 
 // Categorical palette for subtopics — fixed order, validated (dataviz six checks,
 // light surface). Uncategorized is the neutral "Other" slot.
@@ -318,7 +319,7 @@ export default function MyAnalyticsClient() {
     <div className="max-w-[1800px] w-full mx-auto flex-1 min-h-0 flex flex-col">
       {/* breadcrumb */}
       <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
-        <Link href="/dashboard" className="hover:text-[#1e248c]">Dashboard</Link>
+        <a href={PORTAL_URL} className="hover:text-[#1e248c]">Platform</a>
         <ChevronRight size={12} />
         <Link href="/me" className="hover:text-[#1e248c]">My Space</Link>
         <ChevronRight size={12} />

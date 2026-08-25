@@ -28,7 +28,12 @@ export async function GET(
 
   const fromId = req.nextUrl.searchParams.get('from')
   const toId = req.nextUrl.searchParams.get('to')
-  const discipline = req.nextUrl.searchParams.get('discipline')
+  // Generic filter: filterKey is a snapshot dimension ('discipline', 'assignedTo',
+  // 'createdBy', 'issueType') or a custom attribute ('attr:<Title>'). The legacy
+  // ?discipline= param maps onto it.
+  const legacyDiscipline = req.nextUrl.searchParams.get('discipline')
+  const filterKey = req.nextUrl.searchParams.get('filterKey') ?? (legacyDiscipline ? 'discipline' : null)
+  const filterValue = req.nextUrl.searchParams.get('filterValue') ?? legacyDiscipline
   if (!fromId || !toId) {
     return NextResponse.json({ error: 'from and to report ids are required' }, { status: 400 })
   }
@@ -62,18 +67,43 @@ export async function GET(
     const fromSnap = fromDoc.issuesSnapshot.filter(notDraft)
     const toSnap = toDoc.issuesSnapshot.filter(notDraft)
 
-    // Disciplines are listed from the full snapshots (pre-discipline-filter) so the
-    // modal's dropdown is stable while filtering.
-    const disciplines = [...new Set(
-      [...fromSnap, ...toSnap]
-        .map(i => i.discipline?.trim())
-        .filter(Boolean) as string[]
-    )].sort((a, b) => a.localeCompare(b))
+    // Value of a filterable dimension on a snapshot issue. Snapshots written
+    // before the extra fields existed only carry discipline — absent fields
+    // simply don't appear in filterOptions below.
+    const paramOf = (i: ReportIssueSnapshot, key: string): string | undefined => {
+      if (key === 'discipline') return i.discipline?.trim() || undefined
+      if (key === 'assignedTo') return i.assignedTo?.trim() || undefined
+      if (key === 'createdBy')  return i.createdBy?.trim() || undefined
+      if (key === 'issueType')  return i.issueType?.trim() || undefined
+      if (key.startsWith('attr:')) return i.attributes?.[key.slice(5)]?.trim() || undefined
+      return undefined
+    }
 
-    const byDiscipline = (i: ReportIssueSnapshot) =>
-      !discipline || (i.discipline?.trim() ?? '') === discipline
-    const fromIssues = fromSnap.filter(byDiscipline)
-    const toIssues = toSnap.filter(byDiscipline)
+    // Filterable parameters + their values, listed from the full snapshots
+    // (pre-filter) so the modal's dropdowns stay stable while filtering.
+    const allIssues = [...fromSnap, ...toSnap]
+    const baseKeys: Array<{ key: string; label: string }> = [
+      { key: 'discipline', label: 'Discipline' },
+      { key: 'assignedTo', label: 'Assigned To' },
+      { key: 'createdBy',  label: 'Created By' },
+      { key: 'issueType',  label: 'Issue Type' },
+    ]
+    const attrKeys = [...new Set(
+      allIssues.flatMap(i => Object.keys(i.attributes ?? {})).map(k => k.trim()).filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b)).map(t => ({ key: `attr:${t}`, label: t }))
+    const filterOptions = [...baseKeys, ...attrKeys]
+      .map(({ key, label }) => ({
+        key,
+        label,
+        values: [...new Set(allIssues.map(i => paramOf(i, key)).filter(Boolean) as string[])]
+          .sort((a, b) => a.localeCompare(b)),
+      }))
+      .filter(o => o.values.length > 0)
+
+    const byFilter = (i: ReportIssueSnapshot) =>
+      !filterKey || !filterValue || paramOf(i, filterKey) === filterValue
+    const fromIssues = fromSnap.filter(byFilter)
+    const toIssues = toSnap.filter(byFilter)
 
     const fromMap = new Map(fromIssues.map(i => [issueKey(i, fromId), i.status]))
     const toMap = new Map(toIssues.map(i => [issueKey(i, toId), i.status]))
@@ -119,7 +149,7 @@ export async function GET(
       to: report(toDoc, toIssues),
       flows,
       matchedCount,
-      disciplines,
+      filterOptions,
     })
   } catch (err) {
     console.error('[report-compare]', err)

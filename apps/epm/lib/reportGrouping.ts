@@ -86,6 +86,25 @@ export function issueDiscipline(issue: Pick<AccIssue, 'discipline' | 'attributes
   return undefined
 }
 
+// Compact per-issue snapshot stored on saved reports, consumed by the Progress
+// comparison. Carries every dimension the modal can filter by; custom attributes
+// keep their display values so the filter list adapts to each project.
+export function toIssueSnapshot(i: AccIssue) {
+  const attrs = Object.fromEntries(
+    Object.entries(i.attributes ?? {}).filter(([k, v]) => k.trim() && v?.trim())
+  )
+  return {
+    id:         i.id,
+    displayId:  i.displayId || undefined,
+    status:     normalizeStatus(i.status),
+    discipline: issueDiscipline(i),
+    assignedTo: i.assignedTo?.trim() || undefined,
+    createdBy:  i.createdBy?.trim() || undefined,
+    issueType:  i.issueType?.trim() || undefined,
+    attributes: Object.keys(attrs).length > 0 ? attrs : undefined,
+  }
+}
+
 // ── Stack-by dimensions ──────────────────────────────────────────────────────
 // Static set used by the Export modal / PDF / server HTML (fixed layouts).
 export const GROUP_OPTIONS = [

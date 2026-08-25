@@ -72,28 +72,46 @@ export const ROLE_SUBJECT: Record<MyRole, string> = {
 export interface AgendaMilestone {
   milestoneName: string
   billName: string
-  project: string     // "22130 ארנה אשדוד"
+  // The bill's Employee(s) — Monday profile photos.
+  employees: Array<{ id: string; name: string; avatarUrl?: string }>
+  projectItemId: string  // MA-004 item id — key into milestoneHistory
+  project: string        // "22130 ארנה אשדוד"
+  projectNumber: string
+  projectName: string
   team: string
-  date: string        // YYYY-MM-DD
+  date: string           // YYYY-MM-DD
   status: string
-  url: string
+  url: string            // the bill subitem (its updates)
 }
 
 export interface AgendaTask {
+  id: string
   name: string
+  boardId: string
   boardName: string
   date: string        // YYYY-MM-DD
+  dueColumnId: string | null
   status: string | null
+  statusColumnId: string | null
+  statusLabels: string[]
   overdue: boolean
+  priority: string | null
+  priorityColumnId: string | null
+  priorityLabels: string[]
   url: string
 }
 
 export interface MeAgenda {
   milestones: AgendaMilestone[]
+  // ALL milestone bills per project (projectItemId → chronological rows),
+  // for the hover history on a milestone row.
+  milestoneHistory: Record<string, AgendaMilestone[]>
   tasks: AgendaTask[]
   // The all-boards task sweep is slow; on a cold cache it builds in the
   // background and this flag tells the UI to say so and poll again.
   tasksBuilding: boolean
+  // When the cached task sweep was last computed (ISO), null when live/absent.
+  tasksCachedAt: string | null
   // false = no Monday identity found for this user, so tasks can't be matched.
   mondayIdFound: boolean
 }

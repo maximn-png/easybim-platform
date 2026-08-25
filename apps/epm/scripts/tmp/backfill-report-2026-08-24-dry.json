@@ -1,0 +1,539 @@
+{
+  "runAt": "2026-08-24T09:38:43.983Z",
+  "dryRun": true,
+  "perBoard": {
+    "TS-001 Projects": {
+      "rows": 9103,
+      "imported": 8865,
+      "hoursImported": 14418.410000000003,
+      "skippedUndated": 4,
+      "undatedHours": 4.5,
+      "skippedZeroHours": 180
+    },
+    "TS-002 InteriorBIM": {
+      "rows": 3677,
+      "imported": 3672,
+      "hoursImported": 4558,
+      "skippedUndated": 3,
+      "undatedHours": 5,
+      "skippedZeroHours": 2
+    },
+    "TS-003 EasyBIM": {
+      "rows": 3392,
+      "imported": 3343,
+      "hoursImported": 4975.110000000001,
+      "skippedUndated": 0,
+      "undatedHours": 0,
+      "skippedZeroHours": 49
+    },
+    "TS-004 Completed Projects": {
+      "rows": 1002,
+      "imported": 1001,
+      "hoursImported": 2164.95,
+      "skippedUndated": 0,
+      "undatedHours": 0,
+      "skippedZeroHours": 1
+    },
+    "TS-005 Medical Projects": {
+      "rows": 1173,
+      "imported": 1169,
+      "hoursImported": 2027.5,
+      "skippedUndated": 0,
+      "undatedHours": 0,
+      "skippedZeroHours": 4
+    }
+  },
+  "unknownSubjects": {},
+  "nonTaxonomySubtopics": {
+    "Other": 189,
+    "BEP": 515,
+    "CEP": 113,
+    "Mails & Phone Calls": 1221,
+    "MEP Coord": 2179,
+    "ARC/STR Coord": 518,
+    "Model QA": 700,
+    "General": 3142,
+    "ACC Hub": 657,
+    "Modelling": 562,
+    "Openings": 230,
+    "Marketing": 2,
+    "ManagmentMeeting": 849,
+    "Development": 258,
+    "WWH": 46,
+    "Development, Meeting": 1
+  },
+  "unmatchedMa003": {},
+  "sharedMa003": {
+    "9692818157": [
+      "22184 מבנה אינטגרציה",
+      "22196 מבנה אינטגרציה מידול אינסטלציה"
+    ]
+  },
+  "unmatchedLabels": {},
+  "ambiguousLabels": {},
+  "labelMatches": {},
+  "internalLabelRows": {
+    "Meeting": {
+      "rows": 1,
+      "hours": 1
+    }
+  },
+  "unresolvedProjectRows": [
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12050816567",
+      "date": "2026-05-19",
+      "hours": 0.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11359975890",
+      "date": "2026-02-23",
+      "hours": 0.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11349265379",
+      "date": "2026-02-24",
+      "hours": 0.5,
+      "person": "Guy Cohen"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11349257289",
+      "date": "2026-02-24",
+      "hours": 1.5,
+      "person": "Guy Cohen"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11283146109",
+      "date": "2026-02-16",
+      "hours": 0.5,
+      "person": "Guy Cohen"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11279287897",
+      "date": "2026-02-15",
+      "hours": 1,
+      "person": "Guy Cohen"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11157586694",
+      "date": "2026-02-03",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11094999124",
+      "date": "2026-01-25",
+      "hours": 1.5,
+      "person": "Chany Elbaz"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11095005633",
+      "date": "2026-01-20",
+      "hours": 4,
+      "person": "Chany Elbaz"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "10907601815",
+      "date": "2026-01-05",
+      "hours": 0.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "10774200504",
+      "date": "2025-12-15",
+      "hours": 3,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "10667855215",
+      "date": "2025-12-01",
+      "hours": 1.5,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9888171490",
+      "date": "2025-08-25",
+      "hours": 2,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9783139287",
+      "date": "2025-08-10",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9783139272",
+      "date": "2025-08-10",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9783139270",
+      "date": "2025-08-10",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9783139277",
+      "date": "2025-08-10",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9783138511",
+      "date": "2025-08-11",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9692601503",
+      "date": "2025-07-29",
+      "hours": 3,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9529666237",
+      "date": "2025-07-13",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9529665921",
+      "date": "2025-07-13",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9308413221",
+      "date": "2025-06-05",
+      "hours": 2.5,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9339830586",
+      "date": "2025-06-10",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9018045740",
+      "date": "2025-04-28",
+      "hours": 1.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9018049689",
+      "date": "2025-04-28",
+      "hours": 0.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9236815270",
+      "date": "2025-05-04",
+      "hours": 1.5,
+      "person": "Bayan abu awad"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "8191304106",
+      "date": "2025-01-08",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "7491787162",
+      "date": "2024-09-23",
+      "hours": 1.5,
+      "person": "Miri Label"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9392480742",
+      "date": "2025-06-17",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9970473754",
+      "date": "2025-09-04",
+      "hours": 1,
+      "person": "Ruthy Fisher"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "9991606442",
+      "date": "2025-09-07",
+      "hours": 0.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "10005944506",
+      "date": "2025-09-08",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "18112091203",
+      "date": "2025-09-03",
+      "hours": 1,
+      "person": "Ruthy Fisher"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "18189022615",
+      "date": "2025-10-15",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "10720123977",
+      "date": "2025-12-07",
+      "hours": 1,
+      "person": "Gal Shem-Tov"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11107213611",
+      "date": "2026-01-26",
+      "hours": 4,
+      "person": "Chany Elbaz"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11108251200",
+      "date": "2026-01-27",
+      "hours": 3.5,
+      "person": "Chany Elbaz"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11119039823",
+      "date": "2026-01-28",
+      "hours": 3,
+      "person": "Chany Elbaz"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11117527227",
+      "date": "2026-01-20",
+      "hours": 2,
+      "person": "Ruthy Fisher"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "11755473421",
+      "date": "2026-04-15",
+      "hours": 1,
+      "person": "Chany Elbaz"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12417791136",
+      "date": "2026-06-29",
+      "hours": 1,
+      "person": "Ethan Berry"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12330231694",
+      "date": "2026-06-15",
+      "hours": 1,
+      "person": "Ethan Berry"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12094240576",
+      "date": "2026-05-24",
+      "hours": 1.5,
+      "person": "Yamit bettman"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12125267899",
+      "date": "2026-05-28",
+      "hours": 1,
+      "person": "Yedidya Sommer"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12711611770",
+      "date": "2026-07-27",
+      "hours": 5,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12711698588",
+      "date": "2026-07-28",
+      "hours": 6,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12711778056",
+      "date": "2026-07-29",
+      "hours": 4.5,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12711752830",
+      "date": "2026-07-30",
+      "hours": 3,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12711802732",
+      "date": "2026-07-31",
+      "hours": 5,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12711964270",
+      "date": "2026-08-03",
+      "hours": 6,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12712200522",
+      "date": "2026-08-04",
+      "hours": 3.5,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12725380027",
+      "date": "2026-08-05",
+      "hours": 1,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12772884679",
+      "date": "2026-08-11",
+      "hours": 4,
+      "person": "Lilina Priyadarshini"
+    },
+    {
+      "board": "TS-001 Projects",
+      "itemId": "12783961403",
+      "date": "2026-08-12",
+      "hours": 3,
+      "person": "Lilina Priyadarshini"
+    }
+  ],
+  "peopleWithoutEmail": {
+    "Unassigned": {
+      "rows": 1,
+      "hours": 0.5
+    }
+  },
+  "extUsers": {
+    "ext:gal.s@easybim.co.il": "Gal Shem-Tov",
+    "ext:yamit.b@easybim.co.il": "Yamit bettman",
+    "ext:anton.k@easybim.co.il": "Anton Kaganovich",
+    "ext:yedidya.s@easybim.co.il": "Yedidya Sommer",
+    "ext:aleksandra.z@easybim.co.il": "Aleksandra Zhuikova",
+    "ext:miri.l@easybim.co.il": "Miri Label",
+    "ext:guy.c@easybim.co.il": "Guy Cohen",
+    "ext:chany.e@easybim.co.il": "Chany Elbaz",
+    "ext:eitan.b@easybim.co.il": "Ethan Berry",
+    "ext:lilina@weavertec.com": "Lilina Priyadarshini",
+    "ext:reut.h@easybim.co.il": "Reut Hefetz",
+    "ext:ruthy.f@easybim.co.il": "Ruthy Fisher",
+    "ext:bayan.a@easybim.co.il": "Bayan abu awad"
+  },
+  "multiPersonRows": 9,
+  "over24Slots": [
+    {
+      "userName": "Maxim Naftaliyv",
+      "projectName": "פארק קיסריה - מלון גולף ריזורט",
+      "date": "2024-07-01",
+      "subject": "Model MGMT",
+      "subtopic": "BEP",
+      "hours": 30
+    },
+    {
+      "userName": "Bayan abu awad",
+      "projectName": "ספריית יהוד",
+      "date": "2023-01-02",
+      "subject": "Model MGMT",
+      "subtopic": "General",
+      "hours": 53
+    },
+    {
+      "userName": "Maxim Naftaliyv",
+      "projectName": "מגרש 61 אפקה קרית ביאליק",
+      "date": "2025-07-25",
+      "subject": "Superposition",
+      "subtopic": "General",
+      "hours": 50
+    },
+    {
+      "userName": "Maxim Naftaliyv",
+      "projectName": "מגרש 61 אפקה קרית ביאליק",
+      "date": "2025-07-25",
+      "subject": "Model MGMT",
+      "subtopic": "General",
+      "hours": 50
+    },
+    {
+      "userName": "Bayan abu awad",
+      "projectName": "זכרון 7, ת\"א",
+      "date": "2023-07-02",
+      "subject": "Superposition",
+      "subtopic": "General",
+      "hours": 88
+    },
+    {
+      "userName": "Bayan abu awad",
+      "projectName": "זכרון 7, ת\"א",
+      "date": "2023-01-01",
+      "subject": "Superposition",
+      "subtopic": "General",
+      "hours": 88.5
+    }
+  ],
+  "collisionsPortalWon": [],
+  "totals": {
+    "rows": 18347,
+    "slots": 15834,
+    "hoursImported": 28143.970000000005
+  }
+}

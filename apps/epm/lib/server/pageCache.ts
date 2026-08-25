@@ -67,12 +67,13 @@ export async function swrCacheBackground<T>(
   key: string,
   ttlMs: number,
   fetcher: () => Promise<T>,
+  forceRefresh = false,
 ): Promise<{ data: T | null; cachedAt: Date | null; building: boolean }> {
   await connectDB()
 
   const hit = await PageCache.findOne({ key }).lean() as PageCacheDoc | null
   if (hit) {
-    if (Date.now() - hit.updatedAt.getTime() > ttlMs) {
+    if (forceRefresh || Date.now() - hit.updatedAt.getTime() > ttlMs) {
       after(() => revalidate(key, fetcher))
     }
     return { data: hit.payload as T, cachedAt: hit.updatedAt, building: false }

@@ -13,6 +13,7 @@ import { ROLE_SUBJECT, TAXONOMY } from '@/lib/meTypes'
 const INTERNAL_KEY = 'internal'
 const INTERNAL_NAME = 'EasyBIM internal'
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const PORTAL_URL = process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:3000'
 
 /* ---- local-date helpers (the grid works in plain YYYY-MM-DD strings) ---- */
 function toYMD(d: Date): string {
@@ -358,7 +359,7 @@ export default function SubmitHoursClient() {
     <div className="max-w-[1800px] w-full mx-auto flex-1 min-h-0 flex flex-col">
       {/* breadcrumb + title */}
       <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
-        <Link href="/dashboard" className="hover:text-[#1e248c]">Dashboard</Link>
+        <a href={PORTAL_URL} className="hover:text-[#1e248c]">Platform</a>
         <ChevronRight size={12} />
         <Link href="/me" className="hover:text-[#1e248c]">My Space</Link>
         <ChevronRight size={12} />
