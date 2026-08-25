@@ -6,6 +6,10 @@
       "schedule": "0 6 * * 0"
     },
     {
+      "path": "/api/cron/peacock/linkedin",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/squirrel/sync",
       "schedule": "0 5 * * *"
     },

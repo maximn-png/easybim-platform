@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { clerkClient } from '@clerk/nextjs/server'
 import { getActivityEventModel } from '@easybim/db'
 import { requireAdmin } from '@/lib/access'
+import { resolveKnowledgeRole, type KnowledgeRole } from '@easybim/auth'
 import { deriveName, deriveCompany } from '@/lib/deriveIdentity'
 import AppHeader from '@/components/AppHeader'
 import UserManagement, { type AdminUser, type PendingInvitation } from './UserManagement'
@@ -91,6 +92,10 @@ export default async function AdminUsersPage() {
       lastEvent: lastEvents.get(u.id) ?? null,
       admin: u.publicMetadata?.admin === true,
       apps: Array.isArray(u.publicMetadata?.apps) ? (u.publicMetadata.apps as string[]) : [],
+      knowledgeRole: resolveKnowledgeRole({
+        admin: u.publicMetadata?.admin === true,
+        knowledgeRole: u.publicMetadata?.knowledgeRole as KnowledgeRole | undefined,
+      }),
       metaName,
       company,
       isSelf: u.id === adminId,

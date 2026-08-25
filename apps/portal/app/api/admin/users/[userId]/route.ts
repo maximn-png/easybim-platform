@@ -3,10 +3,15 @@ import { clerkClient } from '@clerk/nextjs/server'
 import { guardAdmin, sanitizeApps } from '@/lib/adminApi'
 
 const MAX_FIELD = 80
+const KNOWLEDGE_ROLES = ['intern', 'employee', 'teamlead']
 
 // PATCH /api/admin/users/:userId — update a user's card grants / admin flag /
-// display name / company. Name and company live in publicMetadata and are
-// rendered in the Hebrew invitation email for future invites.
+// display name / company / Knowledge Center role. Name and company live in
+// publicMetadata and are rendered in the Hebrew invitation email for future
+// invites. knowledgeRole is this person's real role inside the Knowledge
+// Center (Onboarding/Employee/Team Lead) — the only place it can be set;
+// the app itself has no client-side way to change it (see @easybim/auth's
+// resolveKnowledgeRole).
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ userId: string }> }
@@ -20,7 +25,13 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
 
-  const update: { admin?: boolean; apps?: string[]; name?: string; company?: string } = {}
+  const update: {
+    admin?: boolean
+    apps?: string[]
+    name?: string
+    company?: string
+    knowledgeRole?: string
+  } = {}
   if ('apps' in body) update.apps = sanitizeApps(body.apps)
   if ('name' in body) {
     update.name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_FIELD) : ''
@@ -42,6 +53,15 @@ export async function PATCH(
     }
     update.admin = body.admin
   }
+  if ('knowledgeRole' in body) {
+    if (!KNOWLEDGE_ROLES.includes(body.knowledgeRole)) {
+      return NextResponse.json(
+        { error: 'knowledgeRole must be one of ' + KNOWLEDGE_ROLES.join(', ') },
+        { status: 400 }
+      )
+    }
+    update.knowledgeRole = body.knowledgeRole
+  }
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
@@ -53,6 +73,7 @@ export async function PATCH(
       ok: true,
       admin: user.publicMetadata?.admin === true,
       apps: user.publicMetadata?.apps ?? [],
+      knowledgeRole: user.publicMetadata?.knowledgeRole ?? 'intern',
     })
   } catch (err) {
     console.error('[admin/users] update failed:', err)

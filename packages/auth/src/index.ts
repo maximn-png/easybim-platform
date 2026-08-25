@@ -6,5 +6,6 @@ export {
   resolveAccess,
   isAdmin,
   canAccessApp,
+  resolveKnowledgeRole,
 } from './access'
-export type { AccessMetadata, AppId } from './access'
+export type { AccessMetadata, AppId, KnowledgeRole } from './access'

@@ -5,16 +5,23 @@ import { POST_STATUSES, PostStatus } from '@/lib/models/PeacockPost'
 
 export const runtime = 'nodejs'
 
-// GET /api/dashboard/peacock/posts?status=&counts=1 — list posts (+ optional pipeline counts).
+// GET /api/dashboard/peacock/posts?status=&counts=1&slim=1&activeOnly=1
+// `slim` drops draft bodies (the board list doesn't need them — the drawer fetches
+// the full post on open); `activeOnly` hides the published archive.
 export async function GET(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const statusParam = req.nextUrl.searchParams.get('status')
+  const sp = req.nextUrl.searchParams
+  const statusParam = sp.get('status')
   const status = statusParam && (POST_STATUSES as string[]).includes(statusParam) ? (statusParam as PostStatus) : undefined
 
-  const posts = await listPosts(status ? { status } : {})
-  const counts = req.nextUrl.searchParams.get('counts') ? await pipelineCounts() : undefined
+  const posts = await listPosts({
+    status,
+    excludePublished: !status && sp.has('activeOnly'),
+    slim: sp.has('slim'),
+  })
+  const counts = sp.has('counts') ? await pipelineCounts() : undefined
   return NextResponse.json({ posts, counts })
 }
 
@@ -35,6 +42,10 @@ export async function POST(req: NextRequest) {
     publishDate: body?.publishDate,
     projectNumber: body?.projectNumber,
     notes: body?.notes,
+    // Provenance when the post was seeded from a newsletter topic — without these
+    // the topic would never show as used and could be posted twice.
+    sourceUrl: body?.sourceUrl,
+    sourceName: body?.sourceName,
     createdBy: userId,
   })
   return NextResponse.json({ post }, { status: 201 })

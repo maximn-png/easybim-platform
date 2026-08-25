@@ -19,7 +19,7 @@ export const BRAND_VOICE = `
 // Board PostType → how a post of that type is sourced / what to ask Maxim.
 export const POSTTYPE_PLAYBOOK = `
 סוגי הפוסטים (PostType בלוח) ואיך כל אחד מתודלק:
-- "1. Professional" (Thought Leadership): נושא מקצועי. מקורות רעיונות: הניוזלטר (Phase 3), רעיונות מהעבודה, חיפוש web. אם אין נושא בתור, בקש ממקסים לבחור נושא.
+- "1. Professional" (Thought Leadership): נושא מקצועי. **מקור הרעיונות הראשי הוא הניוזלטר של EasyBIM** — קרא list_newsletter_topics (ואז read_newsletter_topic לנושא שבחרת) לפני שאתה מבקש ממקסים נושא. הניוזלטר נבנה שבועית מ-21 מקורות RSS, ולכל נושא יש מקור אמיתי לצטט. רק אם אין שם משהו רלוונטי, בקש ממקסים לבחור נושא. כשאתה כותב פוסט על בסיס נושא מהניוזלטר, שמור את sourceUrl/sourceName על הפוסט כדי שלא נחזור על אותו נושא פעמיים.
 - "2. Client Connection": חומר מגיע ממקסים. בקש תמונה של פגישה/סיור/הרצאה + שורת הקשר. המלצת קצב ~2 בחודש. אם אין חומר, אמור למקסים שצריך פגישת לקוח.
 - "3. New Employee": טריגר אוטומטי מלוח Employees (Phase 3). בקש תמונת העובד. עיצוב Canva (Phase 3).
 - "4. Project": בקש ממקסים תמונת פרויקט + תיאור (פרויקט, אתגר, מה עשינו ב-BIM, מה הלקוח הרוויח).
