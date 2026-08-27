@@ -4,7 +4,6 @@ import { getActivityEventModel } from '@easybim/db'
 import { requireAdmin } from '@/lib/access'
 import { resolveKnowledgeRole, type KnowledgeRole } from '@easybim/auth'
 import { deriveName, deriveCompany } from '@/lib/deriveIdentity'
-import AppHeader from '@/components/AppHeader'
 import UserManagement, { type AdminUser, type PendingInvitation } from './UserManagement'
 
 export const dynamic = 'force-dynamic'
@@ -114,13 +113,6 @@ export default async function AdminUsersPage() {
     createdAt: inv.createdAt,
   }))
 
-  return (
-    <div
-      className="min-h-screen"
-      style={{ background: 'linear-gradient(135deg, #eef6fb 0%, #f8f9ff 45%, #f0f4ff 100%)' }}
-    >
-      <AppHeader />
-      <UserManagement users={serializedUsers} invitations={serializedInvitations} />
-    </div>
-  )
+  // Chrome (gradient + AppHeader) comes from the Admin Console layout.
+  return <UserManagement users={serializedUsers} invitations={serializedInvitations} />
 }

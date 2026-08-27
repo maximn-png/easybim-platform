@@ -86,12 +86,12 @@ export default async function DashboardPage() {
             )}
             {admin && (
               <Link
-                href="/admin/users"
+                href="/admin"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
                 style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
               >
                 <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
-                User Management
+                Admin Console
               </Link>
             )}
           </>
