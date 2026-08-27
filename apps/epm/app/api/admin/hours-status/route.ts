@@ -17,6 +17,7 @@ export interface HoursStatusRow {
   status: string | null
   isActive: boolean
   budgetHours: number | null
+  boards: string[]            // TS boards the imported hours came from (+ 'Portal' when portal hours exist)
   mondayLive: number | null   // live TS board total (null = project has no MA-003 link)
   mongoMonday: number         // TimeEntry source:'monday'
   mongoPortal: number         // TimeEntry all other sources
@@ -28,6 +29,7 @@ export interface HoursStatusRow {
 export interface HoursStatusBucket {
   key: string                 // 'internal' or 'interior:<CODE>'
   name: string
+  boards: string[]
   mongoMonday: number
   mongoPortal: number
   mongoTotal: number
@@ -62,12 +64,13 @@ export async function GET(req: NextRequest) {
         }>>,
       // projectKey === String(projectId) for real projects; 'internal' and
       // 'interior:<CODE>' rows fall through to the buckets section.
-      TimeEntry.aggregate<{ _id: { key: string; monday: boolean }; hours: number; name: string | null }>([
+      TimeEntry.aggregate<{ _id: { key: string; monday: boolean }; hours: number; name: string | null; boards: string[][] }>([
         {
           $group: {
             _id: { key: '$projectKey', monday: { $eq: ['$source', 'monday'] } },
             hours: { $sum: '$hours' },
             name: { $last: '$projectName' },
+            boards: { $addToSet: { $ifNull: ['$mondayBoards', []] } },
           },
         },
       ]),
@@ -80,14 +83,17 @@ export async function GET(req: NextRequest) {
         : Promise.resolve({ data: {} as Record<string, number>, cachedAt: null as Date | null }),
     ])
 
-    const byKey = new Map<string, { monday: number; portal: number; name: string | null }>()
+    const byKey = new Map<string, { monday: number; portal: number; name: string | null; boards: Set<string> }>()
     for (const r of agg) {
-      const slot = byKey.get(r._id.key) ?? { monday: 0, portal: 0, name: null }
+      const slot = byKey.get(r._id.key) ?? { monday: 0, portal: 0, name: null, boards: new Set<string>() }
       if (r._id.monday) slot.monday += r.hours
-      else slot.portal += r.hours
+      else { slot.portal += r.hours; slot.boards.add('Portal') }
+      for (const b of r.boards.flat()) slot.boards.add(b)
       slot.name = slot.name ?? r.name
       byKey.set(r._id.key, slot)
     }
+    const boardList = (s?: { boards: Set<string> }) =>
+      [...(s?.boards ?? [])].sort((a, b) => (a === 'Portal' ? 1 : b === 'Portal' ? -1 : a.localeCompare(b)))
 
     // Projects sharing one MA-003 item can't be told apart in Monday's totals.
     const ma003Owners = new Map<string, string[]>()
@@ -112,6 +118,7 @@ export async function GET(req: NextRequest) {
         status: p.snapshot?.status ?? null,
         isActive: p.isActive !== false,
         budgetHours: p.snapshot?.budgetHours ?? null,
+        boards: boardList(entry),
         mondayLive: mondayLive != null ? round(mondayLive) : null,
         mongoMonday,
         mongoPortal,
@@ -126,6 +133,7 @@ export async function GET(req: NextRequest) {
       .map(([key, v]) => ({
         key,
         name: v.name ?? key,
+        boards: boardList(v),
         mongoMonday: round(v.monday),
         mongoPortal: round(v.portal),
         mongoTotal: round(v.monday + v.portal),

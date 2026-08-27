@@ -22,6 +22,7 @@ export interface ITimeEntry extends Document {
   source:      'manual' | 'calendar' | 'chat' | 'suggested' | 'monday'
   eventIds?:   string[]           // Google Calendar event ids logged into this entry
   mondayItemIds?: string[]        // source:'monday' — contributing Monday TS row ids (one doc aggregates a slot)
+  mondayBoards?: string[]         // source:'monday' — TS boards the rows came from ('TS-001'..'TS-005')
   createdAt:   Date
   updatedAt:   Date
 }
@@ -41,6 +42,7 @@ const TimeEntrySchema = new Schema<ITimeEntry>(
     source:      { type: String, enum: ['manual', 'calendar', 'chat', 'suggested', 'monday'], default: 'manual' },
     eventIds:    { type: [String], default: undefined },
     mondayItemIds: { type: [String], default: undefined },
+    mondayBoards:  { type: [String], default: undefined },
   },
   { timestamps: true }
 )

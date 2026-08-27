@@ -397,7 +397,8 @@ async function main() {
   interface Slot {
     userId: string; userName: string; date: string; projectKey: string
     projectId: Types.ObjectId | null; projectName: string
-    subject: string; subtopic: string; hours: number; mondayItemIds: string[]; notes: string[]
+    subject: string; subtopic: string; hours: number
+    mondayItemIds: string[]; boards: Set<string>; notes: string[]
   }
   const slots = new Map<string, Slot>()
 
@@ -484,10 +485,11 @@ async function main() {
     const slot = slots.get(key) ?? {
       userId: person.userId, userName: person.userName, date: row.date,
       projectKey, projectId, projectName, subject, subtopic,
-      hours: 0, mondayItemIds: [], notes: [],
+      hours: 0, mondayItemIds: [], boards: new Set<string>(), notes: [],
     }
     slot.hours += row.hours
     slot.mondayItemIds.push(row.itemId)
+    slot.boards.add(row.boardLabel.split(' ')[0])   // 'TS-001 Projects' → 'TS-001'
     if (row.note && !slot.notes.includes(row.note)) slot.notes.push(row.note)
     slots.set(key, slot)
 
@@ -515,6 +517,7 @@ async function main() {
     ...(s.notes.length ? { note: s.notes.join(' | ').slice(0, 500) } : {}),
     source: 'monday' as const,
     mondayItemIds: s.mondayItemIds,
+    mondayBoards: [...s.boards].sort(),
     createdAt: now,
     updatedAt: now,
   }))
