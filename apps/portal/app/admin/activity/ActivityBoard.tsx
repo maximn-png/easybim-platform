@@ -6,6 +6,7 @@
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { CARDS } from '@/lib/cards'
+import { fmtDateTime } from '@/lib/dates'
 
 export interface DailyPoint { app: string; day: string; type: 'card_open' | 'app_visit'; total: number }
 export interface TopCard { app: string; opens: number }
@@ -81,7 +82,7 @@ export default function ActivityBoard({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: `Active users (last 7d)`, value: String(activeCount) },
-          { label: `Events (${days}d)`, value: totalEvents.toLocaleString() },
+          { label: `Events (${days}d)`, value: totalEvents.toLocaleString('en-GB') },
           { label: 'Busiest app', value: busiest ? cardMeta(busiest).title : '—' },
           { label: 'Users tracked', value: String(users.length) },
         ].map((t) => (
@@ -188,7 +189,7 @@ export default function ActivityBoard({
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>
                       </td>
                       <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">
-                        {u.lastAt ? new Date(u.lastAt).toLocaleString() : '—'}
+                        {u.lastAt ? fmtDateTime(u.lastAt) : '—'}
                       </td>
                       <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">{u.total || '—'}</td>
                     </tr>

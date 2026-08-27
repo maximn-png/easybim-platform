@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
+import { fmtDateTime } from '@/lib/dates'
 
 export interface SyncRunRow {
   id: string
@@ -125,7 +126,7 @@ function FragmentRow({
       >
         <td className="px-2 py-1.5 whitespace-nowrap text-gray-700">
           {expandable && (isOpen ? <ChevronDown size={11} className="inline mr-1 text-gray-400" /> : <ChevronRight size={11} className="inline mr-1 text-gray-400" />)}
-          {new Date(run.startedAt).toLocaleString()}
+          {fmtDateTime(run.startedAt)}
         </td>
         <td className="px-2 py-1.5">
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${run.trigger === 'cron' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>

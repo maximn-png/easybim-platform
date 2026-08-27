@@ -1,6 +1,7 @@
 import { headers } from 'next/headers'
 import { HEALTH_TARGETS } from '@/lib/healthTargets'
 import RefreshButton from './RefreshButton'
+import { fmtDateTime } from '@/lib/dates'
 
 // Integrations health board — fans out to every app's public /api/health and
 // renders one card per app with per-check status.
@@ -67,7 +68,7 @@ export default async function IntegrationsPage() {
   )
 
   const failing = results.filter((r) => r.state === 'red').length
-  const checkedAt = new Date().toLocaleString()
+  const checkedAt = fmtDateTime(new Date())
 
   return (
     <div>

@@ -1,5 +1,6 @@
 import { getCrossDbConnection } from '@easybim/db'
 import SyncRuns, { type SyncRunRow } from './SyncRuns'
+import { fmtDateTime } from '@/lib/dates'
 
 // Sync Health — recent EPM project-sync runs, read cross-DB from
 // easybim-epm.epm_sync_runs (written by EPM's /api/sync/projects).
@@ -43,12 +44,12 @@ export default async function SyncHealthPage() {
     {
       label: 'Last run',
       value: last ? (last.fatal ? 'Failed' : last.ok ? 'OK' : `${last.errors.length} errors`) : '—',
-      hint: last ? new Date(last.startedAt).toLocaleString() : 'no runs recorded yet',
+      hint: last ? fmtDateTime(last.startedAt) : 'no runs recorded yet',
       color: last ? (last.fatal ? '#dc2626' : last.ok ? '#059669' : '#d97706') : '#6b7280',
     },
     {
       label: 'Last clean run',
-      value: lastSuccess ? new Date(lastSuccess.startedAt).toLocaleString() : '—',
+      value: lastSuccess ? fmtDateTime(lastSuccess.startedAt) : '—',
       hint: 'zero errors',
       color: '#1e248c',
     },

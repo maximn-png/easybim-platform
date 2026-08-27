@@ -5,6 +5,7 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import { estimateCostUSD } from '@/lib/aiCost'
+import { fmtDateTime } from '@/lib/dates'
 
 export interface AgentRunRow {
   id: string
@@ -94,7 +95,7 @@ export default function AgentRuns({ runs, stats }: { runs: AgentRunRow[]; stats:
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <div>
             <span className="font-semibold">{stuck.length} run{stuck.length > 1 ? 's' : ''} stuck in &quot;running&quot;:</span>{' '}
-            {stuck.map((r) => `${agentLabel(r.agentKey)}/${r.pass} (started ${new Date(r.startedAt).toLocaleString()})`).join(', ')}
+            {stuck.map((r) => `${agentLabel(r.agentKey)}/${r.pass} (started ${fmtDateTime(r.startedAt)})`).join(', ')}
             <span className="block text-[11px] mt-0.5">Nothing reaps abandoned runs — these likely died mid-flight.</span>
           </div>
         </div>
@@ -238,7 +239,7 @@ function RunRow({
       >
         <td className="px-2 py-1.5 whitespace-nowrap text-gray-700">
           {expandable && (isOpen ? <ChevronDown size={11} className="inline mr-1 text-gray-400" /> : <ChevronRight size={11} className="inline mr-1 text-gray-400" />)}
-          {new Date(run.startedAt).toLocaleString()}
+          {fmtDateTime(run.startedAt)}
         </td>
         <td className="px-2 py-1.5 whitespace-nowrap font-medium text-gray-800">{agentLabel(run.agentKey)}<span className="text-gray-400"> / {run.pass}</span></td>
         <td className="px-2 py-1.5">
