@@ -12,6 +12,8 @@ import { canAccessApp, resolveAccess } from '@easybim/auth'
 const isPublicRoute = createRouteMatcher([
   '/api/webhook(.*)',
   '/api/cron(.*)',
+  // Integration probe — carries no data; consumed by the portal admin Integrations board.
+  '/api/health',
 ])
 
 export default clerkMiddleware(async (auth, req) => {
