@@ -72,6 +72,63 @@ export const STRUCTURE_INSTRUCTION = [
   'אל תוסיף, תשמיט או תנסח מחדש ממצאים — רק המר את מה שכתוב.',
 ].join('\n')
 
+// ── Evidence verification pass ────────────────────────────────────────────────
+//
+// A second, independent read that audits the findings instead of producing them:
+// for each item, does the quoted text actually appear in the attached document,
+// and is the page/section reference right? Its job is to catch hallucinated
+// quotes before they reach a client letter — so it is deliberately prompted as
+// a skeptic, and "confirmed" is the verdict it must earn, not the default.
+
+/** One numbered item for the verifier: what was claimed, and where. */
+export interface VerifyItem {
+  /** 'finding' = a review issue; 'verdict' = a follow-up ruling with its evidence quote */
+  kind: 'finding' | 'verdict'
+  page: string
+  section: string
+  claim: string
+  /** the quote the item rests on (the description's quote, or a verdict's evidence) */
+  quote: string
+}
+
+export function buildVerifySystem(): string {
+  return [
+    'אתה מבקר קפדן של 🐕 כלב, סוכן החוזים של EasyBIM. קיבלת מסמך הסכם ורשימת טענות שכלב העלה עליו.',
+    'תפקידך אחד: לבדוק שכל טענה באמת מעוגנת במסמך. אתה לא מחווה דעה משפטית ולא מוסיף ממצאים.',
+    '',
+    'לכל פריט בדוק:',
+    '- האם הציטוט שהטענה נשענת עליו אכן מופיע במסמך (מילה במילה או בקירוב סביר).',
+    '- האם מספר העמוד ומספר הסעיף שצוינו נכונים למקום שבו הטקסט מופיע בפועל.',
+    '- בפריט מסוג "פסק דין": האם הציטוט שהובא אכן תומך בפסיקה שנקבעה.',
+    '',
+    'הכרעה:',
+    '- confirmed — רק כאשר הציטוט נמצא והמיקום נכון (סטייה של עמוד אחד בציון עמוד אינה פוסלת).',
+    '- suspect — הציטוט לא נמצא, נמצא שונה באופן מהותי, המיקום שגוי בבירור, או שהציטוט אינו תומך בטענה.',
+    '- כל suspect מחייב note קצר בעברית שמסביר בדיוק מה לא הסתדר.',
+    '- אם אינך בטוח — suspect. עדיף אזהרת שווא מציטוט מומצא במכתב ללקוח.',
+    '',
+    'דווח דרך הכלי report_verification בלבד, פסיקה אחת לכל פריט לפי מספרו (ref).',
+  ].join('\n')
+}
+
+export function verifyInstruction(items: VerifyItem[]): string {
+  const rows = items.map((it, i) => {
+    const where = [it.page && `עמוד ${it.page}`, it.section && `סעיף ${it.section}`].filter(Boolean).join(', ')
+    return [
+      `--- פריט ${i + 1} (${it.kind === 'verdict' ? 'פסק דין' : 'ממצא'}${where ? ` · ${where}` : ''}) ---`,
+      `הטענה: ${it.claim}`,
+      it.quote ? `הציטוט שנבדק: ${it.quote}` : 'לא צורף ציטוט נפרד — בדוק את הציטוט המשולב בטענה עצמה.',
+    ].join('\n')
+  })
+  return [
+    `להלן ${items.length} פריטים לאימות מול המסמך המצורף:`,
+    '',
+    ...rows,
+    '',
+    `בדוק כל אחד מ-${items.length} הפריטים והחזר פסיקה לכל אחד, באותו מספור (ref).`,
+  ].join('\n')
+}
+
 // ── Follow-up round (V2 and later) ────────────────────────────────────────────
 //
 // A revised contract is NOT reviewed from scratch and NOT diffed line by line.

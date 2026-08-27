@@ -2,10 +2,12 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ChevronRight,
   Users,
+  Boxes,
+  GitMerge,
   BarChart2,
   CheckCircle2,
   Loader2,
@@ -14,8 +16,11 @@ import {
   Search,
   X,
   CornerDownRight,
+  Sparkles,
 } from 'lucide-react'
 import type { ProjectRow, ReportListItem, HoursTeam } from '@/lib/types'
+import type { AgendaMilestone } from '@/lib/meTypes'
+import MilestoneHistoryPanel from './MilestoneHistoryPanel'
 import StatusBadge from './StatusBadge'
 import ProjectLinksBar from './ProjectLinksBar'
 import TeamMemberCell from './TeamMemberCell'
@@ -333,6 +338,32 @@ export default function ProjectDetailClient({
   const billsDone  = milestoneDisciplines.reduce((n, d) => n + d.completed, 0)
   const billsTotal = milestoneDisciplines.reduce((n, d) => n + d.total, 0)
 
+  // Per-bill milestone history for the card's hover panel — the same MI-001
+  // read (and the same panel) as the My Space milestones hover. Internal-only.
+  const [milestoneBills, setMilestoneBills] = useState<AgendaMilestone[] | null>(null)
+  useEffect(() => {
+    if (anaView) return
+    let alive = true
+    fetch(`/api/projects/${project._id}/milestones`)
+      .then(r => r.json())
+      .then((json: { milestones?: AgendaMilestone[] }) => {
+        if (alive) setMilestoneBills(json.milestones ?? [])
+      })
+      .catch(() => { /* leave null → no hover panel */ })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project._id])
+
+  // The hover panel is position:fixed (the stat rail scrolls and clips its
+  // overflow), anchored to the card's rect on mouseenter.
+  const milestoneCardRef = useRef<HTMLDivElement>(null)
+  const [milestonePanelPos, setMilestonePanelPos] = useState<{ top: number; left: number } | null>(null)
+  // This month's bills — what everyone is working on now — get the highlight ring.
+  const curMonth = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }, [])
+
   // Live hours from the same source as the Hours Analytics page (Monday), so the
   // card reflects edits immediately rather than the cached snapshot.actualHours
   // (which only refreshes when the updateHours job re-runs). Subjects are routed
@@ -393,6 +424,24 @@ export default function ProjectDetailClient({
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project._id])
+
+  // AI status summary of the updates feed. Requested only after the feed
+  // arrived (the server then reuses the cached snapshot). null = loading;
+  // '' = unavailable/none (block hidden).
+  const [updatesSummary, setUpdatesSummary] = useState<string | null>(null)
+  useEffect(() => {
+    if (anaView || mondayUpdates === null) return
+    if (mondayUpdates.length === 0) { setUpdatesSummary(''); return }
+    let alive = true
+    fetch(`/api/projects/${project._id}/updates-summary`)
+      .then(r => r.json())
+      .then((json: { summary?: string | null }) => {
+        if (alive) setUpdatesSummary(json.summary ?? '')
+      })
+      .catch(() => { if (alive) setUpdatesSummary('') })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project._id, mondayUpdates === null])
 
   // Source filter (by board): default "all"; clicking a chip ISOLATES that board.
   // Clicking the active chip again (or "All") returns to the full feed.
@@ -536,6 +585,21 @@ export default function ProjectDetailClient({
               partnerHubKey={project.accHubKey}
               variant="button"
             />
+            {/* Project consoles — demo modules the team is developing. */}
+            <Link
+              href={`/dashboard/${project._id}/bim-console`}
+              title="BIM Management Console — model governance and standards"
+              className="inline-flex items-center gap-1.5 shrink-0 bg-[#1e248c] text-white text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] hover:bg-[#44b8d3] transition-colors"
+            >
+              <Boxes size={14} /> BIM Management Console
+            </Link>
+            <Link
+              href={`/dashboard/${project._id}/mep-console`}
+              title="MEP Coordination Console — clash and coordination progress"
+              className="inline-flex items-center gap-1.5 shrink-0 bg-[#1e248c] text-white text-[12.5px] font-semibold px-3.5 py-2 rounded-[10px] hover:bg-[#44b8d3] transition-colors"
+            >
+              <GitMerge size={14} /> MEP Coordination Console
+            </Link>
           </div>
         </div>
 
@@ -544,31 +608,65 @@ export default function ProjectDetailClient({
 
           <div className="epm-rail flex flex-col gap-3.5 lg:w-72 lg:shrink-0 lg:min-h-0 lg:overflow-y-auto">
 
-            {/* Milestone Status — % of bills completed, per discipline + overall */}
-            <StatCard
-              title="Milestone Status"
-              icon={<CheckCircle2 size={14} className="text-[#44b8d3]" />}
-              ringValue={overallMilestone}
-              ringCaption="Overall"
-              emptyLabel={hasMilestones ? undefined : 'No milestone data'}
-              bars={
-                milestoneDisciplines.length > 0 ? (
-                  milestoneDisciplines.map(d => (
-                    <DisciplineBar
-                      key={d.key}
-                      label={d.label}
-                      spent={d.progress}
-                      bank={100}
-                      color={MILESTONE_DISCIPLINE_COLOR[d.key] ?? '#44b8d3'}
+            {/* Milestone Status — % of bills completed, per discipline + overall.
+                Hover: the full milestone picture (every bill, everyone's), the
+                same panel as the My Space hover; this month's bills ringed. */}
+            <div
+              ref={milestoneCardRef}
+              onMouseEnter={() => {
+                const r = milestoneCardRef.current?.getBoundingClientRect()
+                if (r) setMilestonePanelPos({
+                  top: Math.max(12, Math.min(r.top, window.innerHeight - 12 - Math.min(window.innerHeight * 0.7, 520))),
+                  left: r.right,
+                })
+              }}
+              onMouseLeave={() => setMilestonePanelPos(null)}
+            >
+              <StatCard
+                title="Milestone Status"
+                icon={<CheckCircle2 size={14} className="text-[#44b8d3]" />}
+                ringValue={overallMilestone}
+                ringCaption="Overall"
+                emptyLabel={hasMilestones ? undefined : 'No milestone data'}
+                bars={
+                  milestoneDisciplines.length > 0 ? (
+                    milestoneDisciplines.map(d => (
+                      <DisciplineBar
+                        key={d.key}
+                        label={d.label}
+                        spent={d.progress}
+                        bank={100}
+                        color={MILESTONE_DISCIPLINE_COLOR[d.key] ?? '#44b8d3'}
+                      />
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-400">No discipline breakdown</p>
+                  )
+                }
+                footLeft={{ label: 'Bills Completed', value: billsTotal > 0 ? `${billsDone} / ${billsTotal}` : '—' }}
+                footRight={{ label: 'Remaining', value: billsTotal > 0 ? `${billsTotal - billsDone} bills` : '—' }}
+              />
+              {milestonePanelPos && milestoneBills != null && milestoneBills.length > 0 && (
+                /* Flush to the card's edge (the offset is padding, not a gap) so
+                   the pointer can travel into the panel without closing it. */
+                <div
+                  className="fixed z-50 ps-3.5"
+                  style={{ top: milestonePanelPos.top, left: milestonePanelPos.left }}
+                >
+                  <div
+                    dir="rtl"
+                    className="w-[420px] max-w-[85vw] max-h-[70vh] overflow-auto rounded-xl bg-white shadow-2xl border border-[#e8eaff] px-3 py-2"
+                  >
+                    <MilestoneHistoryPanel
+                      bills={milestoneBills}
+                      projectName={project.projectName}
+                      projectNumber={project.projectNumber}
+                      highlight={(b) => b.date.startsWith(curMonth)}
                     />
-                  ))
-                ) : (
-                  <p className="text-xs text-gray-400">No discipline breakdown</p>
-                )
-              }
-              footLeft={{ label: 'Bills Completed', value: billsTotal > 0 ? `${billsDone} / ${billsTotal}` : '—' }}
-              footRight={{ label: 'Remaining', value: billsTotal > 0 ? `${billsTotal - billsDone} bills` : '—' }}
-            />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Hours Analytics — same anatomy, links through to the full page */}
             <StatCard
@@ -706,6 +804,25 @@ export default function ProjectDetailClient({
                 <span className="text-[10px] font-mono text-gray-400 tabular-nums">{visibleUpdates.length} עדכונים</span>
               )}
             </div>
+
+            {/* AI status summary — one paragraph distilled from the whole feed.
+                Hidden when unavailable (no key / generation failed / no updates). */}
+            {mondayUpdates !== null && mondayUpdates.length > 0 && updatesSummary !== '' && (
+              <div className="shrink-0 rounded-xl border border-[#44b8d3]/30 bg-gradient-to-br from-[#f0f7ff] to-[#f6fbfd] px-3 py-2.5">
+                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#1e248c] mb-1">
+                  <Sparkles size={12} className="text-[#44b8d3]" /> AI Summary
+                </p>
+                {updatesSummary === null ? (
+                  <p className="flex items-center gap-2 text-[11.5px] text-gray-400">
+                    <Loader2 size={12} className="animate-spin" /> מסכם את העדכונים…
+                  </p>
+                ) : (
+                  <p dir="auto" className="text-[11.5px] leading-relaxed text-gray-700">
+                    {updatesSummary}
+                  </p>
+                )}
+              </div>
+            )}
 
             {mondayUpdates === null ? (
               <div className="flex-1 flex items-center justify-center py-8 text-gray-400">

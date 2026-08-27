@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth, clerkClient } from '@clerk/nextjs/server'
 import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
-import { normalizeStatus, issueDiscipline, dropDraft } from '@/lib/reportGrouping'
+import { dropDraft, toIssueSnapshot } from '@/lib/reportGrouping'
 import type { AccIssue } from '@/lib/services/apsService'
 import type { ReportMeta } from '@/lib/server/reportHtml'
 
@@ -140,12 +140,7 @@ export async function POST(
       chartPng,
       screenshotPng,
       issueCount: body.issueCount ?? issues.length,
-      issuesSnapshot: issues.map(i => ({
-        id:         i.id,
-        displayId:  i.displayId || undefined,
-        status:     normalizeStatus(i.status),
-        discipline: issueDiscipline(i),
-      })),
+      issuesSnapshot: issues.map(toIssueSnapshot),
       filtersSummary: body.filtersSummary,
       groupBy: body.groupBy,
       createdByUserId: userId,

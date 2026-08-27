@@ -73,6 +73,13 @@ export default function FormaConnectPanel({
   const router = useRouter()
   const importMode = !!accExternalHub && !partnerHubName
 
+  // A Monday MA-003 "ACC" link with no project id in it (someone typed a name
+  // into the link column, stored as e.g. "https://AHW") can't connect the
+  // project to anything — explain the fix instead of showing the EasyBIM
+  // project dropdown, which would misleadingly read "Not connected".
+  const brokenMondayLink =
+    !accExternalHub && !accProjectId && !!accUrl && !/\/projects?\/[\w-]{8,}/.test(accUrl)
+
   // ── External-hub (Excel import) state ──
   const [importMeta, setImportMeta] = useState<ImportMeta | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -104,7 +111,7 @@ export default function FormaConnectPanel({
 
   // EasyBIM / partner hub: load the ACC project list for the dropdown.
   useEffect(() => {
-    if (importMode) return
+    if (importMode || brokenMondayLink) return
     let cancelled = false
     ;(async () => {
       try {
@@ -125,7 +132,7 @@ export default function FormaConnectPanel({
       }
     })()
     return () => { cancelled = true }
-  }, [importMode, partnerHubKey])
+  }, [importMode, brokenMondayLink, partnerHubKey])
 
   // Close the popover on an outside click or Escape.
   useEffect(() => {
@@ -246,11 +253,16 @@ export default function FormaConnectPanel({
           <CheckCircle2 size={14} className="text-green-600 shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="font-medium text-green-700">{importMeta!.count} issues imported</p>
-            <p className="text-[11px] text-gray-500 truncate">
-              {importMeta!.fileName}
-              {importMeta!.uploadedAt ? ` · ${fmtDate(importMeta!.uploadedAt)}` : ''}
-              {importMeta!.uploadedByName ? ` · ${importMeta!.uploadedByName}` : ''}
-            </p>
+            {importMeta!.fileName && (
+              <p className="text-[11px] text-gray-500 truncate">{importMeta!.fileName}</p>
+            )}
+            {(importMeta!.uploadedAt || importMeta!.uploadedByName) && (
+              <p className="text-[11px] text-gray-500">
+                {importMeta!.uploadedAt ? `Uploaded ${fmtDate(importMeta!.uploadedAt)}` : ''}
+                {importMeta!.uploadedAt && importMeta!.uploadedByName ? ' · ' : ''}
+                {importMeta!.uploadedByName ?? ''}
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -332,6 +344,38 @@ export default function FormaConnectPanel({
         </button>
 
         {inlineCta}
+      </div>
+    </>
+  )
+
+  // ── Broken Monday link body: the MA-003 ACC column holds text, not a URL ──
+  const brokenLinkBody = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="font-semibold text-[#1e248c] text-sm flex items-center gap-2">
+          <ExternalLink size={15} className="text-[#44b8d3]" /> Forms &amp; Actions
+        </h2>
+      </div>
+
+      <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+        <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <p className="font-semibold">ACC link in Monday is not a valid URL</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-amber-800/90">
+            The <span className="font-medium">ACC</span> column on this project&apos;s MA-003 item contains
+            text{accUrl ? <> (&ldquo;{accUrl.replace(/^https?:\/\//, '')}&rdquo;)</> : null} instead of a link,
+            so the portal can&apos;t connect the project to its ACC hub.
+          </p>
+        </div>
+      </div>
+
+      <div className="text-[11px] text-gray-500 leading-relaxed">
+        <p className="font-medium text-gray-600 mb-1">How to fix:</p>
+        <ol className="list-decimal list-inside space-y-0.5">
+          <li>Open the project in the client&apos;s ACC and copy the full URL from the browser.</li>
+          <li>Paste it into the <span className="font-medium">ACC</span> column of the project in Monday (MA-003).</li>
+          <li>The panel updates after the next sync (runs hourly).</li>
+        </ol>
       </div>
     </>
   )
@@ -434,7 +478,7 @@ export default function FormaConnectPanel({
     </>
   )
 
-  const body = importMode ? externalHubBody : easybimHubBody
+  const body = brokenMondayLink ? brokenLinkBody : importMode ? externalHubBody : easybimHubBody
 
   // ── Card variant (ANA sidebar) ──
   if (variant === 'card') {
@@ -446,9 +490,11 @@ export default function FormaConnectPanel({
   }
 
   // ── Button variant (project page header): split button + popover ──
-  const disabledHint = importMode
-    ? 'Upload the ACC issues export first'
-    : 'Connect a Forma / ACC project first'
+  const disabledHint = brokenMondayLink
+    ? 'Fix the ACC link in Monday (MA-003) first'
+    : importMode
+      ? 'Upload the ACC issues export first'
+      : 'Connect a Forma / ACC project first'
 
   return (
     <div className="relative flex shrink-0" ref={popWrapRef}>

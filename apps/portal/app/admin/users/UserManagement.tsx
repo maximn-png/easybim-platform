@@ -2,10 +2,9 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import Image from 'next/image'
 import {
-  ArrowLeft, ShieldCheck, Mail, Trash2, UserPlus, Loader2, Clock, X,
+  ShieldCheck, Mail, Trash2, UserPlus, Loader2, Clock, X, Search,
   ChevronDown, LogIn, ExternalLink, LayoutGrid, CheckCircle2,
 } from 'lucide-react'
 import { CARDS } from '@/lib/cards'
@@ -292,6 +291,7 @@ export default function UserManagement({
   const [drawers, setDrawers] = useState<Record<string, DrawerState>>({})
 
   // Invite form state
+  const [query, setQuery] = useState('')
   const [inviteOpen, setInviteOpen] = useState(false)
   const [inviteEmails, setInviteEmails] = useState('')
   const [inviteApps, setInviteApps] = useState<string[]>([])
@@ -302,6 +302,17 @@ export default function UserManagement({
   const parsedEmails = [
     ...new Set(inviteEmails.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean)),
   ]
+
+  // Client-side search over the loaded users/invitations (name, email, company).
+  const q = query.trim().toLowerCase()
+  const visibleUsers = q
+    ? users.filter((u) =>
+        [u.name, u.email, u.company, u.metaName].some((v) => v.toLowerCase().includes(q)))
+    : users
+  const visibleInvitations = q
+    ? invitations.filter((inv) =>
+        [inv.email, inv.name, inv.company].some((v) => v.toLowerCase().includes(q)))
+    : invitations
 
   async function call(key: string, url: string, init: RequestInit): Promise<boolean> {
     setBusy(key)
@@ -466,13 +477,6 @@ export default function UserManagement({
       {/* Header row */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-1 text-xs font-semibold mb-2"
-            style={{ color: '#6b7280' }}
-          >
-            <ArrowLeft size={12} /> Back to dashboard
-          </Link>
           <h1 className="text-2xl font-black flex items-center gap-2" style={{ color: NAVY }}>
             <ShieldCheck size={22} style={{ color: CYAN }} />
             User Management
@@ -482,14 +486,32 @@ export default function UserManagement({
             detailed activity timeline.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setInviteOpen((v) => !v)}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all"
-          style={{ background: NAVY }}
-        >
-          <UserPlus size={15} /> Invite users
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#9ca3af' }} />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name, email, company..."
+              className="pl-8 pr-3 py-2 rounded-xl border text-sm bg-white/80 focus:outline-none focus:ring-2 w-60"
+              style={{ borderColor: 'rgba(30,36,140,0.15)' }}
+            />
+          </div>
+          {q && (
+            <span className="text-xs" style={{ color: '#6b7280' }}>
+              {visibleUsers.length} of {users.length} users
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setInviteOpen((v) => !v)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white shadow-sm hover:shadow-md transition-all"
+            style={{ background: NAVY }}
+          >
+            <UserPlus size={15} /> Invite users
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -629,13 +651,13 @@ export default function UserManagement({
       )}
 
       {/* Pending invitations */}
-      {invitations.length > 0 && (
+      {visibleInvitations.length > 0 && (
         <div className="mb-6 bg-white/55 backdrop-blur-sm border border-white/90 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-2 text-sm font-bold mb-3" style={{ color: NAVY }}>
             <Clock size={14} style={{ color: CYAN }} /> Pending invitations
           </div>
           <div className="flex flex-col gap-2">
-            {invitations.map((inv) => (
+            {visibleInvitations.map((inv) => (
               <div key={inv.id} className="flex items-center justify-between gap-3 text-sm flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold" style={{ color: '#111827' }}>{inv.email}</span>
@@ -686,7 +708,7 @@ export default function UserManagement({
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => {
+            {visibleUsers.map((user) => {
               const drawer = drawers[user.id]
               return (
                 <FragmentRow

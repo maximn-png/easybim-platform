@@ -58,6 +58,49 @@ async function revalidate(key: string, fetcher: () => Promise<unknown>) {
  * background once it's older than ttlMs); fetch live only on the first call
  * ever or when `forceRefresh` is set. The fetcher's payload must be JSON-able.
  */
+/**
+ * Like swrCache, but a cold cache NEVER blocks the request: with no snapshot
+ * yet, the fetcher runs after the response (building: true) and the caller
+ * renders a "still preparing" state. For payloads too slow to compute inline.
+ */
+export async function swrCacheBackground<T>(
+  key: string,
+  ttlMs: number,
+  fetcher: () => Promise<T>,
+  forceRefresh = false,
+): Promise<{ data: T | null; cachedAt: Date | null; building: boolean }> {
+  await connectDB()
+
+  const hit = await PageCache.findOne({ key }).lean() as PageCacheDoc | null
+  if (hit) {
+    if (forceRefresh || Date.now() - hit.updatedAt.getTime() > ttlMs) {
+      after(() => revalidate(key, fetcher))
+    }
+    return { data: hit.payload as T, cachedAt: hit.updatedAt, building: false }
+  }
+
+  after(() => revalidate(key, fetcher))
+  return { data: null, cachedAt: null, building: true }
+}
+
+// Plain get/set on the same collection, for caches whose freshness is decided
+// by the caller (e.g. the updates summary, keyed by a content hash) rather
+// than by a TTL.
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  await connectDB()
+  const hit = await PageCache.findOne({ key }).lean() as PageCacheDoc | null
+  return (hit?.payload as T) ?? null
+}
+
+export async function cacheSet(key: string, payload: unknown): Promise<void> {
+  await connectDB()
+  await PageCache.updateOne(
+    { key },
+    { $set: { payload, updatedAt: new Date() } },
+    { upsert: true },
+  )
+}
+
 export async function swrCache<T>(
   key: string,
   ttlMs: number,

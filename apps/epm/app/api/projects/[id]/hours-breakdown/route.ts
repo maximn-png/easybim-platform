@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  fetchProjectHoursBreakdown, fetchProjectBanks,
+  fetchProjectBanks,
   type HoursBreakdown, type DisciplineBanks,
 } from '@/lib/services/mondayService'
+import { buildProjectHoursBreakdown } from '@/lib/server/hoursService'
 import { swrCache } from '@/lib/server/pageCache'
 
-// Snapshots stored in Mongo (stale-while-revalidate, see pageCache.ts): only
-// a project's first-ever view pays the ~10s Monday timesheet sweep; later
-// views answer instantly and refresh in the background. ?refresh=1 forces live.
-const CACHE_TTL_MS = 5 * 60_000
+// The hours breakdown is computed live from the TimeEntry collection (portal
+// entries + historical Monday imports) — a single indexed aggregation, no
+// cache needed. Only the discipline banks still come from Monday MA-004 and
+// keep a stale-while-revalidate snapshot (see pageCache.ts).
+const BANKS_CACHE_TTL_MS = 30 * 60_000
 
-// Small mock used for local dev when MongoDB or the Monday token is absent,
+// Small mock used for local dev when MongoDB is absent,
 // so the analytics page still renders something.
 const MOCK_BREAKDOWN: HoursBreakdown = {
   months: [
@@ -30,9 +32,6 @@ const MOCK_BREAKDOWN: HoursBreakdown = {
 
 const MOCK_BANKS: DisciplineBanks = { modelMgmt: 300, superposition: 333.33, total: 700 }
 
-const EMPTY_BREAKDOWN: HoursBreakdown = {
-  months: [], subjects: [], employees: [], totalsBySubject: {}, totalsByEmployee: {}, employeeAvatars: {},
-}
 const EMPTY_BANKS: DisciplineBanks = { modelMgmt: null, superposition: null, total: null }
 
 export async function GET(
@@ -41,7 +40,7 @@ export async function GET(
 ) {
   const { id } = await params
 
-  if (!process.env.MONGODB_URI || !process.env.MONDAY_API_TOKEN) {
+  if (!process.env.MONGODB_URI) {
     return NextResponse.json({ breakdown: MOCK_BREAKDOWN, banks: MOCK_BANKS, mock: true })
   }
 
@@ -55,26 +54,23 @@ export async function GET(
     if (!doc) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
     const ext = (doc.externalIds ?? {}) as Record<string, unknown>
-    const ma003ItemId = ext.ma003ItemId as string | undefined
     const ma004ItemId = ext.mondayItemId as string | undefined
 
-    if (!ma003ItemId) {
-      return NextResponse.json({ breakdown: EMPTY_BREAKDOWN, banks: EMPTY_BANKS, noMa003: true })
-    }
-
     const refresh = req.nextUrl.searchParams.get('refresh') === '1'
-    const { data, cachedAt } = await swrCache<{ breakdown: HoursBreakdown; banks: DisciplineBanks }>(
-      `hours:${id}`, CACHE_TTL_MS, refresh,
-      async () => {
-        const [breakdown, banks] = await Promise.all([
-          fetchProjectHoursBreakdown(ma003ItemId),
-          ma004ItemId ? fetchProjectBanks(ma004ItemId) : Promise.resolve(EMPTY_BANKS),
-        ])
-        return { breakdown, banks }
-      },
-    )
+    const canFetchBanks = !!ma004ItemId && !!process.env.MONDAY_API_TOKEN
 
-    return NextResponse.json({ ...data, ...(cachedAt ? { cachedAt } : {}) })
+    const [breakdown, banksResult] = await Promise.all([
+      buildProjectHoursBreakdown(id),
+      canFetchBanks
+        ? swrCache<DisciplineBanks>(`banks:${id}`, BANKS_CACHE_TTL_MS, refresh, () => fetchProjectBanks(ma004ItemId!))
+        : Promise.resolve({ data: EMPTY_BANKS, cachedAt: null as Date | null }),
+    ])
+
+    return NextResponse.json({
+      breakdown,
+      banks: banksResult.data,
+      ...(banksResult.cachedAt ? { cachedAt: banksResult.cachedAt } : {}),
+    })
   } catch (err) {
     console.error('[GET /api/projects/[id]/hours-breakdown]', err)
     const msg = err instanceof Error ? err.message : String(err)

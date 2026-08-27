@@ -15,12 +15,15 @@ interface CompareReport {
   id: string; title: string; createdAt: string; total: number
   counts: Record<string, number>
 }
+interface FilterOption { key: string; label: string; values: string[] }
 interface CompareData {
   from: CompareReport
   to: CompareReport
   flows: CompareFlow[]
   matchedCount: number
-  disciplines: string[]
+  // Filterable dimensions present in the two snapshots (discipline, assignee,
+  // creator, issue type + any ACC custom attribute), with their values.
+  filterOptions: FilterOption[]
 }
 
 // Synthetic buckets produced by the compare endpoint.
@@ -112,7 +115,10 @@ export default function ProgressModal({
   // Defaults: compare the previous report (baseline) against the latest.
   const [toId, setToId] = useState(comparable[0]?._id ?? '')
   const [fromId, setFromId] = useState(comparable[1]?._id ?? '')
-  const [discipline, setDiscipline] = useState('')
+  // Generic filter: a parameter (discipline / assignee / creator / issue type /
+  // custom attribute) and one of its values. Empty = no filtering.
+  const [filterKey, setFilterKey] = useState('')
+  const [filterValue, setFilterValue] = useState('')
   const [data, setData] = useState<CompareData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -123,7 +129,10 @@ export default function ProgressModal({
     setLoading(true)
     setError(null)
     const params = new URLSearchParams({ from: fromId, to: toId })
-    if (discipline) params.set('discipline', discipline)
+    if (filterKey && filterValue) {
+      params.set('filterKey', filterKey)
+      params.set('filterValue', filterValue)
+    }
     fetch(`/api/projects/${projectId}/report-compare?${params}`)
       .then(async r => {
         const json = await r.json() as CompareData & { error?: string }
@@ -134,7 +143,16 @@ export default function ProgressModal({
       .catch(e => { if (alive) setError(String(e)) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [projectId, fromId, toId, discipline])
+  }, [projectId, fromId, toId, filterKey, filterValue])
+
+  // Switching reports can change which parameters exist — drop a filter that no
+  // longer applies so the query and the dropdowns stay in sync.
+  useEffect(() => {
+    if (!data || !filterKey) return
+    const opt = data.filterOptions.find(o => o.key === filterKey)
+    if (!opt) { setFilterKey(''); setFilterValue('') }
+    else if (filterValue && !opt.values.includes(filterValue)) setFilterValue('')
+  }, [data, filterKey, filterValue])
 
   // Lock background scroll while open.
   useEffect(() => {
@@ -244,11 +262,23 @@ export default function ProgressModal({
             ))}
           </select>
           <div className="ms-auto flex items-center gap-2">
-            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">Discipline</label>
-            <select className={selectCls} value={discipline} onChange={e => setDiscipline(e.target.value)}>
-              <option value="">All disciplines</option>
-              {(data?.disciplines ?? []).map(d => <option key={d} value={d}>{d}</option>)}
+            <label className="text-[10px] font-mono uppercase tracking-wider text-gray-400">Filter</label>
+            <select
+              className={selectCls}
+              value={filterKey}
+              onChange={e => { setFilterKey(e.target.value); setFilterValue('') }}
+            >
+              <option value="">No filter</option>
+              {(data?.filterOptions ?? []).map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
             </select>
+            {filterKey && (
+              <select className={selectCls} value={filterValue} onChange={e => setFilterValue(e.target.value)}>
+                <option value="">All</option>
+                {(data?.filterOptions.find(o => o.key === filterKey)?.values ?? []).map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -338,7 +368,7 @@ export default function ProgressModal({
                 </div>
               ) : (
                 <div className="h-[200px] grid place-items-center text-sm text-gray-400">
-                  No issues to compare{discipline ? ' for this discipline' : ''}.
+                  No issues to compare{filterKey && filterValue ? ' for this filter' : ''}.
                 </div>
               )}
             </>

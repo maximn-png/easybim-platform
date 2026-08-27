@@ -1,0 +1,393 @@
+'use client'
+
+// Admin hours status — compares the TimeEntry collection (portal + imported
+// Monday history) against the LIVE Monday timesheet boards, per project, so the
+// migration can be audited number-by-number before/after the cut-over.
+// Every column gets an Excel-style header menu (sort + checkbox value filter),
+// reusing ColumnHeaderMenu from the dashboard.
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import ColumnHeaderMenu, { type FilterValue, type SortDir } from './ColumnHeaderMenu'
+
+interface Row {
+  projectNumber: string
+  projectName: string
+  status: string | null
+  isActive: boolean
+  budgetHours: number | null
+  boards: string[]
+  mondayLive: number | null
+  mongoMonday: number
+  mongoPortal: number
+  mongoTotal: number
+  delta: number | null
+  sharedMa003With?: string
+}
+interface Bucket { key: string; name: string; boards: string[]; mongoMonday: number; mongoPortal: number; mongoTotal: number }
+interface Payload {
+  rows: Row[]
+  buckets: Bucket[]
+  totals?: { mondayLive: number; mongoMonday: number; mongoPortal: number; mongoTotal: number }
+  mondayCachedAt?: string
+  error?: string
+}
+
+const EMPTY = '__EMPTY__'  // filter token for blank cells
+
+const fmt = (n: number | null | undefined) =>
+  n == null ? '—' : n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+
+function deltaBadge(delta: number | null) {
+  if (delta == null) return <span className="text-gray-300">—</span>
+  const abs = Math.abs(delta)
+  if (abs <= 0.01) return <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold">✓ 0</span>
+  const cls = abs <= 5 ? 'text-amber-600' : 'text-red-600'
+  return <span className={`font-semibold ${cls}`}>{delta > 0 ? '+' : ''}{fmt(delta)}</span>
+}
+
+function usedPct(r: Row): number | null {
+  return r.budgetHours && r.budgetHours > 0 ? Math.round((r.mongoTotal / r.budgetHours) * 100) : null
+}
+
+// Column definitions drive sorting, filtering and rendering uniformly.
+interface Col {
+  key: string
+  label: string
+  kind: 'text' | 'numeric'
+  align: 'left' | 'right'
+  menuAlign?: 'left' | 'right'
+  /** Sort value (numbers sort numerically; null sinks to the bottom) */
+  value: (r: Row) => string | number | null
+  /** Filter token; defaults to String(value) (EMPTY for null/blank) */
+  token?: (r: Row) => string
+  /** Token → display label in the filter dropdown */
+  tokenLabel?: (token: string) => string
+  render: (r: Row) => ReactNode
+}
+
+const COLS: Col[] = [
+  {
+    key: 'projectNumber', label: '#', kind: 'text', align: 'left', menuAlign: 'left',
+    value: r => r.projectNumber,
+    render: r => <span className="text-gray-500">{r.projectNumber}</span>,
+  },
+  {
+    key: 'projectName', label: 'Project', kind: 'text', align: 'left', menuAlign: 'left',
+    value: r => r.projectName,
+    render: r => (
+      <span className="font-medium text-gray-800 inline-block max-w-[300px] truncate align-bottom" title={r.projectName}>
+        {r.projectName}
+        {r.sharedMa003With && (
+          <span className="ml-1 text-[10px] text-amber-600" title={`Shares its Monday timesheet link with ${r.sharedMa003With} — Monday cannot split the hours between them`}>
+            ⚠ shared with {r.sharedMa003With}
+          </span>
+        )}
+      </span>
+    ),
+  },
+  {
+    key: 'status', label: 'Status', kind: 'text', align: 'left', menuAlign: 'left',
+    value: r => r.status,
+    render: r => <span className="text-gray-500 whitespace-nowrap">{r.status ?? '—'}</span>,
+  },
+  {
+    key: 'boards', label: 'Monday boards', kind: 'text', align: 'left', menuAlign: 'left',
+    value: r => r.boards.join(', '),
+    token: r => r.boards.length ? r.boards.join(', ') : EMPTY,
+    render: r => (
+      <span className="whitespace-nowrap">
+        {r.boards.length
+          ? r.boards.map(b => (
+              <span
+                key={b}
+                className={`inline-block mr-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                  b === 'Portal' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-[#1e248c]'
+                }`}
+              >
+                {b}
+              </span>
+            ))
+          : <span className="text-gray-300">—</span>}
+      </span>
+    ),
+  },
+  {
+    key: 'mondayLive', label: 'Monday live', kind: 'numeric', align: 'right',
+    value: r => r.mondayLive,
+    render: r => <span className="text-gray-600">{fmt(r.mondayLive)}</span>,
+  },
+  {
+    key: 'mongoMonday', label: 'Imported', kind: 'numeric', align: 'right',
+    value: r => r.mongoMonday,
+    render: r => <span className="text-gray-800">{fmt(r.mongoMonday)}</span>,
+  },
+  {
+    key: 'mongoPortal', label: 'Portal', kind: 'numeric', align: 'right',
+    value: r => r.mongoPortal,
+    render: r => r.mongoPortal ? <span className="text-gray-800">{fmt(r.mongoPortal)}</span> : <span className="text-gray-300">0</span>,
+  },
+  {
+    key: 'mongoTotal', label: 'Total', kind: 'numeric', align: 'right',
+    value: r => r.mongoTotal,
+    render: r => <span className="font-semibold text-[#1e248c]">{fmt(r.mongoTotal)}</span>,
+  },
+  {
+    key: 'delta', label: 'Δ Imported−Monday', kind: 'numeric', align: 'right',
+    value: r => r.delta,
+    // Filter by state rather than by the (mostly unique) numeric values.
+    token: r => r.delta == null ? EMPTY : Math.abs(r.delta) <= 0.01 ? 'match' : 'diff',
+    tokenLabel: t => t === 'match' ? '✓ Match' : t === 'diff' ? 'Difference' : '(No Monday link)',
+    render: r => deltaBadge(r.delta),
+  },
+  {
+    key: 'budgetHours', label: 'Budget', kind: 'numeric', align: 'right',
+    value: r => r.budgetHours,
+    render: r => <span className="text-gray-500">{fmt(r.budgetHours)}</span>,
+  },
+  {
+    key: 'usedPct', label: 'Used %', kind: 'numeric', align: 'right', menuAlign: 'right',
+    value: r => usedPct(r),
+    token: r => {
+      const pct = usedPct(r)
+      return pct == null ? EMPTY : pct > 100 ? 'over' : 'within'
+    },
+    tokenLabel: t => t === 'over' ? 'Over budget' : t === 'within' ? 'Within budget' : '(No budget)',
+    render: r => {
+      const pct = usedPct(r)
+      return <span className={pct != null && pct > 100 ? 'text-red-600 font-semibold' : 'text-gray-600'}>{pct != null ? `${pct}%` : '—'}</span>
+    },
+  },
+]
+
+const defaultToken = (col: Col, r: Row): string => {
+  if (col.token) return col.token(r)
+  const v = col.value(r)
+  return v == null || v === '' ? EMPTY : String(v)
+}
+
+export default function HoursStatusClient() {
+  const [data, setData] = useState<Payload | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>({ key: 'delta', dir: 'desc' })
+  const [filters, setFilters] = useState<Record<string, Set<string> | null>>({})
+
+  const load = useCallback(async (refresh: boolean) => {
+    refresh ? setRefreshing(true) : setLoading(true)
+    try {
+      const res = await fetch(`/api/admin/hours-status${refresh ? '?refresh=1' : ''}`)
+      setData(await res.json())
+    } catch (e) {
+      setData({ rows: [], buckets: [], error: e instanceof Error ? e.message : String(e) })
+    } finally {
+      setLoading(false); setRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => { void load(false) }, [load])
+
+  const allRows = useMemo(() => data?.rows ?? [], [data])
+
+  // Distinct filter values per column, from the full (unfiltered) row set.
+  const valuesByCol = useMemo(() => {
+    const out: Record<string, FilterValue[]> = {}
+    for (const col of COLS) {
+      const counts = new Map<string, number>()
+      for (const r of allRows) {
+        const t = defaultToken(col, r)
+        counts.set(t, (counts.get(t) ?? 0) + 1)
+      }
+      const list = [...counts.entries()].map(([value, count]) => ({
+        value,
+        label: value === EMPTY ? (col.tokenLabel ? col.tokenLabel(EMPTY) : '(Empty)') : col.tokenLabel ? col.tokenLabel(value) : value,
+        count,
+      }))
+      // Numeric-looking tokens sort numerically, everything else A→Z; blanks last.
+      list.sort((a, b) => {
+        if (a.value === EMPTY) return 1
+        if (b.value === EMPTY) return -1
+        const na = Number(a.value), nb = Number(b.value)
+        if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
+        return a.label.localeCompare(b.label)
+      })
+      out[col.key] = list
+    }
+    return out
+  }, [allRows])
+
+  const rows = useMemo(() => {
+    let list = allRows
+    for (const col of COLS) {
+      const sel = filters[col.key]
+      if (sel != null) list = list.filter(r => sel.has(defaultToken(col, r)))
+    }
+    if (sort) {
+      const col = COLS.find(c => c.key === sort.key)!
+      const dir = sort.dir === 'desc' ? -1 : 1
+      list = [...list].sort((a, b) => {
+        const av = sort.key === 'delta' ? (a.delta == null ? null : Math.abs(a.delta)) : col.value(a)
+        const bv = sort.key === 'delta' ? (b.delta == null ? null : Math.abs(b.delta)) : col.value(b)
+        if (av == null && bv == null) return 0
+        if (av == null) return 1          // nulls always sink
+        if (bv == null) return -1
+        if (typeof av === 'number' && typeof bv === 'number') return dir * (av - bv)
+        return dir * String(av).localeCompare(String(bv))
+      })
+    }
+    return list
+  }, [allRows, filters, sort])
+
+  const activeFilterCount = Object.values(filters).filter(f => f != null).length
+
+  return (
+    <div className="max-w-[1500px] w-full mx-auto flex-1 min-h-0 flex flex-col">
+      {/* Breadcrumb + header */}
+      <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+        <Link href="/dashboard" className="hover:text-[#1e248c]">Dashboard</Link>
+        <span>/</span>
+        <span className="text-[#1e248c] font-medium">Hours Status</span>
+      </div>
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+        <h1 className="text-2xl font-bold text-[#1e248c]">Hours Status <span className="text-sm font-medium text-gray-400">(admin)</span></h1>
+        <div className="flex items-center gap-2">
+          {data?.mondayCachedAt && (
+            <span className="text-[11px] text-gray-400">
+              Monday snapshot: {new Date(data.mondayCachedAt).toLocaleString()}
+            </span>
+          )}
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => setFilters({})}
+              className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-amber-50 border border-amber-200 text-amber-700 hover:bg-amber-100 transition-colors"
+            >
+              Clear {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} ✕
+            </button>
+          )}
+          <span className="text-[11px] text-gray-400">{rows.length}/{allRows.length} projects</span>
+          <button
+            onClick={() => void load(true)}
+            disabled={refreshing}
+            className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/80 border border-white/90 text-[#1e248c] hover:bg-blue-50 transition-colors disabled:opacity-50"
+          >
+            {refreshing ? 'Re-sweeping Monday…' : '↻ Refresh from Monday'}
+          </button>
+        </div>
+      </div>
+
+      {/* KPI cards */}
+      {data?.totals && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          {[
+            { label: 'Monday live (TS boards)', value: data.totals.mondayLive, hint: 'linked projects only' },
+            { label: 'Imported from Monday', value: data.totals.mongoMonday, hint: 'TimeEntry source: monday' },
+            { label: 'Portal-logged', value: data.totals.mongoPortal, hint: 'My Space entries' },
+            { label: 'Total in database', value: data.totals.mongoTotal, hint: 'all sources' },
+          ].map(k => (
+            <div key={k.label} className="glass-card rounded-2xl px-4 py-3">
+              <div className="text-[11px] font-medium text-gray-500">{k.label}</div>
+              <div className="text-xl font-bold text-[#1e248c] tabular-nums">{fmt(k.value)}h</div>
+              <div className="text-[10px] text-gray-400">{k.hint}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="glass-card rounded-2xl p-8 text-center text-[12px] text-gray-500">Loading…</div>
+      ) : data?.error ? (
+        <div className="glass-card rounded-2xl p-8 text-center text-[12px] text-red-600">{data.error}</div>
+      ) : (
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto pb-4">
+          {/* Per-project comparison */}
+          <section className="glass-card rounded-2xl p-4">
+            <h2 className="text-sm font-bold text-[#1e248c] mb-2">Per project — database vs Monday</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px] tabular-nums">
+                <thead>
+                  <tr className="border-b border-gray-200/70">
+                    {COLS.map(col => (
+                      <th
+                        key={col.key}
+                        className={`px-2 py-1.5 font-semibold text-gray-500 whitespace-nowrap ${col.align === 'right' ? 'text-right' : 'text-left'}`}
+                      >
+                        {col.label}
+                        <ColumnHeaderMenu
+                          sortKind={col.kind}
+                          sortDir={sort?.key === col.key ? sort.dir : null}
+                          onSort={dir => setSort(dir ? { key: col.key, dir } : null)}
+                          values={valuesByCol[col.key]}
+                          selected={filters[col.key] ?? null}
+                          onFilter={next => setFilters(f => ({ ...f, [col.key]: next }))}
+                          align={col.menuAlign ?? (col.align === 'right' ? 'right' : 'center')}
+                        />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(r => (
+                    <tr key={r.projectNumber} className="border-b border-gray-100/80 hover:bg-blue-50/40">
+                      {COLS.map(col => (
+                        <td key={col.key} className={`px-2 py-1 ${col.align === 'right' ? 'text-right' : ''}`}>
+                          {col.render(r)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {rows.length === 0 && (
+                    <tr><td colSpan={COLS.length} className="px-2 py-6 text-center text-gray-400">No rows match the current filters</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Non-project buckets */}
+          {(data?.buckets?.length ?? 0) > 0 && (
+            <section className="glass-card rounded-2xl p-4">
+              <h2 className="text-sm font-bold text-[#1e248c] mb-1">Non-project hours</h2>
+              <p className="text-[11px] text-gray-500 mb-2">
+                Internal EasyBIM work and InteriorBIM client codes not yet assigned to a project. Not part of the per-project comparison above.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12px] tabular-nums max-w-[800px]">
+                  <thead>
+                    <tr className="border-b border-gray-200/70">
+                      <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Bucket</th>
+                      <th className="px-2 py-1.5 text-left font-semibold text-gray-500">Monday boards</th>
+                      <th className="px-2 py-1.5 text-right font-semibold text-gray-500">Imported</th>
+                      <th className="px-2 py-1.5 text-right font-semibold text-gray-500">Portal</th>
+                      <th className="px-2 py-1.5 text-right font-semibold text-gray-500">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data!.buckets.map(b => (
+                      <tr key={b.key} className="border-b border-gray-100/80">
+                        <td className="px-2 py-1 font-medium text-gray-800">{b.name} <span className="text-[10px] text-gray-400">({b.key})</span></td>
+                        <td className="px-2 py-1 whitespace-nowrap">
+                          {b.boards.map(bd => (
+                            <span
+                              key={bd}
+                              className={`inline-block mr-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                bd === 'Portal' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-[#1e248c]'
+                              }`}
+                            >
+                              {bd}
+                            </span>
+                          ))}
+                        </td>
+                        <td className="px-2 py-1 text-right text-gray-800">{fmt(b.mongoMonday)}</td>
+                        <td className="px-2 py-1 text-right text-gray-800">{b.mongoPortal ? fmt(b.mongoPortal) : <span className="text-gray-300">0</span>}</td>
+                        <td className="px-2 py-1 text-right font-semibold text-[#1e248c]">{fmt(b.mongoTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

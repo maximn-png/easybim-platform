@@ -5,7 +5,7 @@ import { fetchAccIssues } from '@/lib/services/apsService'
 import { getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 import { getUserGoogleToken, gmailCreateDraft, gmailSendMessage } from '@/lib/services/gmailService'
 import { buildEmailHtml } from '@/lib/emailHtml'
-import { normalizeStatus, issueDiscipline, dropDraft, paramValue } from '@/lib/reportGrouping'
+import { dropDraft, paramValue, toIssueSnapshot } from '@/lib/reportGrouping'
 import {
   REPORT_TEMPLATES, resolveVariant, pdfNameFor, accIssuesUrl, type BodyLink,
 } from '@/lib/reportTemplates'
@@ -291,12 +291,7 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
     scheduleId:   schedule._id,
     scheduleName: schedule.name,
     issueCount:   docIssues.length,
-    issuesSnapshot: docIssues.map(i => ({
-      id:         i.id,
-      displayId:  i.displayId || undefined,
-      status:     normalizeStatus(i.status),
-      discipline: issueDiscipline(i),
-    })),
+    issuesSnapshot: docIssues.map(toIssueSnapshot),
     filtersSummary,
     groupBy:      schedule.groupBy,
     createdByUserId: schedule.ownerUserId,

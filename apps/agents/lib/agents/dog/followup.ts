@@ -188,13 +188,18 @@ export async function analyzeFollowup(
     { type: 'text', text: followupInstruction(agenda, !!previousVersion) },
   ]
 
-  const res = await client().messages.create({
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system,
-    tools: [FOLLOWUP_TOOL],
-    messages: [{ role: 'user', content }],
-  })
+  // Streamed + deep thinking, same as the first-round review call.
+  const res = await client()
+    .messages.stream({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+      tools: [FOLLOWUP_TOOL],
+      messages: [{ role: 'user', content }],
+    })
+    .finalMessage()
 
   const call = res.content.find(
     (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use' && b.name === FOLLOWUP_TOOL.name
@@ -289,6 +294,8 @@ export async function startFollowup(args: StartFollowupArgs): Promise<IAgreement
     review.verdicts = result.verdicts
     review.issues = result.newIssues
     review.issuesOriginal = result.newIssues.map((i) => ({ ...i }))
+    // Queue the evidence-verification pass; the drawer fires it as its own request.
+    review.verifyStatus = 'pending'
     review.checklistVersion = result.checklistVersion
     review.inputTokens = result.inputTokens
     review.outputTokens = result.outputTokens

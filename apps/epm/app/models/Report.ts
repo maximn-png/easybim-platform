@@ -12,6 +12,11 @@ export interface ReportIssueSnapshot {
   displayId?: string
   status:     string   // canonical key (normalizeStatus)
   discipline?: string
+  // Extra dimensions the Progress modal can filter by (absent on older reports).
+  assignedTo?: string
+  createdBy?:  string
+  issueType?:  string
+  attributes?: Record<string, string>   // ACC custom attributes (title → value)
 }
 
 export interface IReport extends Document {
@@ -52,6 +57,10 @@ const ReportIssueSnapshotSchema = new Schema<ReportIssueSnapshot>(
     displayId:  String,
     status:     { type: String, required: true },
     discipline: String,
+    assignedTo: String,
+    createdBy:  String,
+    issueType:  String,
+    attributes: { type: Schema.Types.Mixed },
   },
   { _id: false }
 )

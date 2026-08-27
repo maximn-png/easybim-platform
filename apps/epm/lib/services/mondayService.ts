@@ -1351,3 +1351,288 @@ export async function fetchBoardDocUpdates(boardId: string): Promise<MondayUpdat
   }
   return out
 }
+
+// ── My Space agenda: personal milestones & tasks ────────────────────────────
+
+const MI_SUBITEMS_BOARD_ID = '18393427966'
+
+export interface MyMilestoneBill {
+  milestoneId:   string
+  milestoneName: string
+  billId:        string   // the הגשה subitem id
+  billName:      string   // the הגשה subitem
+  projectItemId: string   // linked MA-004 item id
+  team:          string   // צוות: the bill's own label, falling back to the milestone's
+  employeeIds:   string[] // Employee people column on the bill (Monday user ids)
+  date:          string   // YYYY-MM-DD (תאריך הגשת חשבון)
+  status:        string   // סטאטוס הגשה label
+  url:           string   // the BILL subitem (its updates), not the parent milestone
+}
+
+// ALL milestone bills (MI-001 subitems) for a set of projects, each with its
+// date + status. Callers slice "this month" themselves and keep the rest for
+// the hover history.
+export async function fetchMyMilestones(
+  ma004ItemIds: string[],
+): Promise<MyMilestoneBill[]> {
+  if (ma004ItemIds.length === 0) return []
+
+  const query = `
+    query ($boardId: ID!, $limit: Int!, $cursor: String, $queryParams: ItemsQuery) {
+      boards(ids: [$boardId]) {
+        items_page(limit: $limit, cursor: $cursor, query_params: $queryParams) {
+          cursor
+          items {
+            id
+            name
+            column_values(ids: ["board_relation_mkywzj9x", "color_mm06m73n"]) {
+              id
+              text
+              ... on BoardRelationValue { linked_item_ids }
+            }
+            subitems {
+              id
+              name
+              column_values(ids: ["date_mkyk6jwj", "color_mkyk8mbx", "multiple_person_mkyxb3kd", "color_mm06pbz5"]) {
+                id
+                text
+                ... on PeopleValue { persons_and_teams { id } }
+              }
+            }
+          }
+        }
+      }
+    }
+  `
+  // board_relation filtering requires linked item ids as NUMBERS — strings yield zero matches.
+  const queryParams = {
+    rules: [{ column_id: 'board_relation_mkywzj9x', compare_value: ma004ItemIds.map(Number), operator: 'any_of' }],
+  }
+
+  const out: MyMilestoneBill[] = []
+  let cursor: string | null = null
+  let first = true
+
+  do {
+    // query_params can only be sent on the first request; later pages use the cursor alone.
+    const variables = first
+      ? { boardId: MILESTONES_BOARD_ID, limit: 50, queryParams }
+      : { boardId: MILESTONES_BOARD_ID, limit: 50, cursor }
+
+    const data = await mondayQuery(query, variables) as {
+      boards: Array<{ items_page: { cursor: string | null; items: Array<{
+        id: string
+        name: string
+        column_values: Array<{ id: string; text: string; linked_item_ids?: string[] }>
+        subitems: Array<{ id: string; name: string; column_values: Array<{ id: string; text: string; persons_and_teams?: Array<{ id: string }> }> }> | null
+      }> } }>
+    }
+    const page = data.boards?.[0]?.items_page
+    cursor = page?.cursor ?? null
+    first = false
+
+    for (const item of page?.items ?? []) {
+      const colMap = Object.fromEntries(item.column_values.map(c => [c.id, c]))
+      const projectItemId = colMap['board_relation_mkywzj9x']?.linked_item_ids?.[0]
+      if (!projectItemId) continue
+      const team = (colMap['color_mm06m73n']?.text ?? '').trim()
+
+      for (const bill of item.subitems ?? []) {
+        const date = (bill.column_values.find(c => c.id === 'date_mkyk6jwj')?.text ?? '').trim()
+        if (!date) continue   // undated bills carry no schedule information
+        out.push({
+          milestoneId:   item.id,
+          milestoneName: item.name,
+          billId:        bill.id,
+          billName:      bill.name,
+          projectItemId,
+          team: (bill.column_values.find(c => c.id === 'color_mm06pbz5')?.text ?? '').trim() || team,
+          employeeIds:   (bill.column_values.find(c => c.id === 'multiple_person_mkyxb3kd')?.persons_and_teams ?? []).map(p => String(p.id)),
+          date,
+          status: (bill.column_values.find(c => c.id === 'color_mkyk8mbx')?.text ?? '').trim(),
+          url:    pulseUrl(MI_SUBITEMS_BOARD_ID, bill.id) ?? '',
+        })
+      }
+    }
+  } while (cursor)
+
+  return out.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export interface MyBoardTask {
+  id:        string
+  name:      string
+  boardId:   string
+  boardName: string
+  date:      string          // YYYY-MM-DD
+  dueColumnId: string | null // the date column behind `date` (for editing)
+  status:    string | null
+  statusColumnId: string | null
+  statusLabels:   string[]
+  overdue:   boolean
+  // Priority status column, when the board has one (title contains "priority"/"עדיפות").
+  priority:         string | null
+  priorityColumnId: string | null
+  priorityLabels:   string[]
+  url:       string
+}
+
+// Statuses that mean "nothing left to do" — such items never show as tasks.
+const TASK_DONE_STATUSES = new Set([
+  'done', 'submitted', 'completed', 'work completed', 'closed', 'rejected', 'canceled', 'cancelled',
+  'הושלם', 'בוצע', 'סגור', 'אושר', 'הוגש',
+])
+
+// Task sources are an allowlist: project boards (name starts with the project
+// number, e.g. "22234_Congress_Center") plus a few named company boards.
+// Timesheet boards are excluded even when project-numbered.
+const TASK_BOARD_ALLOWLIST = ['easybim-development', 'conference 2026', "ma-008-cv's management", 'ma-008-cvs management']
+function isTaskBoard(name: string): boolean {
+  const n = name.trim().toLowerCase()
+  if (n.startsWith('subitems of') || n.includes('timesheet')) return false
+  if (/^\d{4,5}[^\d]/.test(n)) return true
+  return TASK_BOARD_ALLOWLIST.some((a) => n.startsWith(a))
+}
+
+// Items assigned to a Monday user across ALL active boards (minus timesheet/
+// milestone/subitem boards): overdue since `overdueSince` plus everything due
+// through `monthEnd`. Columns are read generically by TYPE (people/date/status)
+// so any board shape works. This sweeps the whole account — call it behind a
+// cache, ideally in the background.
+export async function fetchMyTasksAllBoards(
+  mondayUserId: string,
+  overdueSince: string,
+  today: string,
+  monthEnd: string,
+): Promise<MyBoardTask[]> {
+  if (!mondayUserId) return []
+
+  // 1. Discover boards (paged; Monday caps boards-per-page).
+  const boardsQuery = `
+    query ($page: Int!) {
+      boards(limit: 200, page: $page, state: active) {
+        id
+        name
+        type
+      }
+    }
+  `
+  const boardIds: Array<{ id: string; name: string }> = []
+  for (let page = 1; page <= 10; page++) {
+    const data = await mondayQuery(boardsQuery, { page }) as {
+      boards: Array<{ id: string; name: string; type: string }>
+    }
+    const boards = data.boards ?? []
+    for (const b of boards) {
+      if (b.type === 'board' && isTaskBoard(b.name)) boardIds.push({ id: b.id, name: b.name })
+    }
+    if (boards.length < 200) break
+  }
+
+  // 2. Sweep items in chunks, reading only what the filter needs. Status
+  // columns also carry their title + settings so a "Priority" column can be
+  // recognized and offered for editing.
+  const itemsQuery = `
+    query ($ids: [ID!]) {
+      boards(ids: $ids) {
+        id
+        name
+        items_page(limit: 50) {
+          items {
+            id
+            name
+            url
+            column_values {
+              id
+              type
+              ... on PeopleValue { persons_and_teams { id } }
+              ... on DateValue { date column { title } }
+              ... on StatusValue { text column { title settings_str } }
+            }
+          }
+        }
+      }
+    }
+  `
+  const PRIORITY_RE = /priority|עדיפות/i
+  const labelsFromSettings = (settings: string | undefined): string[] => {
+    try {
+      const parsed = JSON.parse(settings ?? '{}') as { labels?: Record<string, string> }
+      return Object.values(parsed.labels ?? {}).filter(Boolean)
+    } catch { return [] }
+  }
+  const out: MyBoardTask[] = []
+  for (let i = 0; i < boardIds.length; i += 6) {
+    const chunk = boardIds.slice(i, i + 6)
+    try {
+      const data = await mondayQuery(itemsQuery, { ids: chunk.map(b => b.id) }) as {
+        boards: Array<{ id: string; name: string; items_page: { items: Array<{
+          id: string
+          name: string
+          url: string
+          column_values: Array<{
+            id: string; type: string; text: string | null
+            persons_and_teams?: Array<{ id: string }>
+            date?: string | null
+            column?: { title: string; settings_str?: string }
+          }>
+        }> } | null }>
+      }
+      for (const board of data.boards ?? []) {
+        for (const item of board.items_page?.items ?? []) {
+          const mine = item.column_values.some(
+            c => c.type === 'people' && c.persons_and_teams?.some(p => String(p.id) === String(mondayUserId))
+          )
+          if (!mine) continue
+          // Deadline semantics: prefer a Due-titled date column, then any
+          // non-Start date, then whatever date the board has.
+          const dateCols = item.column_values.filter(c => c.type === 'date' && c.date)
+          const dueCol =
+            dateCols.find(c => /due|deadline|יעד/i.test(c.column?.title ?? '')) ??
+            dateCols.find(c => !/start|התחלה/i.test(c.column?.title ?? '')) ??
+            dateCols[0]
+          const date = dueCol?.date ?? ''
+          if (!date || date > monthEnd || date < overdueSince) continue
+          const statusCols = item.column_values.filter(c => c.type === 'status')
+          const priorityCol = statusCols.find(c => PRIORITY_RE.test(c.column?.title ?? ''))
+          const statusCol = statusCols.find(c => c !== priorityCol && c.text) ?? statusCols.find(c => c !== priorityCol)
+          const status = statusCol?.text ?? null
+          if (status && TASK_DONE_STATUSES.has(status.trim().toLowerCase())) continue
+          out.push({
+            id: item.id, name: item.name, boardId: board.id, boardName: board.name,
+            date, dueColumnId: dueCol?.id ?? null,
+            status,
+            statusColumnId: statusCol?.id ?? null,
+            statusLabels: statusCol ? labelsFromSettings(statusCol.column?.settings_str) : [],
+            overdue: date < today,
+            priority: priorityCol?.text ?? null,
+            priorityColumnId: priorityCol?.id ?? null,
+            priorityLabels: priorityCol ? labelsFromSettings(priorityCol.column?.settings_str) : [],
+            url: item.url,
+          })
+        }
+      }
+    } catch (err) {
+      // One bad chunk (archived board, no access) must not empty the whole card.
+      console.warn('[fetchMyTasksAllBoards] chunk failed:', chunk.map(b => b.name), err)
+    }
+  }
+
+  return out.sort((a, b) => a.date.localeCompare(b.date))
+}
+
+// Set a status-type column (e.g. Priority) on a Monday item. Writes with the
+// platform's API token, so Monday shows the change as made by the token owner.
+export async function setMondayItemStatus(
+  boardId: string,
+  itemId: string,
+  columnId: string,
+  label: string,
+): Promise<void> {
+  const query = `
+    mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: String!) {
+      change_simple_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
+    }
+  `
+  await mondayQuery(query, { boardId, itemId, columnId, value: label })
+}

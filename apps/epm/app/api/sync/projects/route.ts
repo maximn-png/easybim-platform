@@ -14,14 +14,43 @@ import { getPartnerHubs, getPartnerHubByAccountId, type ApsHub } from '@/lib/ser
 const MA004_BOARD_ID  = '7321609006'
 const MA004_BOARD_URL = 'https://easybim-company.monday.com/boards/7321609006'
 
-function isAuthorized(req: NextRequest, userId: string | null): boolean {
+// Which credential authorized this call — the secret header wins so a cron
+// call is labeled 'cron' even when a session cookie happens to be present.
+function callerKind(req: NextRequest, userId: string | null): 'cron' | 'user' | null {
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
     const bearer = req.headers.get('authorization')?.replace('Bearer ', '')
-    if (bearer === cronSecret) return true
-    if (req.headers.get('x-cron-secret') === cronSecret) return true
+    if (bearer === cronSecret) return 'cron'
+    if (req.headers.get('x-cron-secret') === cronSecret) return 'cron'
   }
-  return !!userId
+  return userId ? 'user' : null
+}
+
+// Best-effort run log for the Admin Console's Sync Health page — persistence
+// must never fail or slow the sync itself.
+async function recordRun(fields: {
+  startedAt: Date
+  trigger: 'cron' | 'manual'
+  triggeredBy?: string
+  synced: number
+  issueStatsUpdated: number
+  errors: string[]
+  fatal?: string
+}): Promise<void> {
+  try {
+    const { connectDB } = await import('@easybim/db')
+    const SyncRun = (await import('@/app/models/SyncRun')).default
+    await connectDB()
+    const finishedAt = new Date()
+    await SyncRun.create({
+      ...fields,
+      finishedAt,
+      durationMs: finishedAt.getTime() - fields.startedAt.getTime(),
+      ok: !fields.fatal && fields.errors.length === 0,
+    })
+  } catch (err) {
+    console.error('[sync/projects] failed to record run:', err)
+  }
 }
 
 // Vercel Cron hits GET
@@ -31,7 +60,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
-  if (!isAuthorized(req, userId)) {
+  const caller = callerKind(req, userId)
+  if (!caller) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -40,6 +70,9 @@ export async function POST(req: NextRequest) {
   }
 
   const start = Date.now()
+  const startedAt = new Date()
+  const trigger = caller === 'cron' ? 'cron' as const : 'manual' as const
+  const triggeredBy = caller === 'user' ? userId ?? undefined : undefined
   const errors: string[] = []
   let synced = 0
 
@@ -47,7 +80,7 @@ export async function POST(req: NextRequest) {
     const [
       { connectDB },
       ProjectModule,
-      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject, fetchAllTimesheetHours },
+      { fetchActiveMA004Projects, fetchMA003ByItemIds, fetchUserPhotos, fetchDedicatedBoardUrls, fetchMilestoneStatsByProject },
       { driveEnabled, findProjectFolders },
     ] = await Promise.all([
       import('@easybim/db'),
@@ -62,7 +95,7 @@ export async function POST(req: NextRequest) {
     // 1. Fetch MA-004 projects + existing MongoDB ma003ItemIds in parallel
     const [allMa004Projects, existingDocs] = await Promise.all([
       fetchActiveMA004Projects(),
-      Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
+      Project.find({ isActive: true }).select('projectNumber externalIds').lean() as Promise<Array<{ _id: { toString(): string }; projectNumber: string; externalIds?: { ma003ItemId?: string; accProjectId?: string; accLinkSource?: 'auto' | 'manual' | 'ma003' } }>>
     ])
 
     // Active projects always sync. Done projects also get the full per-project
@@ -167,16 +200,20 @@ export async function POST(req: NextRequest) {
       errors.push(`Milestones: ${err instanceof Error ? err.message : String(err)}`)
     }
 
-    // 1f. Actual hours per project from TS-001/003/004/005, keyed by MA-003 item
-    // id — one bulk pass across all timesheet boards; best-effort. This is the
-    // same live figure the project page's Hours Analytics card computes, so the
-    // dashboard hours column now matches it (replaces the manual updateHours.ts).
-    let timesheetHours = new Map<string, import('@/lib/services/mondayService').TS001HoursSummary>()
+    // 1f. Actual hours per project from the TimeEntry collection (portal-logged
+    // entries + historical Monday imports, see backfillTimeEntriesFromMonday.ts),
+    // keyed by Project _id — this is the same figure the project page's Hours
+    // Analytics card computes (replaces the Monday timesheet sweep); best-effort.
+    let timeEntryHours = new Map<string, number>()
     try {
-      timesheetHours = await fetchAllTimesheetHours()
+      const { sumHoursByProject } = await import('@/lib/server/hoursService')
+      timeEntryHours = await sumHoursByProject()
     } catch (err) {
-      errors.push(`Timesheet hours: ${err instanceof Error ? err.message : String(err)}`)
+      errors.push(`TimeEntry hours: ${err instanceof Error ? err.message : String(err)}`)
     }
+
+    // projectNumber → Mongo _id, for the hours join in the upsert loop.
+    const existingIdMap = new Map(existingDocs.map(d => [d.projectNumber, String(d._id)]))
 
     // 2. Collect all MA-003 item IDs — live from board_relation + stored fallbacks
     const allMa003Ids = [...new Set([
@@ -209,10 +246,11 @@ export async function POST(req: NextRequest) {
         // Milestone completion (joined by MA-004 item id). Absent → leave null/[].
         const milestones = milestoneStats.get(p.itemId)
 
-        // Actual hours (joined by MA-003 item id) + derived progress vs budget.
-        // Only overwrite when a value resolved, so a transient empty read can't
+        // Actual hours (joined by Project _id from TimeEntry) + derived progress
+        // vs budget. Only overwrite when a value resolved, so an empty read can't
         // wipe good stored hours. Progress mirrors deriveHoursProgress().
-        const actualHours   = ma003Id ? timesheetHours.get(ma003Id)?.actualHours ?? null : null
+        const mongoId       = existingIdMap.get(p.projectNumber)
+        const actualHours   = mongoId ? timeEntryHours.get(mongoId) ?? null : null
         const hoursProgress =
           actualHours != null && p.budgetHours && p.budgetHours > 0
             ? Math.min(999, Math.max(0, Math.round((actualHours / p.budgetHours) * 100)))
@@ -416,10 +454,13 @@ export async function POST(req: NextRequest) {
       errors.push(`Issue stats: ${err instanceof Error ? err.message : String(err)}`)
     }
 
+    await recordRun({ startedAt, trigger, triggeredBy, synced, issueStatsUpdated, errors })
     return NextResponse.json({ synced, issueStatsUpdated, errors, durationMs: Date.now() - start })
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await recordRun({ startedAt, trigger, triggeredBy, synced, issueStatsUpdated: 0, errors, fatal: message })
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err), synced, errors },
+      { error: message, synced, errors },
       { status: 500 }
     )
   }

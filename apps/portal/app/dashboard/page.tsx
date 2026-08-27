@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowRight, Clock, Sparkles, ShieldCheck, Inbox } from 'lucide-react'
+import { ArrowRight, Clock, Sparkles, ShieldCheck, Inbox, UserRound } from 'lucide-react'
 import { canAccessApp, isAdmin } from '@easybim/auth'
 import { CARDS } from '@/lib/cards'
 import { getAccess } from '@/lib/access'
@@ -73,16 +73,28 @@ export default async function DashboardPage() {
 
       <AppHeader
         rightSlot={
-          admin && (
-            <Link
-              href="/admin/users"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
-              style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
-            >
-              <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
-              User Management
-            </Link>
-          )
+          <>
+            {canAccessApp(access, 'epm') && (
+              <a
+                href={`${process.env.NEXT_PUBLIC_EPM_URL || 'http://localhost:3002'}/me`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
+                style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
+              >
+                <UserRound size={12} style={{ color: '#44b8d3' }} />
+                My Space
+              </a>
+            )}
+            {admin && (
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold transition-colors hover:bg-white"
+                style={{ background: 'rgba(30,36,140,0.06)', borderColor: 'rgba(30,36,140,0.20)', color: '#1e248c' }}
+              >
+                <ShieldCheck size={12} style={{ color: '#44b8d3' }} />
+                Admin Console
+              </Link>
+            )}
+          </>
         }
       />
 

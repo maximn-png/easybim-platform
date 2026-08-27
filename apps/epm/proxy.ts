@@ -11,6 +11,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/sync/projects(.*)',
   '/api/cron/(.*)',
   '/api/report-image/(.*)',
+  // Integration probe — carries no data; consumed by the portal admin Integrations board.
+  '/api/health',
 ])
 
 // Paths an ANA-only client (the `ana` grant without `epm`) may reach. Everything
