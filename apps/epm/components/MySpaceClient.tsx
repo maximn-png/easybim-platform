@@ -10,6 +10,7 @@ import type { ProjectRow } from '@/lib/types'
 import ProgressBar from './ProgressBar'
 import TeamMemberCell from './TeamMemberCell'
 import ColumnHeaderMenu, { type FilterValue, type SortDir } from './ColumnHeaderMenu'
+import MilestoneHistoryPanel, { BillAvatars, StatusChip, fmtDay, statusColor } from './MilestoneHistoryPanel'
 
 /* My Space hub: one viewport-locked page.
    Left → right: My tasks (all boards, overdue + this month), My milestones
@@ -23,63 +24,8 @@ function toYMD(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
-const fmtDay = (date: string) =>
-  new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-
-// The MI-001 צוות label colors, exactly as on the board.
-const TEAM_COLORS: Record<string, string> = {
-  'תיאום מערכות': '#4eccc6',
-  'ניהול מודל': '#579bfc',
-  'מקסים/באין': '#757575',
-  'מקסים+באין': '#333333',
-}
-const teamColor = (team: string) => TEAM_COLORS[team.trim()] ?? '#c4c4c4'
-
-// Monday's own label colors, so chips here look exactly like the board.
-const MONDAY_STATUS_COLORS: Record<string, string> = {
-  'submitted': '#00c875',
-  'done': '#00c875',
-  'work completed': '#9d50dd',
-  'working on it': '#fdab3d',
-  'future steps': '#216edf',
-  'rejected': '#df2f4a',
-  'stuck': '#df2f4a',
-  '?': '#faa1f1',
-}
-const statusColor = (s: string | null) => MONDAY_STATUS_COLORS[(s ?? '').trim().toLowerCase()] ?? '#c4c4c4'
-
-// Monday profile photos of a bill's employees (stacked, max 3).
-function BillAvatars({ employees, size = 16 }: { employees: Array<{ id: string; name: string; avatarUrl?: string }>; size?: number }) {
-  if (!employees.length) return null
-  return (
-    <span className="inline-flex shrink-0 -space-x-1 rtl:space-x-reverse align-middle">
-      {employees.slice(0, 3).map((e) =>
-        e.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={e.id} src={e.avatarUrl} alt={e.name} title={e.name}
-            className="rounded-full object-cover border border-white" style={{ width: size, height: size }} />
-        ) : (
-          <span key={e.id} title={e.name}
-            className="rounded-full bg-[#e8eaff] text-[#1e248c] text-[7px] font-bold flex items-center justify-center border border-white"
-            style={{ width: size, height: size }}>
-            {(e.name || '?').slice(0, 1)}
-          </span>
-        )
-      )}
-    </span>
-  )
-}
-
-function StatusChip({ status, small }: { status: string | null; small?: boolean }) {
-  return (
-    <span
-      className={`shrink-0 font-semibold rounded text-white text-center ${small ? 'text-[8px] px-1 py-px min-w-[52px]' : 'text-[9px] px-1.5 py-0.5 min-w-[64px]'}`}
-      style={{ background: statusColor(status) }}
-    >
-      {status || '—'}
-    </span>
-  )
-}
+// fmtDay / team & status colors / BillAvatars / StatusChip live in
+// MilestoneHistoryPanel.tsx, shared with the project page's milestone hover.
 
 export default function MySpaceClient({ userName }: { userName: string }) {
   const [overview, setOverview] = useState<MeOverview | null>(null)
@@ -430,7 +376,8 @@ export default function MySpaceClient({ userName }: { userName: string }) {
                             value={t.status ?? ''}
                             onChange={(e) => updateTask(t, t.statusColumnId, e.target.value, { status: e.target.value })}
                             title="Status — saves back to Monday"
-                            className="text-[9px] font-semibold text-white border-0 rounded px-0.5 py-1 outline-none w-[86px] text-center"
+                            dir="ltr"
+                            className="text-[9px] font-semibold text-white border-0 rounded px-1 py-1 outline-none w-[86px] truncate"
                             style={{ background: statusColor(t.status) }}
                           >
                             {!t.status && <option value="">—</option>}
@@ -522,41 +469,13 @@ export default function MySpaceClient({ userName }: { userName: string }) {
                     {/* hover: every milestone of this project, bills nested beneath */}
                     <tr className="hidden group-hover:table-row">
                       <td colSpan={5} className="border-b border-[#e8eaff] bg-white px-3 py-2">
-                        <div className="text-[10px] font-bold text-[#1e248c] border-b border-[#eef0fb] pb-1 mb-1">
-                          כל אבני הדרך · {m.projectName} <span className="font-mono text-[9px] text-[#44b8d3]" dir="ltr">{m.projectNumber}</span>
-                        </div>
-                        {(() => {
-                          const history = agenda.milestoneHistory[m.projectItemId] ?? []
-                          const groups = new Map<string, typeof history>()
-                          for (const h of history) {
-                            const list = groups.get(h.milestoneName) ?? []
-                            list.push(h)
-                            groups.set(h.milestoneName, list)
-                          }
-                          return [...groups.entries()].map(([name, bills], gi) => (
-                            <div key={gi} className="mb-1 last:mb-0">
-                              <div className="text-[10px] font-semibold text-gray-800 whitespace-nowrap overflow-hidden text-ellipsis">{name}</div>
-                              {bills.map((h, j) => {
-                                const current = h.billId === m.billId
-                                return (
-                                  <div
-                                    key={j}
-                                    className={`flex items-center gap-2 py-0.5 ps-1.5 pe-1 ms-3 mt-0.5 rounded-md border-e-4 ${current ? 'ring-1 ring-[#1e248c]' : ''}`}
-                                    style={{ background: `${teamColor(h.team)}26`, borderColor: teamColor(h.team) }}
-                                    title={h.team || undefined}
-                                  >
-                                    <BillAvatars employees={h.employees} size={14} />
-                                    <span className={`flex-1 min-w-0 text-[10px] whitespace-nowrap overflow-hidden text-ellipsis ${current ? 'font-bold text-[#1e248c]' : 'text-gray-700'}`}>
-                                      {h.billName}{current ? ' ←' : ''}
-                                    </span>
-                                    <span dir="ltr" className="shrink-0 text-[9px] text-gray-500 tabular-nums">{fmtDay(h.date)}</span>
-                                    <StatusChip status={h.status} small />
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          ))
-                        })()}
+                        <MilestoneHistoryPanel
+                          bills={agenda.milestoneHistory[m.projectItemId] ?? []}
+                          projectName={m.projectName}
+                          projectNumber={m.projectNumber}
+                          highlight={(h) => h.billId === m.billId}
+                          arrow
+                        />
                       </td>
                     </tr>
                   </tbody>

@@ -83,6 +83,24 @@ export async function swrCacheBackground<T>(
   return { data: null, cachedAt: null, building: true }
 }
 
+// Plain get/set on the same collection, for caches whose freshness is decided
+// by the caller (e.g. the updates summary, keyed by a content hash) rather
+// than by a TTL.
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  await connectDB()
+  const hit = await PageCache.findOne({ key }).lean() as PageCacheDoc | null
+  return (hit?.payload as T) ?? null
+}
+
+export async function cacheSet(key: string, payload: unknown): Promise<void> {
+  await connectDB()
+  await PageCache.updateOne(
+    { key },
+    { $set: { payload, updatedAt: new Date() } },
+    { upsert: true },
+  )
+}
+
 export async function swrCache<T>(
   key: string,
   ttlMs: number,

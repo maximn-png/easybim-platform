@@ -253,11 +253,16 @@ export default function FormaConnectPanel({
           <CheckCircle2 size={14} className="text-green-600 shrink-0 mt-0.5" />
           <div className="min-w-0">
             <p className="font-medium text-green-700">{importMeta!.count} issues imported</p>
-            <p className="text-[11px] text-gray-500 truncate">
-              {importMeta!.fileName}
-              {importMeta!.uploadedAt ? ` · ${fmtDate(importMeta!.uploadedAt)}` : ''}
-              {importMeta!.uploadedByName ? ` · ${importMeta!.uploadedByName}` : ''}
-            </p>
+            {importMeta!.fileName && (
+              <p className="text-[11px] text-gray-500 truncate">{importMeta!.fileName}</p>
+            )}
+            {(importMeta!.uploadedAt || importMeta!.uploadedByName) && (
+              <p className="text-[11px] text-gray-500">
+                {importMeta!.uploadedAt ? `Uploaded ${fmtDate(importMeta!.uploadedAt)}` : ''}
+                {importMeta!.uploadedAt && importMeta!.uploadedByName ? ' · ' : ''}
+                {importMeta!.uploadedByName ?? ''}
+              </p>
+            )}
           </div>
         </div>
       ) : (

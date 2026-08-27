@@ -1,20 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import {
-  fetchItemUpdates, fetchBoardUpdates, fetchMilestoneUpdatesForProject,
-  fetchBoardDocUpdates, boardIdFromUrl, type MondayUpdate,
-} from '@/lib/services/mondayService'
+import { boardIdFromUrl, type MondayUpdate } from '@/lib/services/mondayService'
 import { swrCache } from '@/lib/server/pageCache'
+import {
+  aggregateUpdates, updatesCacheKey, UPDATES_CACHE_TTL_MS, type UpdatesPayload,
+} from '@/lib/server/updatesFeed'
 
 // Combined, read-only Monday "updates" feed for a project, aggregated live from
 // four sources (dedicated project board, its Monday docs, MI-001 milestones,
-// MA-004 master item). See lib/services/mondayService.ts for the fetchers.
+// MA-004 master item). See lib/server/updatesFeed.ts for the aggregation and
+// lib/services/mondayService.ts for the fetchers.
 // Snapshots are stored in Mongo (stale-while-revalidate, see pageCache.ts):
 // only a project's first-ever view pays the ~10-30s Monday sweep; later views
 // answer instantly and refresh in the background. ?refresh=1 forces a live
 // fetch. Falls back to a small mock when MongoDB or the Monday token is absent.
-
-const MAX_UPDATES = 100
-const CACHE_TTL_MS = 5 * 60_000
 
 const MOCK_UPDATES: MondayUpdate[] = [
   {
@@ -40,49 +38,6 @@ const MOCK_UPDATES: MondayUpdate[] = [
     source: { kind: 'milestone', label: 'Milestones (MI-001)', itemName: 'תיאום מערכות › חשבון 3', itemUrl: null },
   },
 ]
-
-interface UpdatesPayload {
-  updates: MondayUpdate[]
-  partialErrors?: string[]
-}
-
-// The live aggregation — each source independent, one failure must not block
-// the rest. Runs on first view, on ?refresh=1, and in background revalidation.
-async function aggregateUpdates(
-  dedicatedBoardId: string | null,
-  masterItemId: string | undefined,
-): Promise<UpdatesPayload> {
-  const results = await Promise.allSettled([
-    dedicatedBoardId
-      ? fetchBoardUpdates(dedicatedBoardId, { kind: 'project-board', label: 'Project board' })
-      : Promise.resolve([] as MondayUpdate[]),
-    masterItemId
-      ? fetchMilestoneUpdatesForProject(masterItemId)
-      : Promise.resolve([] as MondayUpdate[]),
-    masterItemId
-      ? fetchItemUpdates(masterItemId, { kind: 'master', label: 'Master (MA-004)' })
-      : Promise.resolve([] as MondayUpdate[]),
-    dedicatedBoardId
-      ? fetchBoardDocUpdates(dedicatedBoardId)
-      : Promise.resolve([] as MondayUpdate[]),
-  ])
-
-  const errors: string[] = []
-  const merged: MondayUpdate[] = []
-  for (const r of results) {
-    if (r.status === 'fulfilled') merged.push(...r.value)
-    else errors.push(r.reason instanceof Error ? r.reason.message : String(r.reason))
-  }
-
-  // De-dupe by update id, sort newest first, cap the total.
-  const byId = new Map<string, MondayUpdate>()
-  for (const u of merged) if (!byId.has(u.id)) byId.set(u.id, u)
-  const updates = Array.from(byId.values())
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, MAX_UPDATES)
-
-  return { updates, ...(errors.length ? { partialErrors: errors } : {}) }
-}
 
 export async function GET(
   req: NextRequest,
@@ -110,7 +65,7 @@ export async function GET(
 
     const refresh = req.nextUrl.searchParams.get('refresh') === '1'
     const { data, cachedAt } = await swrCache<UpdatesPayload>(
-      `updates:${id}`, CACHE_TTL_MS, refresh,
+      updatesCacheKey(id), UPDATES_CACHE_TTL_MS, refresh,
       () => aggregateUpdates(dedicatedBoardId, masterItemId),
     )
 
