@@ -26,6 +26,15 @@ function toYMD(d: Date): string {
 const fmtDay = (date: string) =>
   new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
+// The MI-001 צוות label colors, exactly as on the board.
+const TEAM_COLORS: Record<string, string> = {
+  'תיאום מערכות': '#4eccc6',
+  'ניהול מודל': '#579bfc',
+  'מקסים/באין': '#757575',
+  'מקסים+באין': '#333333',
+}
+const teamColor = (team: string) => TEAM_COLORS[team.trim()] ?? '#c4c4c4'
+
 // Monday's own label colors, so chips here look exactly like the board.
 const MONDAY_STATUS_COLORS: Record<string, string> = {
   'submitted': '#00c875',
@@ -86,13 +95,13 @@ export default function MySpaceClient({ userName }: { userName: string }) {
       const res = await fetch('/api/me/agenda')
       const data = await res.json() as { agenda?: MeAgenda; error?: string }
       if (data.error) { setError(data.error); return }
-      const a = data.agenda ?? { milestones: [], milestoneHistory: {}, tasks: [], tasksBuilding: false, tasksCachedAt: null, mondayIdFound: false }
+      const a = data.agenda ?? { milestones: [], milestoneHistory: {}, tasks: [], milestonesBuilding: false, tasksBuilding: false, tasksCachedAt: null, mondayIdFound: false }
       setAgenda(a)
-      if (a.tasksBuilding) {
-        pollTimer.current = setTimeout(loadAgenda, 45_000)
+      if (a.tasksBuilding || a.milestonesBuilding) {
+        pollTimer.current = setTimeout(loadAgenda, 30_000)
       }
     } catch {
-      setAgenda({ milestones: [], milestoneHistory: {}, tasks: [], tasksBuilding: false, tasksCachedAt: null, mondayIdFound: false })
+      setAgenda({ milestones: [], milestoneHistory: {}, tasks: [], milestonesBuilding: false, tasksBuilding: false, tasksCachedAt: null, mondayIdFound: false })
     }
   }, [])
 
@@ -330,7 +339,7 @@ export default function MySpaceClient({ userName }: { userName: string }) {
               </button>
             </div>
           )}
-          <div dir="rtl" className="flex-1 min-h-0 overflow-auto">
+          <div dir="rtl" className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
             {!agenda ? <Skeleton /> : agenda.tasksBuilding ? (
               <div dir="ltr"><Skeleton note="First scan of all your Monday boards is running in the background — this card fills itself in a few minutes." /></div>
             ) : !agenda.mondayIdFound ? (
@@ -338,7 +347,15 @@ export default function MySpaceClient({ userName }: { userName: string }) {
             ) : agenda.tasks.length === 0 ? (
               <div dir="ltr"><Empty>No open items assigned to you are overdue or due this month. 🎉</Empty></div>
             ) : (
-              <table className="w-full border-collapse">
+              /* fixed layout: the Task column absorbs all remaining width and
+                 truncates — the table can never overflow sideways */
+              <table className="w-full border-collapse table-fixed">
+                <colgroup>
+                  <col />
+                  <col style={{ width: 96 }} />
+                  <col style={{ width: 68 }} />
+                  <col style={{ width: 90 }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <MenuTh label="Task" start align="right"
@@ -439,7 +456,9 @@ export default function MySpaceClient({ userName }: { userName: string }) {
             {agenda && <span className="text-[10px] font-normal text-gray-400 tabular-nums ms-auto">{agenda.milestones.length}</span>}
           </h2>
           <div dir="rtl" className="flex-1 min-h-0 overflow-auto">
-            {!agenda ? <Skeleton /> : agenda.milestones.length === 0 ? (
+            {!agenda ? <Skeleton /> : agenda.milestonesBuilding ? (
+              <div dir="ltr"><Skeleton note="Reading your milestones from Monday — the card fills itself in under a minute." /></div>
+            ) : agenda.milestones.length === 0 ? (
               <Empty>No milestone bills due on your projects this month. 🎉</Empty>
             ) : (
               <table className="w-full border-collapse min-w-[520px]">
@@ -517,15 +536,24 @@ export default function MySpaceClient({ userName }: { userName: string }) {
                           return [...groups.entries()].map(([name, bills], gi) => (
                             <div key={gi} className="mb-1 last:mb-0">
                               <div className="text-[10px] font-semibold text-gray-800 whitespace-nowrap overflow-hidden text-ellipsis">{name}</div>
-                              {bills.map((h, j) => (
-                                <div key={j} className="flex items-center gap-2 py-0.5 ms-3">
-                                  <span className="w-1 h-1 rounded-full bg-[#c5caff] shrink-0" />
-                                  <BillAvatars employees={h.employees} size={14} />
-                                  <span className="flex-1 min-w-0 text-[10px] text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis">{h.billName}</span>
-                                  <span dir="ltr" className="shrink-0 text-[9px] text-gray-400 tabular-nums">{fmtDay(h.date)}</span>
-                                  <StatusChip status={h.status} small />
-                                </div>
-                              ))}
+                              {bills.map((h, j) => {
+                                const current = h.billId === m.billId
+                                return (
+                                  <div
+                                    key={j}
+                                    className={`flex items-center gap-2 py-0.5 ps-1.5 pe-1 ms-3 mt-0.5 rounded-md border-e-4 ${current ? 'ring-1 ring-[#1e248c]' : ''}`}
+                                    style={{ background: `${teamColor(h.team)}26`, borderColor: teamColor(h.team) }}
+                                    title={h.team || undefined}
+                                  >
+                                    <BillAvatars employees={h.employees} size={14} />
+                                    <span className={`flex-1 min-w-0 text-[10px] whitespace-nowrap overflow-hidden text-ellipsis ${current ? 'font-bold text-[#1e248c]' : 'text-gray-700'}`}>
+                                      {h.billName}{current ? ' ←' : ''}
+                                    </span>
+                                    <span dir="ltr" className="shrink-0 text-[9px] text-gray-500 tabular-nums">{fmtDay(h.date)}</span>
+                                    <StatusChip status={h.status} small />
+                                  </div>
+                                )
+                              })}
                             </div>
                           ))
                         })()}

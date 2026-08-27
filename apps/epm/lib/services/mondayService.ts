@@ -1362,7 +1362,7 @@ export interface MyMilestoneBill {
   billId:        string   // the הגשה subitem id
   billName:      string   // the הגשה subitem
   projectItemId: string   // linked MA-004 item id
-  team:          string   // צוות label on the milestone
+  team:          string   // צוות: the bill's own label, falling back to the milestone's
   employeeIds:   string[] // Employee people column on the bill (Monday user ids)
   date:          string   // YYYY-MM-DD (תאריך הגשת חשבון)
   status:        string   // סטאטוס הגשה label
@@ -1393,7 +1393,7 @@ export async function fetchMyMilestones(
             subitems {
               id
               name
-              column_values(ids: ["date_mkyk6jwj", "color_mkyk8mbx", "multiple_person_mkyxb3kd"]) {
+              column_values(ids: ["date_mkyk6jwj", "color_mkyk8mbx", "multiple_person_mkyxb3kd", "color_mm06pbz5"]) {
                 id
                 text
                 ... on PeopleValue { persons_and_teams { id } }
@@ -1446,7 +1446,7 @@ export async function fetchMyMilestones(
           billId:        bill.id,
           billName:      bill.name,
           projectItemId,
-          team,
+          team: (bill.column_values.find(c => c.id === 'color_mm06pbz5')?.text ?? '').trim() || team,
           employeeIds:   (bill.column_values.find(c => c.id === 'multiple_person_mkyxb3kd')?.persons_and_teams ?? []).map(p => String(p.id)),
           date,
           status: (bill.column_values.find(c => c.id === 'color_mkyk8mbx')?.text ?? '').trim(),

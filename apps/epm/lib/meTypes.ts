@@ -71,6 +71,7 @@ export const ROLE_SUBJECT: Record<MyRole, string> = {
 
 export interface AgendaMilestone {
   milestoneName: string
+  billId: string
   billName: string
   // The bill's Employee(s) — Monday profile photos.
   employees: Array<{ id: string; name: string; avatarUrl?: string }>
@@ -107,8 +108,9 @@ export interface MeAgenda {
   // for the hover history on a milestone row.
   milestoneHistory: Record<string, AgendaMilestone[]>
   tasks: AgendaTask[]
-  // The all-boards task sweep is slow; on a cold cache it builds in the
-  // background and this flag tells the UI to say so and poll again.
+  // Both Monday reads are slow, so they build in the background on a cold
+  // cache; the flags tell the UI to say so and poll again.
+  milestonesBuilding: boolean
   tasksBuilding: boolean
   // When the cached task sweep was last computed (ISO), null when live/absent.
   tasksCachedAt: string | null

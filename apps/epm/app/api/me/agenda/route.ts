@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const forceRefresh = req.nextUrl.searchParams.get('refresh') === '1'
-  const empty: MeAgenda = { milestones: [], milestoneHistory: {}, tasks: [], tasksBuilding: false, tasksCachedAt: null, mondayIdFound: false }
+  const empty: MeAgenda = { milestones: [], milestoneHistory: {}, tasks: [], milestonesBuilding: false, tasksBuilding: false, tasksCachedAt: null, mondayIdFound: false }
   if (!process.env.MONGODB_URI || !process.env.MONDAY_API_TOKEN) {
     return NextResponse.json({ agenda: empty, mock: true })
   }
@@ -90,11 +90,58 @@ export async function GET(req: NextRequest) {
     const overdueSince = `${y}-01-01`   // overdue horizon: current year
 
     const uid = mondayId
-    const [allBills, tasksRes] = await Promise.all([
-      fetchMyMilestones(ma004Ids).catch((err) => {
-        console.warn('[me/agenda] milestones failed:', err)
-        return []
-      }),
+
+    // The milestone read (MI-001 pages + photos) takes seconds — served from
+    // the same background-building cache as the task sweep.
+    const buildMilestones = async (): Promise<{ rows: AgendaMilestone[]; history: Record<string, AgendaMilestone[]> }> => {
+      const allBills = await fetchMyMilestones(ma004Ids)
+      const employeeIds = [...new Set(allBills.flatMap((b) => b.employeeIds))]
+      const photos = await fetchUserPhotos(employeeIds).catch(() => new Map<string, { name: string; avatarUrl?: string }>())
+
+      const toAgendaMilestone = (b: (typeof allBills)[number], proj: { number: string; name: string }): AgendaMilestone => ({
+        milestoneName: b.milestoneName,
+        billId: b.billId,
+        billName: b.billName,
+        employees: b.employeeIds.map((id) => ({
+          id,
+          name: photos.get(id)?.name ?? '',
+          avatarUrl: photos.get(id)?.avatarUrl,
+        })),
+        projectItemId: b.projectItemId,
+        project: `${proj.number ? `${proj.number} ` : ''}${proj.name}`.trim(),
+        projectNumber: proj.number,
+        projectName: proj.name,
+        team: b.team,
+        date: b.date,
+        status: b.status,
+        url: b.url,
+      })
+
+      // Card rows: only the user's bills — the Employee column decides; bills
+      // with no employee fall back to team-vs-role matching.
+      // Hover history: ALL bills of the project, everyone's, all dates.
+      const rows: AgendaMilestone[] = []
+      const history: Record<string, AgendaMilestone[]> = {}
+      for (const b of allBills) {
+        const proj = byMa004.get(b.projectItemId)
+        if (!proj) continue
+        const row = toAgendaMilestone(b, proj)
+        ;(history[b.projectItemId] ??= []).push(row)
+        const personal = b.employeeIds.length > 0
+          ? mondayId != null && b.employeeIds.includes(String(mondayId))
+          : teamMatchesUser(b.team, proj.roles, me.name)
+        if (personal) rows.push(row)
+      }
+      return { rows, history }
+    }
+
+    const [milestonesRes, tasksRes] = await Promise.all([
+      swrCacheBackground(
+        `me-milestones:v1:${userId}`,
+        5 * 60_000,
+        buildMilestones,
+        forceRefresh,
+      ),
       uid
         ? swrCacheBackground(
             // v5: editable due/status columns
@@ -106,47 +153,10 @@ export async function GET(req: NextRequest) {
         : Promise.resolve({ data: [] as Awaited<ReturnType<typeof fetchMyTasksAllBoards>>, cachedAt: null, building: false }),
     ])
 
-    // Monday profile photos for every employee that appears on a bill.
-    const employeeIds = [...new Set(allBills.flatMap((b) => b.employeeIds))]
-    const photos = await fetchUserPhotos(employeeIds).catch(() => new Map<string, { name: string; avatarUrl?: string }>())
-
-    const toAgendaMilestone = (b: (typeof allBills)[number], proj: { number: string; name: string }): AgendaMilestone => ({
-      milestoneName: b.milestoneName,
-      billName: b.billName,
-      employees: b.employeeIds.map((id) => ({
-        id,
-        name: photos.get(id)?.name ?? '',
-        avatarUrl: photos.get(id)?.avatarUrl,
-      })),
-      projectItemId: b.projectItemId,
-      project: `${proj.number ? `${proj.number} ` : ''}${proj.name}`.trim(),
-      projectNumber: proj.number,
-      projectName: proj.name,
-      team: b.team,
-      date: b.date,
-      status: b.status,
-      url: b.url,
-    })
-
-    // Card rows: only the user's bills — the Employee column decides; bills
-    // with no employee fall back to team-vs-role matching.
-    // Hover history: ALL bills of the project, everyone's, all dates.
-    const myBills: AgendaMilestone[] = []
-    const milestoneHistory: Record<string, AgendaMilestone[]> = {}
-    for (const b of allBills) {
-      const proj = byMa004.get(b.projectItemId)
-      if (!proj) continue
-      const row = toAgendaMilestone(b, proj)
-      ;(milestoneHistory[b.projectItemId] ??= []).push(row)
-      const personal = b.employeeIds.length > 0
-        ? mondayId != null && b.employeeIds.includes(String(mondayId))
-        : teamMatchesUser(b.team, proj.roles, me.name)
-      if (personal) myBills.push(row)
-    }
-
     const agenda: MeAgenda = {
-      milestones: myBills.filter((b) => b.date >= monthStart && b.date <= monthEnd),
-      milestoneHistory,
+      milestones: (milestonesRes.data?.rows ?? []).filter((b) => b.date >= monthStart && b.date <= monthEnd),
+      milestoneHistory: milestonesRes.data?.history ?? {},
+      milestonesBuilding: milestonesRes.building,
       tasks: (tasksRes.data ?? []).map((t) => ({
         id: t.id,
         name: t.name,
