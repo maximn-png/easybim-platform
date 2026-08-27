@@ -14,14 +14,43 @@ import { getPartnerHubs, getPartnerHubByAccountId, type ApsHub } from '@/lib/ser
 const MA004_BOARD_ID  = '7321609006'
 const MA004_BOARD_URL = 'https://easybim-company.monday.com/boards/7321609006'
 
-function isAuthorized(req: NextRequest, userId: string | null): boolean {
+// Which credential authorized this call — the secret header wins so a cron
+// call is labeled 'cron' even when a session cookie happens to be present.
+function callerKind(req: NextRequest, userId: string | null): 'cron' | 'user' | null {
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
     const bearer = req.headers.get('authorization')?.replace('Bearer ', '')
-    if (bearer === cronSecret) return true
-    if (req.headers.get('x-cron-secret') === cronSecret) return true
+    if (bearer === cronSecret) return 'cron'
+    if (req.headers.get('x-cron-secret') === cronSecret) return 'cron'
   }
-  return !!userId
+  return userId ? 'user' : null
+}
+
+// Best-effort run log for the Admin Console's Sync Health page — persistence
+// must never fail or slow the sync itself.
+async function recordRun(fields: {
+  startedAt: Date
+  trigger: 'cron' | 'manual'
+  triggeredBy?: string
+  synced: number
+  issueStatsUpdated: number
+  errors: string[]
+  fatal?: string
+}): Promise<void> {
+  try {
+    const { connectDB } = await import('@easybim/db')
+    const SyncRun = (await import('@/app/models/SyncRun')).default
+    await connectDB()
+    const finishedAt = new Date()
+    await SyncRun.create({
+      ...fields,
+      finishedAt,
+      durationMs: finishedAt.getTime() - fields.startedAt.getTime(),
+      ok: !fields.fatal && fields.errors.length === 0,
+    })
+  } catch (err) {
+    console.error('[sync/projects] failed to record run:', err)
+  }
 }
 
 // Vercel Cron hits GET
@@ -31,7 +60,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth()
-  if (!isAuthorized(req, userId)) {
+  const caller = callerKind(req, userId)
+  if (!caller) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -40,6 +70,9 @@ export async function POST(req: NextRequest) {
   }
 
   const start = Date.now()
+  const startedAt = new Date()
+  const trigger = caller === 'cron' ? 'cron' as const : 'manual' as const
+  const triggeredBy = caller === 'user' ? userId ?? undefined : undefined
   const errors: string[] = []
   let synced = 0
 
@@ -421,10 +454,13 @@ export async function POST(req: NextRequest) {
       errors.push(`Issue stats: ${err instanceof Error ? err.message : String(err)}`)
     }
 
+    await recordRun({ startedAt, trigger, triggeredBy, synced, issueStatsUpdated, errors })
     return NextResponse.json({ synced, issueStatsUpdated, errors, durationMs: Date.now() - start })
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    await recordRun({ startedAt, trigger, triggeredBy, synced, issueStatsUpdated: 0, errors, fatal: message })
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err), synced, errors },
+      { error: message, synced, errors },
       { status: 500 }
     )
   }
