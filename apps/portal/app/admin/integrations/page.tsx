@@ -31,7 +31,12 @@ async function probe(app: string, baseUrl: string): Promise<AppHealth> {
     return { app, state: 'red', detail: body ? undefined : `HTTP ${res.status}`, checks }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return { app, state: 'red', detail: /abort|timeout/i.test(msg) ? 'timed out (8s)' : msg, checks: [] }
+    const detail = /abort|timeout/i.test(msg)
+      ? 'timed out (8s) — app may be cold-starting; hit Refresh'
+      : /fetch failed|ECONNREFUSED|ENOTFOUND/i.test(msg)
+        ? `unreachable at ${baseUrl} — app not running (local dev) or wrong URL`
+        : msg
+    return { app, state: 'red', detail, checks: [] }
   }
 }
 
