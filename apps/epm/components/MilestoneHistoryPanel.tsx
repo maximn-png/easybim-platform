@@ -8,7 +8,9 @@ import type { AgendaMilestone } from '@/lib/meTypes'
    Status hover so the two can't drift apart. */
 
 export const fmtDay = (date: string) =>
-  new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  date
+    ? new Date(`${date}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    : '—'
 
 // The MI-001 צוות label colors, exactly as on the board.
 const TEAM_COLORS: Record<string, string> = {
@@ -90,7 +92,9 @@ export default function MilestoneHistoryPanel({
       {[...groups.entries()].map(([name, rows], gi) => (
         <div key={gi} className="mb-1 last:mb-0">
           <div className="text-[10px] font-semibold text-gray-800 whitespace-nowrap overflow-hidden text-ellipsis">{name}</div>
-          {rows.map((h, j) => {
+          {/* A milestone with no bills yet arrives as one placeholder row (billId '') —
+              its group header above is the whole story. */}
+          {rows.filter((h) => h.billId).map((h, j) => {
             const hot = highlight?.(h) ?? false
             return (
               <div

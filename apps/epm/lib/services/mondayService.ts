@@ -1364,14 +1364,16 @@ export interface MyMilestoneBill {
   projectItemId: string   // linked MA-004 item id
   team:          string   // צוות: the bill's own label, falling back to the milestone's
   employeeIds:   string[] // Employee people column on the bill (Monday user ids)
-  date:          string   // YYYY-MM-DD (תאריך הגשת חשבון)
+  date:          string   // YYYY-MM-DD (תאריך הגשת חשבון) — '' when the bill has no date yet
   status:        string   // סטאטוס הגשה label
   url:           string   // the BILL subitem (its updates), not the parent milestone
 }
 
 // ALL milestone bills (MI-001 subitems) for a set of projects, each with its
-// date + status. Callers slice "this month" themselves and keep the rest for
-// the hover history.
+// date + status. Bills without a date are included (date '') so the hover
+// history shows the complete picture; a milestone with no bills at all yields
+// one placeholder row (billId '') so it still appears. Callers slice "this
+// month" themselves — empty dates fall outside any month range by definition.
 export async function fetchMyMilestones(
   ma004ItemIds: string[],
 ): Promise<MyMilestoneBill[]> {
@@ -1437,9 +1439,8 @@ export async function fetchMyMilestones(
       if (!projectItemId) continue
       const team = (colMap['color_mm06m73n']?.text ?? '').trim()
 
-      for (const bill of item.subitems ?? []) {
-        const date = (bill.column_values.find(c => c.id === 'date_mkyk6jwj')?.text ?? '').trim()
-        if (!date) continue   // undated bills carry no schedule information
+      const subitems = item.subitems ?? []
+      for (const bill of subitems) {
         out.push({
           milestoneId:   item.id,
           milestoneName: item.name,
@@ -1448,15 +1449,25 @@ export async function fetchMyMilestones(
           projectItemId,
           team: (bill.column_values.find(c => c.id === 'color_mm06pbz5')?.text ?? '').trim() || team,
           employeeIds:   (bill.column_values.find(c => c.id === 'multiple_person_mkyxb3kd')?.persons_and_teams ?? []).map(p => String(p.id)),
-          date,
+          date:   (bill.column_values.find(c => c.id === 'date_mkyk6jwj')?.text ?? '').trim(),
           status: (bill.column_values.find(c => c.id === 'color_mkyk8mbx')?.text ?? '').trim(),
           url:    pulseUrl(MI_SUBITEMS_BOARD_ID, bill.id) ?? '',
+        })
+      }
+      if (subitems.length === 0) {
+        out.push({
+          milestoneId: item.id, milestoneName: item.name,
+          billId: '', billName: '', projectItemId, team,
+          employeeIds: [], date: '', status: '',
+          url: pulseUrl(MILESTONES_BOARD_ID, item.id) ?? '',
         })
       }
     }
   } while (cursor)
 
-  return out.sort((a, b) => a.date.localeCompare(b.date))
+  // Dated bills chronologically; undated ones after them.
+  const key = (d: string) => d || '9999-12-31'
+  return out.sort((a, b) => key(a.date).localeCompare(key(b.date)))
 }
 
 export interface MyBoardTask {
