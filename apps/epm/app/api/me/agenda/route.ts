@@ -137,7 +137,8 @@ export async function GET(req: NextRequest) {
 
     const [milestonesRes, tasksRes] = await Promise.all([
       swrCacheBackground(
-        `me-milestones:v1:${userId}`,
+        // v2: undated bills + bill-less milestones included (hover history)
+        `me-milestones:v2:${userId}`,
         5 * 60_000,
         buildMilestones,
         forceRefresh,

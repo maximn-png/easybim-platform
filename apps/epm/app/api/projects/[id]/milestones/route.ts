@@ -66,7 +66,8 @@ export async function GET(
     }
 
     const forceRefresh = req.nextUrl.searchParams.get('refresh') === '1'
-    const { data } = await swrCache(`project-milestones:v1:${id}`, 5 * 60_000, forceRefresh, build)
+    // v2: undated bills + bill-less milestones included
+    const { data } = await swrCache(`project-milestones:v2:${id}`, 5 * 60_000, forceRefresh, build)
     return NextResponse.json({ milestones: data })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
