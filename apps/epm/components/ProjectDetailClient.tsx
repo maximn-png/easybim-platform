@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ChevronRight,
+  ChevronDown,
   Users,
   Boxes,
   GitMerge,
@@ -443,6 +444,19 @@ export default function ProjectDetailClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project._id, mondayUpdates === null])
 
+  // The summary paragraph can crowd out the feed — let the user minimize it to
+  // its header. Sticky across projects/visits (initialized in an effect, not
+  // the useState initializer, so SSR and first client render agree).
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false)
+  useEffect(() => {
+    try { setSummaryCollapsed(localStorage.getItem('epm:ai-summary-collapsed') === '1') } catch { /* private mode */ }
+  }, [])
+  const toggleSummary = () => setSummaryCollapsed(c => {
+    const next = !c
+    try { localStorage.setItem('epm:ai-summary-collapsed', next ? '1' : '0') } catch { /* private mode */ }
+    return next
+  })
+
   // Source filter (by board): default "all"; clicking a chip ISOLATES that board.
   // Clicking the active chip again (or "All") returns to the full feed.
   type UpdateKind = MondayUpdateItem['source']['kind']
@@ -809,18 +823,28 @@ export default function ProjectDetailClient({
                 Hidden when unavailable (no key / generation failed / no updates). */}
             {mondayUpdates !== null && mondayUpdates.length > 0 && updatesSummary !== '' && (
               <div className="shrink-0 rounded-xl border border-[#44b8d3]/30 bg-gradient-to-br from-[#f0f7ff] to-[#f6fbfd] px-3 py-2.5">
-                <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#1e248c] mb-1">
+                <button
+                  type="button"
+                  onClick={toggleSummary}
+                  aria-expanded={!summaryCollapsed}
+                  title={summaryCollapsed ? 'הצג את הסיכום' : 'מזער את הסיכום'}
+                  className="w-full flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#1e248c]"
+                >
                   <Sparkles size={12} className="text-[#44b8d3]" /> AI Summary
-                </p>
-                {updatesSummary === null ? (
-                  <p className="flex items-center gap-2 text-[11.5px] text-gray-400">
+                  <ChevronDown
+                    size={13}
+                    className={`ml-auto text-[#1e248c]/50 transition-transform ${summaryCollapsed ? '-rotate-90' : ''}`}
+                  />
+                </button>
+                {!summaryCollapsed && (updatesSummary === null ? (
+                  <p className="flex items-center gap-2 text-[11.5px] text-gray-400 mt-1">
                     <Loader2 size={12} className="animate-spin" /> מסכם את העדכונים…
                   </p>
                 ) : (
-                  <p dir="auto" className="text-[11.5px] leading-relaxed text-gray-700">
+                  <p dir="auto" className="text-[11.5px] leading-relaxed text-gray-700 mt-1">
                     {updatesSummary}
                   </p>
-                )}
+                ))}
               </div>
             )}
 
