@@ -1,32 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth, clerkClient } from '@clerk/nextjs/server'
-import { normalizeName, samePerson } from '@/lib/people'
+import { auth } from '@clerk/nextjs/server'
+import { normalizeName } from '@/lib/people'
+import { resolveMeIdentity, slotIsMe } from '@/lib/server/meIdentity'
 import { withMeCors } from '@/lib/server/meCors'
 import type { MeOverview, MyProject, MyRole, ProjectOption } from '@/lib/meTypes'
 
 export const runtime = 'nodejs'
 
 // Everything the My Space page and the header panel need about the signed-in
-// user: which projects they are staffed on (matched by email when the Monday
-// snapshot has one, by normalized name otherwise), their ACC issue stats on
+// user: which projects they are staffed on (matched by Monday user id resolved
+// from their email, with name matching as fallback), their ACC issue stats on
 // those projects, and the KPI numbers.
 export async function GET(req: NextRequest) {
   const { userId } = await auth()
   if (!userId) return withMeCors(req, NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 
-  let name = ''
-  let email: string | null = null
-  try {
-    const user = await (await clerkClient()).users.getUser(userId)
-    name = [user.firstName, user.lastName].filter(Boolean).join(' ')
-    email = user.primaryEmailAddress?.emailAddress ?? null
-  } catch {
-    /* identity stays partial; name-matching just finds nothing */
-  }
+  const me = await resolveMeIdentity(userId)
+  const { name, email } = me
 
   if (!process.env.MONGODB_URI) {
     const overview: MeOverview = {
-      name: name || 'You',
+      name: name || me.mondayName || 'You',
       email,
       avatarUrl: null,
       myProjects: [],
@@ -43,7 +37,6 @@ export async function GET(req: NextRequest) {
     await connectDB()
 
     const docs = await Project.find({}).lean()
-    const me = { name, email }
 
     const myProjects: MyProject[] = []
     const allProjects: ProjectOption[] = []
@@ -59,19 +52,22 @@ export async function GET(req: NextRequest) {
       }
       if (status.toLowerCase() !== 'done') allProjects.push(option)
 
-      const slots: Array<[MyRole, { name?: string; email?: string; avatarUrl?: string } | undefined]> = [
+      const slots: Array<[MyRole, { name?: string; email?: string; mondayId?: string; avatarUrl?: string } | undefined]> = [
         ['BIM Manager', snapshot?.bimManager],
         ['MEP Coordinator', snapshot?.mepCoordinator],
         ['BIM Modeller', snapshot?.bimModeller],
       ]
-      const mine = slots.filter(([, m]) => samePerson(m, me))
+      const mine = slots.filter(([, m]) => slotIsMe(m, me))
       if (mine.length === 0) continue
       const roles = mine.map(([role]) => role)
       if (!avatarUrl) avatarUrl = mine.find(([, m]) => m?.avatarUrl)?.[1]?.avatarUrl ?? null
 
+      // ACC spells names its own way — try the Clerk name AND the Monday name.
       const stats = snapshot?.issueCreatorStats ?? []
-      const needle = normalizeName(name)
-      const myStat = needle ? stats.find((s) => normalizeName(s.name) === needle) : undefined
+      const needles = [name, me.mondayName ?? ''].map(normalizeName).filter(Boolean)
+      const myStat = needles.length
+        ? stats.find((s) => needles.includes(normalizeName(s.name)))
+        : undefined
 
       myProjects.push({
         ...option,
@@ -97,7 +93,7 @@ export async function GET(req: NextRequest) {
     allProjects.sort((a, b) => a.projectNumber.localeCompare(b.projectNumber))
 
     const overview: MeOverview = {
-      name: name || 'You',
+      name: name || me.mondayName || 'You',
       email,
       avatarUrl,
       myProjects,

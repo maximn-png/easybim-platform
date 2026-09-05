@@ -83,20 +83,51 @@ function SankeyNode(props: unknown) {
   )
 }
 
+// Point on the link's cubic bezier at parameter t — labels sit ON their own
+// ribbon instead of a shared midpoint, so converging flows don't stack them.
+const bezierAt = (t: number, p0: number, c1: number, c2: number, p1: number) => {
+  const u = 1 - t
+  return u * u * u * p0 + 3 * u * u * t * c1 + 3 * u * t * t * c2 + t * t * t * p1
+}
+// Horizontal stagger cycle: neighbouring links place their labels at different
+// spots along the curve, separating counts that would otherwise overlap.
+const LABEL_T = [0.5, 0.36, 0.64, 0.43, 0.57, 0.3, 0.7]
+
 function SankeyLink(props: unknown) {
-  const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, payload } = props as {
+  const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index, payload } = props as {
     sourceX: number; targetX: number; sourceY: number; targetY: number
     sourceControlX: number; targetControlX: number; linkWidth: number
-    payload: { source: NodePayload }
+    index?: number
+    payload: { source: NodePayload; target: NodePayload; value: number }
   }
+  // A flow whose status actually changed (node names are `L:<status>` / `R:<status>`)
+  // gets its issue count printed on the ribbon; unchanged flows are already
+  // readable from the node totals, so they only get a hover tooltip.
+  const changed = payload.source?.name.slice(2) !== payload.target?.name.slice(2)
+  const t = LABEL_T[(index ?? 0) % LABEL_T.length]
+  const midX = bezierAt(t, sourceX, sourceControlX, targetControlX, targetX)
+  const midY = bezierAt(t, sourceY, sourceY, targetY, targetY)
+  const tooltip = `${payload.source?.label ?? ''} → ${payload.target?.label ?? ''} · ${payload.value} issue${payload.value === 1 ? '' : 's'}`
   return (
-    <path
-      d={`M${sourceX},${sourceY}C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
-      fill="none"
-      stroke={payload.source?.color ?? '#d1d5db'}
-      strokeOpacity={0.3}
-      strokeWidth={Math.max(1, linkWidth)}
-    />
+    <g>
+      <title>{tooltip}</title>
+      <path
+        d={`M${sourceX},${sourceY}C${sourceControlX},${sourceY} ${targetControlX},${targetY} ${targetX},${targetY}`}
+        fill="none"
+        stroke={payload.source?.color ?? '#d1d5db'}
+        strokeOpacity={0.3}
+        strokeWidth={Math.max(1, linkWidth)}
+      />
+      {changed && payload.value > 0 && (
+        <text
+          x={midX} y={midY} textAnchor="middle" dominantBaseline="middle"
+          fontSize={11} fontWeight={700} fill="#374151"
+          stroke="#fff" strokeWidth={3} style={{ paintOrder: 'stroke' }}
+        >
+          {payload.value}
+        </text>
+      )}
+    </g>
   )
 }
 

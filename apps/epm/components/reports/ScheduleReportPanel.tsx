@@ -46,7 +46,8 @@ function blankForm(project: ProjectRow, groupBy: GroupKey): FormState {
     name:         resolveVariant(t, v).title,
     templateId:   t.id,
     variantId:    v,
-    groupBy,
+    // A template that declares its own grouping (QA/Arch-Struct/MEP → סוג נושא) wins.
+    groupBy:      (t.defaultGroupBy as GroupKey | undefined) ?? groupBy,
     filters:      { ...EMPTY_FILTERS, extra: [] },
     bodyText:     seedBodyLines(resolveVariant(t, v).bodyLines, project.projectName),
     modelLink:    '',
@@ -218,6 +219,8 @@ export default function ScheduleReportPanel({
       name: r.title,
       bodyText: seedBodyLines(r.bodyLines, project.projectName),
       modelLink: '',
+      // Apply the template's default grouping (user can still change it below).
+      ...(t.defaultGroupBy ? { groupBy: t.defaultGroupBy as GroupKey } : {}),
     })
   }
   const pickVariant = (v: string) => {
@@ -225,10 +228,15 @@ export default function ScheduleReportPanel({
     patch({ variantId: v, name: r.title, bodyText: seedBodyLines(r.bodyLines, project.projectName) })
   }
 
-  const addRecipient = (email: string) => {
-    const e = email.trim().toLowerCase()
-    if (!e || form.recipients.includes(e)) return
-    patch({ recipients: [...form.recipients, e] })
+  // Accepts a single address or a pasted address-book list — extracts the actual
+  // addresses out of formats like `"Name" <a@b.com>, שם עברי <c@d.com>` and
+  // ignores the surrounding names/quotes/punctuation.
+  const addRecipient = (input: string) => {
+    const found = (input.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [])
+      .map(e => e.toLowerCase())
+    const next = [...new Set(found)].filter(e => !form.recipients.includes(e))
+    if (next.length === 0) return
+    patch({ recipients: [...form.recipients, ...next] })
   }
   const removeRecipient = (email: string) =>
     patch({ recipients: form.recipients.filter(r => r !== email) })
@@ -505,9 +513,15 @@ export default function ScheduleReportPanel({
                 value={manualEmail}
                 onChange={e => setManualEmail(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); addRecipient(manualEmail); setManualEmail('') }
+                  if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addRecipient(manualEmail); setManualEmail('') }
                 }}
-                placeholder="Add an email address…"
+                onPaste={e => {
+                  e.preventDefault()
+                  addRecipient(manualEmail + ' ' + e.clipboardData.getData('text'))
+                  setManualEmail('')
+                }}
+                onBlur={() => { if (manualEmail.trim()) { addRecipient(manualEmail); setManualEmail('') } }}
+                placeholder="Add one or more email addresses…"
                 className="flex-1 min-w-[160px] border-none outline-none text-xs bg-transparent text-gray-700"
               />
             </div>

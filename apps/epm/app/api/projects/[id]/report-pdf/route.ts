@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import type { AccIssue } from '@/lib/services/apsService'
 import type { ReportMeta } from '@/lib/server/reportHtml'
+import { contentDisposition } from '@/lib/server/httpFilename'
 
 // Headless Chromium needs a Node runtime and time to spin up / paginate.
 export const runtime = 'nodejs'
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(new Uint8Array(pdf), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${body.pdfName || 'report.pdf'}"`,
+        'Content-Disposition': contentDisposition('inline', body.pdfName || 'report.pdf'),
         'Cache-Control': 'no-store',
       },
     })

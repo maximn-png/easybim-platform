@@ -7,7 +7,7 @@ import { getUserGoogleToken, gmailCreateDraft, gmailSendMessage } from '@/lib/se
 import { buildEmailHtml } from '@/lib/emailHtml'
 import { dropDraft, paramValue, toIssueSnapshot } from '@/lib/reportGrouping'
 import {
-  REPORT_TEMPLATES, resolveVariant, pdfNameFor, accIssuesUrl, type BodyLink,
+  REPORT_TEMPLATES, resolveVariant, pdfNameFor, accIssuesUrl, sortIssuesForTemplate, type BodyLink,
 } from '@/lib/reportTemplates'
 import type { ReportMeta } from './reportHtml'
 import { getApsAccessTokenForUser } from './apsTokenStore'
@@ -186,7 +186,9 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
   // ── Filter, exactly as the Export panel does ──
   const normalized = sourced.issues.map(i => ({ ...i, assignedTo: i.assignedTo?.trim() || 'Unassigned' }))
   const f = schedule.filters
-  const docIssues = dropDraft(normalized).filter(i => {
+  // Ordered like the manual export's default: issue type (template hint order)
+  // first, then issue # — so the PDF/Excel rows arrive pre-grouped by סוג נושא.
+  const docIssues = sortIssuesForTemplate(template, dropDraft(normalized).filter(i => {
     if (f.assignees.length && !f.assignees.includes(i.assignedTo || 'Unassigned')) return false
     if (f.issueTypes.length && !f.issueTypes.includes(i.issueType)) return false
     if (f.disciplines.length && !f.disciplines.includes(i.discipline?.trim() || 'No Discipline')) return false
@@ -194,7 +196,7 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
       if (x.values.length && !x.values.includes(paramValue(i, x.key))) return false
     }
     return true
-  })
+  }))
   // The status filter narrows only the emailed picture — attachments always
   // carry the full status distribution (same rule as the manual export).
   const imageIssues = f.statuses.length
@@ -231,6 +233,8 @@ export async function runSchedule(schedule: ScheduleConfig): Promise<RunResult> 
     filtersSummary,
     // Scheduled reports have no add-ons checkbox — they always carry the legend.
     includeLegend: true,
+    // docIssues arrive pre-sorted by the template's issue-type order — keep it.
+    preserveOrder: true,
   }
 
   // ── Artefacts ──

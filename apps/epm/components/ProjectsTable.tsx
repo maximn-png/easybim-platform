@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { LayoutGrid, FolderOpen, Cloud, Eye, X } from 'lucide-react'
 import type { ProjectRow } from '@/lib/types'
 import StatusBadge from './StatusBadge'
-import ProgressBar from './ProgressBar'
+import { MilestoneHoverCell, HoursHoverCell } from './ProjectStatHoverCells'
 import TeamMemberCell from './TeamMemberCell'
 import ColumnHeaderMenu, { type SortDir, type FilterValue } from './ColumnHeaderMenu'
 
@@ -324,14 +324,15 @@ export default function ProjectsTable({ projects }: ProjectsTableProps) {
                   />
                 </td>
 
-                {/* Milestone Progress — neutral gray bar (colour belongs to Hours). */}
+                {/* Milestone Progress — neutral gray bar (colour belongs to Hours).
+                    Hover: the full milestone picture, same panel as the project page. */}
                 <td className="px-2 py-1.5 text-center">
-                  <ProgressBar value={project.milestoneProgress} neutral />
+                  <MilestoneHoverCell project={project} />
                 </td>
 
-                {/* Hours Progress */}
+                {/* Hours Progress — hover: the project page's Hours Analytics card. */}
                 <td className="px-2 py-1.5 text-center">
-                  <ProgressBar value={project.hoursProgress} />
+                  <HoursHoverCell project={project} />
                 </td>
 
                 {/* BIM Management */}

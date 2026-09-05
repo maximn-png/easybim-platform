@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import type { AccIssue } from '@/lib/services/apsService'
 import type { ExtraColumn } from '@/lib/reportGrouping'
+import { contentDisposition } from '@/lib/server/httpFilename'
 
 export const runtime = 'nodejs'
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(new Uint8Array(xlsx), {
       headers: {
         'Content-Type': XLSX_MIME,
-        'Content-Disposition': `inline; filename="${body.xlsxName || 'report.xlsx'}"`,
+        'Content-Disposition': contentDisposition('inline', body.xlsxName || 'report.xlsx'),
         'Cache-Control': 'no-store',
       },
     })

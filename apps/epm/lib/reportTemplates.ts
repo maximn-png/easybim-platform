@@ -38,6 +38,9 @@ export interface ReportTemplate {
   disciplineHints: string[]
   roleHints: string[]     // matched against ACC member roles to preselect recipients
   pdfBaseName: string     // PDF file base name (project number appended at runtime)
+  // Default group-by dimension for this report's chart/column (a GroupKey, e.g.
+  // 'issueType'); the issue table is also sorted by it (hint order) by default.
+  defaultGroupBy?: string
   // When true, selecting this template resets the export to ALL issues (no
   // filters) grouped by discipline — e.g. a final project-wide summary.
   forceAllIssues?: boolean
@@ -60,10 +63,12 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
     ],
     bodyImage: '/report-instructions.png',
     linkKinds: ['issues'],
-    issueTypeHints: ['בקרת איכות', 'clash', 'איכות', 'quality'],
+    // BIM Quality only — Clash belongs to the MEP coordination report.
+    issueTypeHints: ['bim quality', 'בקרת איכות', 'quality', 'איכות'],
     disciplineHints: [],
     roleHints: ['BIM Manager', 'BIM', 'Quality'],
     pdfBaseName: 'QA_Models',
+    defaultGroupBy: 'issueType',
   },
   {
     id: 'arch-struct',
@@ -81,10 +86,12 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
     ],
     bodyImage: '/report-instructions.png',
     linkKinds: ['issues', 'model'],
-    issueTypeHints: ['תאום', 'ממשק', 'coordination'],
+    // Strict: ARC/STR only — not the bare "ARC" type and not "Coordination".
+    issueTypeHints: ['=arc/str'],
     disciplineHints: ['אדריכלות', 'קונסטרוקציה'],
     roleHints: ['Architect', 'Structural'],
     pdfBaseName: 'Coord_Arch_Struct',
+    defaultGroupBy: 'issueType',
   },
   {
     id: 'mep',
@@ -155,10 +162,11 @@ export const REPORT_TEMPLATES: ReportTemplate[] = [
         highlightPhrases: ['[למלא סוג קומות]', '[X]'],
       },
     ],
-    issueTypeHints: ['תאום', 'מערכות', 'mep'],
+    issueTypeHints: ['coordination', 'clash', 'תאום', 'מערכות', 'mep'],
     disciplineHints: ['מיזוג', 'חשמל', 'אינסטלציה'],
     roleHints: ['Mechanical', 'Electrical', 'Plumbing', 'MEP'],
     pdfBaseName: 'Coord_MEP_Systems',
+    defaultGroupBy: 'issueType',
   },
   {
     id: 'final-quality-coordination',
@@ -288,11 +296,40 @@ export function segmentBodyText(
     })
 }
 
-// Match a template's hints against a list of real values (case-insensitive substring).
+// Default report-table order for a template: by issue type — in the template's
+// hint order, so the report's headline type leads — then numerically by issue #.
+// Applied to the PDF/Excel rows unless the user imposed their own page sort.
+export function sortIssuesForTemplate<T extends { displayId?: string | number; issueType: string }>(
+  t: ReportTemplate,
+  issues: T[],
+): T[] {
+  const hints = t.issueTypeHints
+  const typeRank = (issueType: string): number => {
+    const idx = hints.findIndex(h => hintMatches(h, issueType || ''))
+    return idx === -1 ? hints.length : idx
+  }
+  const num = (id: string | number | undefined) =>
+    id == null ? 0 : typeof id === 'number' ? id : parseInt(id.replace(/\D/g, ''), 10) || 0
+  return [...issues].sort((a, b) =>
+    typeRank(a.issueType) - typeRank(b.issueType)
+    || (a.issueType || '').localeCompare(b.issueType || '')
+    || num(a.displayId) - num(b.displayId))
+}
+
+// One hint vs one real value, case-insensitive and space-insensitive.
+// Default hints match in BOTH directions (abbreviations either way); a hint
+// prefixed with '=' is strict — the value must contain the hint, so '=arc/str'
+// matches "ARC/STR" but not a bare "ARC" (which 'arc/str' would reverse-match).
+export function hintMatches(hint: string, value: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, '')
+  const lv = norm(value)
+  if (!lv) return false
+  if (hint.startsWith('=')) return lv.includes(norm(hint.slice(1)))
+  const h = norm(hint)
+  return lv.includes(h) || h.includes(lv)
+}
+
+// Match a template's hints against a list of real values.
 export function matchHints(hints: string[], values: string[]): string[] {
-  const lowered = hints.map(h => h.toLowerCase())
-  return values.filter(v => {
-    const lv = v.toLowerCase()
-    return lowered.some(h => lv.includes(h) || h.includes(lv))
-  })
+  return values.filter(v => hints.some(h => hintMatches(h, v)))
 }

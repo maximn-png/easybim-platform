@@ -572,11 +572,13 @@ export default function BimReportClient({ project, anaView = false }: { project:
   }, [normalizedIssues, matchesTableNarrowing, chartSel, hasColFilters])
 
   // The page's current sort, as an id order over ALL issues, so the exported
-  // PDF/Excel table follows the on-screen order.
+  // PDF/Excel table follows the on-screen order. The page's default sort
+  // (issue # asc) is NOT a user choice — sending null lets the report template
+  // impose its own default order (e.g. by issue type).
   const pageOrder = useMemo(() => {
-    if (!sortComparator) return null
+    if (!sortComparator || (sortCol === 'displayId' && sortDir === 'asc')) return null
     return [...normalizedIssues].sort(sortComparator).map(i => i.id)
-  }, [normalizedIssues, sortComparator])
+  }, [normalizedIssues, sortComparator, sortCol, sortDir])
 
   const clearGlobalFilters = () => {
     setFilterAssignees([]); setFilterTypes([]); setFilterDisciplines([])
