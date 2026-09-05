@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  ArrowLeft, Minus, Plus, CheckCircle2, CalendarClock, Layers, Eye,
-  CalendarRange, Activity, Sparkles, ListChecks, CalendarDays,
+  Minus, Plus, CheckCircle2, CalendarClock, Layers, Eye, Activity, Sparkles, ListChecks,
 } from 'lucide-react'
 import type { AgentPresentation } from '@/lib/agents/presentation'
 import ChatShell from './ChatShell'
@@ -13,11 +12,15 @@ import PostsBoard from './PostsBoard'
 import NewsletterIdeas from './NewsletterIdeas'
 import { compact, ImpressionsCard, LinkedInStatusRow, TopPostsCard, useAnalytics } from './PeacockAnalytics'
 import {
-  CARD, fmtDayMon, OPEN_STATUSES, POST_TYPES, PostDTO, PostStatus,
-  PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER, statusMeta,
+  ACCENT, ACCENT_BG, CARD, fmtDayMon, OPEN_STATUSES, POST_TYPES, PostDTO, PostStatus,
+  STATUS_META, STATUS_ORDER, statusMeta,
 } from './postMeta'
 
 const TIMELINE_ID = 'posts-timeline'
+
+// EPM-style buttons: quiet white pills, one solid-navy primary. No gradients.
+export const PILL = 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/80 border border-white/90 text-[#1e248c] hover:bg-blue-50 transition-colors cursor-pointer'
+export const PILL_PRIMARY = 'inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold bg-[#1e248c] text-white hover:bg-[#3d47b8] transition-colors cursor-pointer border border-[#1e248c]'
 
 type Counts = Record<PostStatus, number> & { total: number }
 interface RunDTO { id: string; pass: string; trigger: string; status: string; summary: string | null; error: string | null; startedAt: string }
@@ -71,8 +74,8 @@ export default function PeacockDashboard({
         <ChatShell agentKey={agentKey} agentName={agentName} description={description} presentation={p} />
         <button
           onClick={() => setChatOpen(false)}
-          className="fixed bottom-5 right-5 z-50 rounded-full px-4 py-2 text-sm font-bold text-white shadow-lg"
-          style={{ background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})` }}
+          className="fixed bottom-5 right-5 z-50 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg"
+          style={{ background: ACCENT }}
         >
           ← Dashboard
         </button>
@@ -82,77 +85,50 @@ export default function PeacockDashboard({
 
   const inPipeline = counts ? OPEN_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0) : 0
   const stats = [
-    { label: 'Published', value: counts?.published ?? 0, icon: <CheckCircle2 size={18} />, iconBg: '#e8f9ee', iconColor: '#16a34a' },
+    { label: 'Published', value: counts?.published ?? 0, icon: <CheckCircle2 size={16} />, note: 'from your content plan' },
     // The one number that means "Peacock is waiting on you".
-    { label: 'Awaiting approval', value: counts?.pending_approval ?? 0, icon: <CalendarClock size={18} />, iconBg: '#fff3e2', iconColor: '#f59e0b' },
-    { label: 'In pipeline', value: inPipeline, icon: <Layers size={18} />, iconBg: '#f0ecff', iconColor: PURPLE },
+    { label: 'Awaiting approval', value: counts?.pending_approval ?? 0, icon: <CalendarClock size={16} />, note: 'from your content plan' },
+    { label: 'In pipeline', value: inPipeline, icon: <Layers size={16} />, note: 'from your content plan' },
     analytics?.hasData
-      ? {
-          label: 'Impressions',
-          value: compact(analytics.impressions30d),
-          icon: <Eye size={18} />,
-          iconBg: '#e6f6fd',
-          iconColor: '#0ea5e9',
-          note: 'last 30 days',
-        }
-      : { label: 'Impressions', value: '—', icon: <Eye size={18} />, iconBg: '#f3f4f6', iconColor: '#9ca3af', pending: true },
+      ? { label: 'Impressions', value: compact(analytics.impressions30d), icon: <Eye size={16} />, note: 'last 30 days' }
+      : { label: 'Impressions', value: '—', icon: <Eye size={16} />, note: 'no numbers yet — import below' },
   ]
 
   return (
-    <div style={{ minHeight: '100vh', fontFamily: "'Manrope','Assistant',system-ui,sans-serif", color: '#1f2430', background: 'linear-gradient(180deg,#faf9ff 0%,#f5f3fd 100%)' }}>
-      <div style={{ maxWidth: 1600, margin: '0 auto', padding: '22px 28px 60px' }}>
+    <div style={{ minHeight: '100vh', color: '#1f2430', background: 'linear-gradient(135deg,#f0f3ff 0%,#e7eefe 100%)' }}>
+      <div style={{ maxWidth: 1600, margin: '0 auto', padding: '24px 32px 60px' }}>
 
-        {/* top bar */}
-        <header className="flex items-center justify-between mb-7">
-          <div className="flex items-center gap-3">
-            <span style={{ fontSize: 30, filter: 'drop-shadow(0 6px 14px rgba(123,92,255,.28))' }}>🦚</span>
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>Peacock</span>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: PURPLE, background: '#f0ecff', padding: '4px 10px', borderRadius: 999 }}>{p.tagline}</span>
-              </div>
-              <div style={{ fontSize: 12.5, color: '#9aa0ac', fontWeight: 500, marginTop: 2 }}>
-                <Link href="/" className="inline-flex items-center gap-1" style={{ color: '#9aa0ac' }}><ArrowLeft size={12} /> Agent Kingdom · Dashboard</Link>
-              </div>
+        {/* page heading — EPM pattern: breadcrumb, navy title, gray subtitle */}
+        <header className="flex items-end justify-between mb-6 flex-wrap gap-3">
+          <div>
+            <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+              <Link href="/" className="hover:text-[#1e248c]">Agent Kingdom</Link>
+              <span aria-hidden>›</span>
+              <span className="text-[#1e248c] font-medium">Peacock</span>
             </div>
+            <h1 className="text-3xl font-bold text-[#1e248c]">Peacock</h1>
+            <p className="text-gray-500 text-sm mt-1">{p.tagline} — plan, draft and publish LinkedIn content.</p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => focusTimeline()}
-              className="flex items-center gap-2 font-bold"
-              style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}
-            >
-              <CalendarDays size={16} /> Posts &amp; Timeline
+          <div className="flex items-center gap-2">
+            <button onClick={() => setView('projects')} className={PILL}>
+              <ListChecks size={13} /> Project Status
             </button>
-            <button
-              onClick={() => setView('projects')}
-              className="flex items-center gap-2 font-bold"
-              style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}
-            >
-              <ListChecks size={16} /> Project Status
-            </button>
-            <button
-              onClick={() => setChatOpen(true)}
-              className="flex items-center gap-2 text-white font-bold"
-              style={{ fontSize: 14.5, padding: '11px 18px', borderRadius: 14, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, boxShadow: '0 10px 24px rgba(123,92,255,.34)' }}
-            >
-              <span style={{ fontSize: 19 }}>🦚</span> Ask Peacock
+            <button onClick={() => setChatOpen(true)} className={PILL_PRIMARY}>
+              <Sparkles size={13} /> Ask Peacock
             </button>
           </div>
         </header>
 
-        {/* stat cards */}
-        <div className="grid gap-4 mb-5" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+        {/* stat tiles */}
+        <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
           {stats.map((st) => (
-            <div key={st.label} style={{ ...CARD, padding: '18px 20px' }}>
-              <div className="flex items-center justify-between mb-3.5">
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: '#9aa0ac' }}>{st.label}</span>
-                <span className="flex items-center justify-center" style={{ width: 34, height: 34, borderRadius: 11, background: st.iconBg, color: st.iconColor }}>{st.icon}</span>
+            <div key={st.label} className="flex items-start justify-between" style={{ ...CARD, padding: '14px 18px' }}>
+              <div>
+                <div className="text-xs font-medium text-gray-500">{st.label}</div>
+                <div className="text-2xl font-bold text-[#1e248c] mt-1" style={{ letterSpacing: '-.02em' }}>{st.value}</div>
+                <div className="text-[11px] text-gray-400 mt-1">{st.note}</div>
               </div>
-              <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1 }}>{st.value}</div>
-              <div style={{ fontSize: 12, color: '#a9adb8', marginTop: 10 }}>
-                {st.note ?? (st.pending ? 'no numbers yet — import below' : 'from your content plan')}
-              </div>
+              <span className="flex items-center justify-center" style={{ width: 30, height: 30, borderRadius: 9, background: ACCENT_BG, color: ACCENT }}>{st.icon}</span>
             </div>
           ))}
         </div>
@@ -169,50 +145,39 @@ export default function PeacockDashboard({
           />
         </div>
 
-        {/* content plan */}
-        <div style={{ ...CARD, padding: '22px 24px', marginBottom: 20 }}>
-          <div className="flex items-start justify-between gap-4 mb-5">
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span className="flex items-center justify-center text-white" style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})` }}><CalendarRange size={17} /></span>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Content Plan</h3>
-              </div>
-              <p style={{ margin: '8px 0 0', fontSize: 13, color: '#9aa0ac' }}>Design your posting week — then let Peacock draft it.</p>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <button onClick={() => focusTimeline()} className="flex items-center gap-2 font-bold" style={{ fontSize: 13.5, padding: '11px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
-                <CalendarDays size={15} /> Open timeline
-              </button>
-              <button onClick={() => setChatOpen(true)} className="flex items-center gap-2 text-white font-bold" style={{ fontSize: 13.5, padding: '11px 17px', borderRadius: 12, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, boxShadow: '0 8px 20px rgba(123,92,255,.3)' }}>
-                <span style={{ fontSize: 16 }}>🦚</span> Plan with Peacock
-              </button>
-            </div>
-          </div>
+        {/* content plan — settings only; drafting is asked for via Ask Peacock */}
+        <div style={{ ...CARD, padding: '20px 24px', marginBottom: 20 }}>
+          <h3 className="text-[15px] font-semibold text-[#1e248c] m-0">Content Plan</h3>
+          <p className="text-[13px] text-gray-500 mt-1 mb-5">Design your posting week — then ask Peacock to draft it.</p>
 
           <div className="grid gap-8 items-start" style={{ gridTemplateColumns: '1fr 1.25fr' }}>
             {/* controls */}
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#5a5f6e', marginBottom: 12 }}>Posts per week</div>
+              <div className="text-xs font-semibold text-gray-600 mb-3">Posts per week</div>
               <div className="flex items-center gap-4 mb-2">
-                <button onClick={() => setPostsPerWeek((n) => Math.max(1, n - 1))} className="flex items-center justify-center" style={{ width: 38, height: 38, border: '1px solid #e7e3f7', background: '#fff', borderRadius: 11, color: PURPLE, fontSize: 20, fontWeight: 700 }}><Minus size={18} /></button>
+                <button onClick={() => setPostsPerWeek((n) => Math.max(1, n - 1))} className="flex items-center justify-center cursor-pointer"
+                  style={{ width: 32, height: 32, border: '1px solid #dfe6f3', background: '#fff', borderRadius: 9, color: ACCENT }}><Minus size={15} /></button>
                 <div className="flex items-baseline gap-1.5">
-                  <span style={{ fontSize: 34, fontWeight: 800, letterSpacing: '-.02em', lineHeight: 1 }}>{postsPerWeek}</span>
-                  <span style={{ fontSize: 13, color: '#9aa0ac', fontWeight: 600 }}>/ week</span>
+                  <span className="text-3xl font-bold text-[#1e248c]" style={{ letterSpacing: '-.02em', lineHeight: 1 }}>{postsPerWeek}</span>
+                  <span className="text-[13px] text-gray-400 font-medium">/ week</span>
                 </div>
-                <button onClick={() => setPostsPerWeek((n) => Math.min(7, n + 1))} className="flex items-center justify-center" style={{ width: 38, height: 38, border: '1px solid #e7e3f7', background: '#fff', borderRadius: 11, color: PURPLE, fontSize: 20, fontWeight: 700 }}><Plus size={18} /></button>
+                <button onClick={() => setPostsPerWeek((n) => Math.min(7, n + 1))} className="flex items-center justify-center cursor-pointer"
+                  style={{ width: 32, height: 32, border: '1px solid #dfe6f3', background: '#fff', borderRadius: 9, color: ACCENT }}><Plus size={15} /></button>
               </div>
-              <div style={{ height: 6, borderRadius: 999, background: '#eeecf6', overflow: 'hidden', marginBottom: 24 }}>
-                <div style={{ height: '100%', width: `${(postsPerWeek / 7) * 100}%`, borderRadius: 999, background: `linear-gradient(90deg,${PURPLE},${PURPLE_2})`, transition: 'width .25s' }} />
+              <div style={{ height: 5, borderRadius: 999, background: '#e7ebf5', overflow: 'hidden', marginBottom: 24 }}>
+                <div style={{ height: '100%', width: `${(postsPerWeek / 7) * 100}%`, borderRadius: 999, background: ACCENT, transition: 'width .25s' }} />
               </div>
 
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: '#5a5f6e', marginBottom: 12 }}>Post types</div>
-              <div className="flex flex-wrap gap-2.5">
+              <div className="text-xs font-semibold text-gray-600 mb-3">Post types</div>
+              <div className="flex flex-wrap gap-2">
                 {POST_TYPES.map((t) => {
                   const on = activeTypes.has(t)
                   return (
                     <button key={t} onClick={() => setActiveTypes((s) => { const n = new Set(s); if (n.has(t)) n.delete(t); else n.add(t); return n })}
-                      className="flex items-center gap-2 font-semibold" style={{ fontSize: 13, padding: '7px 13px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${on ? PURPLE : '#e7e3f7'}`, background: on ? '#f0ecff' : '#fff', color: on ? PURPLE : '#5a5f6e' }}>
-                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: on ? PURPLE : '#cbd0da' }} /> {t}
+                      className="flex items-center gap-1.5 font-medium cursor-pointer"
+                      style={{ fontSize: 12, padding: '5px 11px', borderRadius: 999, border: `1px solid ${on ? '#b9c6ea' : '#e3e8f4'}`,
+                        background: on ? ACCENT_BG : '#fff', color: on ? ACCENT : '#6b7280' }}>
+                      <span style={{ width: 7, height: 7, borderRadius: '50%', background: on ? ACCENT : '#cbd0da' }} /> {t}
                     </button>
                   )
                 })}
@@ -244,24 +209,25 @@ export default function PeacockDashboard({
             />
 
             {/* recent posts */}
-            <div style={{ ...CARD, padding: '22px 24px 12px' }}>
+            <div style={{ ...CARD, padding: '20px 24px 10px' }}>
               <div className="flex items-center justify-between mb-2">
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Recent Posts</h3>
-                <button onClick={() => focusTimeline()} style={{ border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, color: PURPLE }}>
+                <h3 className="text-[15px] font-semibold text-[#1e248c] m-0">Recent Posts</h3>
+                <button onClick={() => focusTimeline()} className="cursor-pointer text-xs font-semibold"
+                  style={{ border: 'none', background: 'transparent', fontFamily: 'inherit', color: ACCENT }}>
                   See all →
                 </button>
               </div>
-              {posts.length === 0 && <p style={{ fontSize: 13, color: '#a9adb8', padding: '14px 0' }}>No posts yet — plan one with Peacock.</p>}
+              {posts.length === 0 && <p className="text-[13px] text-gray-400 py-3">No posts yet — plan one with Peacock.</p>}
               {[...posts]
                 .sort((a, b) => (b.publishDate ?? b.createdAt).localeCompare(a.publishDate ?? a.createdAt))
                 .slice(0, 4)
                 .map((post, i) => (
-                  <button key={post.id} onClick={() => focusTimeline(post.id)} className="flex items-center gap-4 w-full text-left"
-                    style={{ padding: '13px 0', borderTop: '1px solid #f4f2fa', border: 'none', borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: '#f4f2fa', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit' }}>
-                    <span className="flex items-center justify-center font-extrabold" style={{ width: 30, height: 30, borderRadius: 9, background: '#f0ecff', color: PURPLE, fontSize: 13, flex: 'none' }}>{i + 1}</span>
+                  <button key={post.id} onClick={() => focusTimeline(post.id)} className="flex items-center gap-4 w-full text-left cursor-pointer"
+                    style={{ padding: '12px 0', background: 'transparent', fontFamily: 'inherit', border: 'none', borderTop: '1px solid #eef1f8' }}>
+                    <span className="flex items-center justify-center font-bold" style={{ width: 28, height: 28, borderRadius: 8, background: ACCENT_BG, color: ACCENT, fontSize: 12.5, flex: 'none' }}>{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <div dir="auto" style={{ fontSize: 14, fontWeight: 600, color: '#2b2f3a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</div>
-                      <div style={{ fontSize: 12, color: '#a9adb8', marginTop: 3 }}>{post.postType ?? '—'} · {fmtDayMon(post.publishDate)}</div>
+                      <div dir="auto" style={{ fontSize: 13.5, fontWeight: 600, color: '#2b2f3a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</div>
+                      <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{post.postType ?? '—'} · {fmtDayMon(post.publishDate)}</div>
                     </div>
                     <StatusPill status={post.status} />
                   </button>
@@ -273,18 +239,18 @@ export default function PeacockDashboard({
           <div className="flex flex-col gap-4">
             <PipelineDonut counts={counts} />
             {/* agent activity */}
-            <div style={{ ...CARD, padding: '22px 24px 14px' }}>
+            <div style={{ ...CARD, padding: '20px 24px 12px' }}>
               <div className="flex items-center gap-2 mb-1.5">
-                <Activity size={16} style={{ color: PURPLE }} />
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Agent Activity</h3>
+                <Activity size={14} style={{ color: ACCENT }} />
+                <h3 className="text-[15px] font-semibold text-[#1e248c] m-0">Agent Activity</h3>
               </div>
-              {runs.length === 0 && <p style={{ fontSize: 13, color: '#a9adb8', padding: '12px 0' }}>No runs yet.</p>}
+              {runs.length === 0 && <p className="text-[13px] text-gray-400 py-3">No runs yet.</p>}
               {runs.slice(0, 5).map((r) => (
-                <div key={r.id} className="flex gap-3" style={{ padding: '12px 0', borderTop: '1px solid #f4f2fa' }}>
-                  <span className="flex items-center justify-center" style={{ width: 32, height: 32, borderRadius: 10, flex: 'none', background: r.status === 'error' ? '#fdecec' : '#f0ecff', color: r.status === 'error' ? '#e5484d' : PURPLE }}><Sparkles size={15} /></span>
+                <div key={r.id} className="flex gap-3" style={{ padding: '11px 0', borderTop: '1px solid #eef1f8' }}>
+                  <span className="flex items-center justify-center" style={{ width: 28, height: 28, borderRadius: 8, flex: 'none', background: r.status === 'error' ? '#fdecec' : ACCENT_BG, color: r.status === 'error' ? '#e5484d' : ACCENT }}><Sparkles size={13} /></span>
                   <div className="flex-1 min-w-0">
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: '#3a3f4d', lineHeight: 1.4 }}>{r.pass}/{r.trigger} — {(r.summary ?? r.error ?? r.status).slice(0, 90)}</div>
-                    <div style={{ fontSize: 12, color: '#b0aebc', marginTop: 2 }}>{fmtDateTime(r.startedAt)}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#3a3f4d', lineHeight: 1.45 }}>{r.pass}/{r.trigger} — {(r.summary ?? r.error ?? r.status).slice(0, 90)}</div>
+                    <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 2 }}>{fmtDateTime(r.startedAt)}</div>
                   </div>
                 </div>
               ))}
@@ -298,7 +264,7 @@ export default function PeacockDashboard({
 
 function StatusPill({ status }: { status: PostStatus }) {
   const m = statusMeta(status)
-  return <span style={{ fontSize: 11.5, fontWeight: 700, color: m.color, background: `${m.color}1f`, padding: '4px 10px', borderRadius: 999 }}>{m.label}</span>
+  return <span style={{ fontSize: 11, fontWeight: 600, color: m.color, background: `${m.color}1a`, padding: '3px 9px', borderRadius: 999 }}>{m.label}</span>
 }
 
 function WeekPreview({ posts }: { posts: PostDTO[] }) {
@@ -319,16 +285,16 @@ function WeekPreview({ posts }: { posts: PostDTO[] }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#5a5f6e' }}>This week</span>
-        <span style={{ fontSize: 12, color: '#a9adb8' }}>{posts.filter((p) => p.publishDate).length} scheduled</span>
+        <span className="text-xs font-semibold text-gray-600">This week</span>
+        <span className="text-xs text-gray-400">{posts.filter((p) => p.publishDate).length} scheduled</span>
       </div>
       <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(7,1fr)' }}>
         {days.map((d) => (
-          <div key={d.key} style={{ border: `1px dashed ${d.isToday ? PURPLE : '#e7e3f7'}`, background: d.isToday ? '#f6f2ff' : '#fbfbfe', borderRadius: 12, padding: '8px 6px', minHeight: 104 }} className="flex flex-col items-center gap-1.5">
-            <span style={{ fontSize: 11, fontWeight: 700, color: d.isToday ? PURPLE : '#9aa0ac' }}>{d.label}</span>
+          <div key={d.key} style={{ border: `1px solid ${d.isToday ? '#b9c6ea' : '#e3e8f4'}`, background: d.isToday ? ACCENT_BG : '#fff', borderRadius: 10, padding: '8px 6px', minHeight: 104 }} className="flex flex-col items-center gap-1.5">
+            <span style={{ fontSize: 11, fontWeight: 600, color: d.isToday ? ACCENT : '#9ca3af' }}>{d.label}</span>
             <div className="flex flex-col gap-1.5 w-full">
               {d.posts.map((post) => (
-                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 7, background: `${statusMeta(post.status).color}22`, borderLeft: `3px solid ${statusMeta(post.status).color}` }} />
+                <div key={post.id} title={post.title} style={{ height: 22, borderRadius: 6, background: `${statusMeta(post.status).color}22`, borderLeft: `3px solid ${statusMeta(post.status).color}` }} />
               ))}
             </div>
           </div>
@@ -349,24 +315,24 @@ function PipelineDonut({ counts }: { counts: Counts | null }) {
     const end = total ? (acc / total) * 360 : 0
     return `${STATUS_META[s].color} ${start}deg ${end}deg`
   })
-  const donut = total ? `conic-gradient(${segments.join(',')})` : '#eeecf6'
+  const donut = total ? `conic-gradient(${segments.join(',')})` : '#e7ebf5'
 
   return (
-    <div style={{ ...CARD, padding: '22px 24px' }}>
-      <h3 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 800 }}>Content Pipeline</h3>
+    <div style={{ ...CARD, padding: '20px 24px' }}>
+      <h3 className="text-[15px] font-semibold text-[#1e248c] m-0 mb-4">Content Pipeline</h3>
       <div className="flex items-center gap-6">
-        <div className="flex items-center justify-center" style={{ width: 132, height: 132, flex: 'none', borderRadius: '50%', background: donut }}>
-          <div className="flex flex-col items-center justify-center" style={{ width: 88, height: 88, borderRadius: '50%', background: '#fff' }}>
-            <span style={{ fontSize: 26, fontWeight: 800, lineHeight: 1 }}>{total}</span>
-            <span style={{ fontSize: 11, color: '#a9adb8', fontWeight: 600, marginTop: 2 }}>total</span>
+        <div className="flex items-center justify-center" style={{ width: 124, height: 124, flex: 'none', borderRadius: '50%', background: donut }}>
+          <div className="flex flex-col items-center justify-center" style={{ width: 84, height: 84, borderRadius: '50%', background: '#fff' }}>
+            <span className="text-2xl font-bold text-[#1e248c]" style={{ lineHeight: 1 }}>{total}</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, marginTop: 2 }}>total</span>
           </div>
         </div>
-        <div className="flex-1 flex flex-col gap-3">
+        <div className="flex-1 flex flex-col gap-2.5">
           {order.map((s) => (
             <div key={s} className="flex items-center gap-2.5">
-              <span style={{ width: 11, height: 11, borderRadius: 3, background: STATUS_META[s].color, flex: 'none' }} />
-              <span className="flex-1" style={{ fontSize: 13, color: '#5a5f6e', fontWeight: 500 }}>{STATUS_META[s].label}</span>
-              <span style={{ fontSize: 13.5, fontWeight: 800 }}>{counts?.[s] ?? 0}</span>
+              <span style={{ width: 10, height: 10, borderRadius: 3, background: STATUS_META[s].color, flex: 'none' }} />
+              <span className="flex-1 text-[13px] text-gray-600">{STATUS_META[s].label}</span>
+              <span className="text-[13px] font-bold text-[#1e248c]">{counts?.[s] ?? 0}</span>
             </div>
           ))}
         </div>

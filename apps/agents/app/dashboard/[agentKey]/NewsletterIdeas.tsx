@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Newspaper, ExternalLink, Plus, Check, AlertCircle, RefreshCw } from 'lucide-react'
-import { CARD, PURPLE, PURPLE_2 } from './postMeta'
+import { ACCENT, CARD } from './postMeta'
 
 // The BIM newsletter as Peacock's idea source for "1. Professional" posts.
 // Each topic already carries a real source, so a post drafted from one is
@@ -80,26 +80,23 @@ export default function NewsletterIdeas({
     <div style={{ ...CARD, padding: '22px 24px 16px' }}>
       <div className="flex items-start justify-between gap-3 mb-1">
         <div className="flex items-center gap-2.5">
-          <span className="flex items-center justify-center text-white" style={{ width: 30, height: 30, borderRadius: 10,
-            background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, flex: 'none' }}>
-            <Newspaper size={16} />
-          </span>
+          <Newspaper size={14} style={{ color: ACCENT, flex: 'none' }} />
           <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Newsletter Ideas</h3>
-            <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#9aa0ac' }}>
+            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: ACCENT }}>Newsletter Ideas</h3>
+            <p style={{ margin: '3px 0 0', fontSize: 12.5, color: '#6b7280' }}>
               Topics from the BIM newsletter — the idea source for Professional posts
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1.5" style={{ flex: 'none' }}>
           <button onClick={load} title="Refresh"
-            style={{ border: '1px solid #e7e3f7', background: '#fff', color: PURPLE, borderRadius: 9, padding: '6px 8px', cursor: 'pointer', display: 'flex' }}>
+            style={{ border: '1px solid #dfe6f3', background: '#fff', color: ACCENT, borderRadius: 9, padding: '6px 8px', cursor: 'pointer', display: 'flex' }}>
             <RefreshCw size={13} />
           </button>
           {newsletterUrl && (
             <a href={newsletterUrl} target="_blank" rel="noreferrer" title="Open the Newsletter Generator"
               className="flex items-center gap-1.5"
-              style={{ border: '1px solid #e7e3f7', background: '#fff', color: PURPLE, borderRadius: 9,
+              style={{ border: '1px solid #dfe6f3', background: '#fff', color: ACCENT, borderRadius: 9,
                 padding: '6px 10px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }}>
               Newsletter <ExternalLink size={12} />
             </a>
@@ -124,7 +121,7 @@ export default function NewsletterIdeas({
       {!loading && shown.map((t) => {
         const key = `${t.newsletterId}:${t.index}`
         return (
-          <div key={key} className="flex items-start gap-3" style={{ padding: '12px 0', borderTop: '1px solid #f4f2fa' }}>
+          <div key={key} className="flex items-start gap-3" style={{ padding: '12px 0', borderTop: '1px solid #eff2f9' }}>
             <div className="flex-1 min-w-0">
               <div dir="auto" style={{ fontSize: 13.5, fontWeight: 600, color: '#2b2f3a', lineHeight: 1.45 }}>
                 {t.title}
@@ -135,7 +132,7 @@ export default function NewsletterIdeas({
                 </span>
                 {t.sourceUrl && (
                   <a href={t.sourceUrl} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 11.5, color: PURPLE, fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    style={{ fontSize: 11.5, color: ACCENT, fontWeight: 700, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                     source <ExternalLink size={10} />
                   </a>
                 )}
@@ -151,7 +148,7 @@ export default function NewsletterIdeas({
                 onClick={() => draftFrom(t)}
                 disabled={creating === key}
                 className="flex items-center gap-1.5"
-                style={{ flex: 'none', border: '1px solid #e7e3f7', background: '#fff', color: PURPLE, borderRadius: 9,
+                style={{ flex: 'none', border: '1px solid #dfe6f3', background: '#fff', color: ACCENT, borderRadius: 9,
                   padding: '6px 10px', fontSize: 12, fontWeight: 700, cursor: creating === key ? 'wait' : 'pointer', fontFamily: 'inherit' }}
               >
                 <Plus size={12} /> {creating === key ? 'Adding…' : 'Draft post'}
@@ -167,7 +164,7 @@ export default function NewsletterIdeas({
             {fresh.length} unused of {topics.length} recent topics
           </span>
           <button onClick={() => setShowAll((v) => !v)}
-            style={{ border: 'none', background: 'transparent', color: PURPLE, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ border: 'none', background: 'transparent', color: ACCENT, fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
             {showAll ? 'Show fewer' : 'Show all'}
           </button>
         </div>
