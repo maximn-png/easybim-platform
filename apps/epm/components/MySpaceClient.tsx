@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   BookOpen, CalendarCheck2, ChevronRight, Clock3, Cloud, ExternalLink, FolderKanban, FolderOpen, LayoutGrid, ListTodo, RefreshCw,
@@ -26,6 +26,18 @@ function toYMD(d: Date): string {
 
 // fmtDay / team & status colors / BillAvatars / StatusChip live in
 // MilestoneHistoryPanel.tsx, shared with the project page's milestone hover.
+
+// Semantic priority order — Monday label sets vary per board, so rank by
+// meaning: critical → high → medium → (unknown) → low → none.
+function priorityRank(p: string | null | undefined): number {
+  const s = (p ?? '').trim().toLowerCase()
+  if (!s) return 9
+  if (/critical|urgent|קריטי|דחוף/.test(s)) return 0
+  if (/high|גבוה/.test(s)) return 1
+  if (/medium|בינוני/.test(s)) return 2
+  if (/low|נמוך/.test(s)) return 4
+  return 3
+}
 
 export default function MySpaceClient({ userName }: { userName: string }) {
   const [overview, setOverview] = useState<MeOverview | null>(null)
@@ -194,13 +206,17 @@ export default function MySpaceClient({ userName }: { userName: string }) {
   }
   const [tSort, setTSort] = useState<{ key: TCol; dir: SortDir } | null>(null)
   const [tFilters, setTFilters] = useState<Partial<Record<TCol, Set<string> | null>>>({})
+  const [tGroup, setTGroup] = useState<'none' | 'project' | 'priority'>('none')
   const tValues = useMemo(() => {
     const out = {} as Record<TCol, FilterValue[]>
     for (const key of Object.keys(tValue) as TCol[]) {
       const counts = new Map<string, number>()
       for (const t of agenda?.tasks ?? []) counts.set(tValue[key](t), (counts.get(tValue[key](t)) ?? 0) + 1)
       out[key] = [...counts.entries()].map(([value, count]) => ({ value, label: value, count }))
-        .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+        .sort((a, b) =>
+          key === 'priority'
+            ? priorityRank(a.label) - priorityRank(b.label) || a.label.localeCompare(b.label)
+            : a.label.localeCompare(b.label, undefined, { numeric: true }))
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,10 +230,35 @@ export default function MySpaceClient({ userName }: { userName: string }) {
     )
     const active = tSort ?? { key: 'date' as TCol, dir: 'asc' as SortDir }
     const dir = active.dir === 'asc' ? 1 : -1
-    list = [...list].sort((a, b) => tValue[active.key](a).localeCompare(tValue[active.key](b), undefined, { numeric: true }) * dir)
+    list = [...list].sort((a, b) => {
+      // Priority sorts by semantic rank, not alphabetically.
+      if (active.key === 'priority') {
+        const d = priorityRank(a.priority) - priorityRank(b.priority)
+        return d !== 0 ? d * dir : a.date.localeCompare(b.date)
+      }
+      return tValue[active.key](a).localeCompare(tValue[active.key](b), undefined, { numeric: true }) * dir
+    })
     return list
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agenda, tSort, tFilters])
+  // Grouped view of the (filtered + sorted) tasks; a single label-less group
+  // when grouping is off.
+  const tGroups = useMemo((): Array<{ label: string | null; tasks: AgendaTask[] }> => {
+    if (tGroup === 'none') return [{ label: null, tasks: tShown }]
+    const map = new Map<string, AgendaTask[]>()
+    for (const t of tShown) {
+      const k = tGroup === 'project' ? t.boardName : (t.priority?.trim() || 'No priority')
+      const list = map.get(k) ?? []
+      if (list.length === 0) map.set(k, list)
+      list.push(t)
+    }
+    const groups = [...map.entries()].map(([label, tasks]) => ({ label, tasks }))
+    groups.sort((a, b) =>
+      tGroup === 'priority'
+        ? priorityRank(a.label === 'No priority' ? null : a.label) - priorityRank(b.label === 'No priority' ? null : b.label) || a.label!.localeCompare(b.label!)
+        : a.label!.localeCompare(b.label!, undefined, { numeric: true }))
+    return groups
+  }, [tShown, tGroup])
 
   return (
     <div className="max-w-[1800px] w-full mx-auto flex-1 min-h-0 flex flex-col">
@@ -283,13 +324,27 @@ export default function MySpaceClient({ userName }: { userName: string }) {
                 <RefreshCw size={10} className={tasksRefreshing ? 'animate-spin' : ''} />
                 {tasksRefreshing ? 'refreshing — takes a few minutes…' : cachedAgo != null ? `updated ${cachedAgo}m ago · refresh` : 'refresh'}
               </button>
+              <div className="ms-auto inline-flex items-center gap-1">
+                <span className="text-[9px] text-gray-400">Group</span>
+                {([['none', '—'], ['project', 'Project'], ['priority', 'Priority']] as const).map(([g, label]) => (
+                  <button
+                    key={g}
+                    onClick={() => setTGroup(g)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                      tGroup === g ? 'bg-[#1e248c] text-white' : 'bg-white/70 border border-[#e8eaff] text-gray-500 hover:text-[#1e248c]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
           <div dir="rtl" className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
             {!agenda ? <Skeleton /> : agenda.tasksBuilding ? (
               <div dir="ltr"><Skeleton note="First scan of all your Monday boards is running in the background — this card fills itself in a few minutes." /></div>
             ) : !agenda.mondayIdFound ? (
-              <div dir="ltr"><Empty>Couldn&apos;t find your Monday identity on any project team, so assigned items can&apos;t be matched to you.</Empty></div>
+              <div dir="ltr"><Empty>Couldn&apos;t match your account to a Monday user — neither by your sign-in email nor via any project team. Ask an admin to check that your Monday account uses the same email you sign in with.</Empty></div>
             ) : agenda.tasks.length === 0 ? (
               <div dir="ltr"><Empty>No open items assigned to you are overdue or due this month. 🎉</Empty></div>
             ) : (
@@ -327,7 +382,17 @@ export default function MySpaceClient({ userName }: { userName: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {tShown.map((t) => (
+                  {tGroups.map((g) => (
+                  <Fragment key={g.label ?? '__all__'}>
+                  {g.label != null && (
+                    <tr>
+                      <td colSpan={4} className="border-b border-[#e8eaff] bg-[#eef0fb]/80 px-1.5 py-1 text-start">
+                        <span className="text-[10px] font-bold text-[#1e248c]">{g.label}</span>
+                        <span className="text-[9px] text-gray-400 ms-1.5 tabular-nums">({g.tasks.length})</span>
+                      </td>
+                    </tr>
+                  )}
+                  {g.tasks.map((t) => (
                     <tr
                       key={t.id}
                       onClick={() => window.open(t.url, '_blank', 'noopener')}
@@ -388,6 +453,8 @@ export default function MySpaceClient({ userName }: { userName: string }) {
                         )}
                       </td>
                     </tr>
+                  ))}
+                  </Fragment>
                   ))}
                 </tbody>
               </table>

@@ -13,6 +13,89 @@ import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
 const issueKey = (i: ReportIssueSnapshot, reportId: string) =>
   i.displayId || (i.id.startsWith('row-') ? `${reportId}:${i.id}` : i.id)
 
+// ── Live-attribute enrichment ────────────────────────────────────────────────
+// Filter dimensions come from the saved snapshots, but snapshots written before
+// the attribute fields existed (or backfilled from Excel) carry none — so e.g.
+// a "Levels" custom attribute never appears in the filter dropdown. To close the
+// gap we fetch the project's live ACC issues (Mongo-cached for 10 min) and fill
+// in ONLY the fields a snapshot issue is missing; frozen statuses stay frozen.
+
+interface EnrichEntry {
+  issueType?: string
+  discipline?: string
+  assignedTo?: string
+  createdBy?: string
+  attributes?: Record<string, string>
+}
+interface EnrichCache { at: string; map: Record<string, EnrichEntry> }
+
+const ENRICH_TTL_MS = 10 * 60 * 1000
+const enrichKey = (projectId: string) => `report-compare-enrich:v1:${projectId}`
+
+async function loadEnrichment(projectId: string): Promise<Record<string, EnrichEntry> | null> {
+  const { cacheGet, cacheSet } = await import('@/lib/server/pageCache')
+  const cached = await cacheGet<EnrichCache>(enrichKey(projectId))
+  if (cached && Date.now() - new Date(cached.at).getTime() < ENRICH_TTL_MS) return cached.map
+
+  try {
+    const Project = (await import('@/app/models/Project')).default
+    const doc = await Project.findById(projectId).select('externalIds').lean() as Record<string, unknown> | null
+    const ext = (doc?.externalIds ?? {}) as Record<string, unknown>
+    const accProjectId = ext.accProjectId as string | undefined
+    if (!accProjectId) return cached?.map ?? null
+
+    const { getPartnerHubByAccountId } = await import('@/lib/services/apsHubs')
+    const partnerHub = ext.accExternalHub
+      ? getPartnerHubByAccountId(ext.accHubId as string | undefined)
+      : null
+    // Unreachable external hub (Excel import) — nothing live to enrich from.
+    if (ext.accExternalHub && !partnerHub) return cached?.map ?? null
+
+    const { getApsUserToken } = await import('@/lib/services/apsUserToken')
+    const accessToken = await getApsUserToken(partnerHub)
+    if (!accessToken) return cached?.map ?? null
+
+    const { fetchAccIssues } = await import('@/lib/services/apsService')
+    const issues = await fetchAccIssues(accProjectId, accessToken, partnerHub)
+    const map: Record<string, EnrichEntry> = {}
+    for (const i of issues) {
+      const key = i.displayId ? String(i.displayId) : i.id
+      map[key] = {
+        issueType: i.issueType || undefined,
+        discipline: i.discipline || undefined,
+        assignedTo: i.assignedTo || undefined,
+        createdBy: i.createdBy || undefined,
+        attributes: i.attributes && Object.keys(i.attributes).length ? i.attributes : undefined,
+      }
+    }
+    await cacheSet(enrichKey(projectId), { at: new Date().toISOString(), map } satisfies EnrichCache)
+    return map
+  } catch (err) {
+    // Enrichment is best-effort — a stale map (or none) still leaves the modal working.
+    console.warn('[report-compare] live enrichment failed:', err)
+    return cached?.map ?? null
+  }
+}
+
+// Fill in the dimensions a snapshot issue is missing from its live counterpart.
+function enrichSnapshot(snap: ReportIssueSnapshot[], map: Record<string, EnrichEntry>): ReportIssueSnapshot[] {
+  return snap.map(i => {
+    const live = map[i.displayId ? String(i.displayId) : i.id]
+    if (!live) return i
+    return {
+      ...i,
+      issueType:  i.issueType?.trim()  ? i.issueType  : live.issueType,
+      discipline: i.discipline?.trim() ? i.discipline : live.discipline,
+      assignedTo: i.assignedTo?.trim() ? i.assignedTo : live.assignedTo,
+      createdBy:  i.createdBy?.trim()  ? i.createdBy  : live.createdBy,
+      // Live attribute values fill the gaps; values frozen in the snapshot win.
+      attributes: live.attributes || i.attributes
+        ? { ...(live.attributes ?? {}), ...(i.attributes ?? {}) }
+        : undefined,
+    }
+  })
+}
+
 export async function GET(
   req: NextRequest,
   ctx: { params: Promise<{ id: string }> }
@@ -64,8 +147,17 @@ export async function GET(
     // disciplines, totals) — they aren't real tracked issues yet.
     const notDraft = (i: ReportIssueSnapshot) =>
       (i.status ?? '').trim().toLowerCase() !== 'draft'
-    const fromSnap = fromDoc.issuesSnapshot.filter(notDraft)
-    const toSnap = toDoc.issuesSnapshot.filter(notDraft)
+    let fromSnap = fromDoc.issuesSnapshot.filter(notDraft)
+    let toSnap = toDoc.issuesSnapshot.filter(notDraft)
+
+    // Backfill dimensions the snapshots are missing (older reports carry no
+    // custom attributes) from the live issue list, so filters like "Levels"
+    // show up even for reports saved before attributes were snapshotted.
+    const enrichMap = await loadEnrichment(projectId)
+    if (enrichMap) {
+      fromSnap = enrichSnapshot(fromSnap, enrichMap)
+      toSnap = enrichSnapshot(toSnap, enrichMap)
+    }
 
     // Value of a filterable dimension on a snapshot issue. Snapshots written
     // before the extra fields existed only carry discipline — absent fields

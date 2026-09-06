@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useUser } from '@clerk/nextjs'
 import {
   CalendarDays, Check, ChevronLeft, ChevronRight, Clock3,
-  BarChart3, Loader2, Plus, Repeat, X,
+  BarChart3, Loader2, MessageCircle, Plus, Repeat, Send, X, Zap,
 } from 'lucide-react'
 import type { CalendarEventDTO, CalendarResponse, MeOverview, MyProject, TimeEntryDTO } from '@/lib/meTypes'
 import { ROLE_SUBJECT, TAXONOMY } from '@/lib/meTypes'
@@ -20,6 +20,9 @@ function toYMD(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${m}-${day}`
+}
+function ymdToDate(ymd: string): Date {
+  return new Date(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)) - 1, Number(ymd.slice(8, 10)))
 }
 function weekStartOf(d: Date): Date {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
@@ -84,6 +87,11 @@ export default function SubmitHoursClient() {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [sortDir, setSortDir] = useState<'asc' | 'desc' | null>(null)
   const [hidden, setHidden] = useState<Set<string>>(() => new Set())
+  // Quick fill: pick a category + hours once, then every cell click stamps it.
+  const [quickFill, setQuickFill] = useState<{ subject: string; subtopic: string; hours: string } | null>(null)
+  // Week grid ↔ single-day view.
+  const [view, setView] = useState<'week' | 'day'>('week')
+  const [selectedDay, setSelectedDay] = useState<string>(() => toYMD(new Date()))
   const pickerRef = useRef<HTMLDivElement>(null)
 
   // Hidden rows persist per browser (removal never deletes saved hours).
@@ -118,6 +126,29 @@ export default function SubmitHoursClient() {
     [weekStart]
   )
   const today = toYMD(new Date())
+
+  // Escape disarms quick fill.
+  useEffect(() => {
+    if (!quickFill) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setQuickFill(null) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [quickFill])
+
+  // Day navigation keeps the loaded week in sync with the selected day.
+  const gotoDay = useCallback((ymd: string) => {
+    setSelectedDay(ymd)
+    const ws = weekStartOf(ymdToDate(ymd))
+    setWeekStart((w) => (toYMD(ws) === toYMD(w) ? w : ws))
+  }, [])
+  const switchView = useCallback((v: 'week' | 'day') => {
+    setView(v)
+    // Entering day view with a day outside the shown week: land on today when
+    // this is today's week, otherwise on the week's first day.
+    if (v === 'day') {
+      setSelectedDay((cur) => (cur >= days[0] && cur <= days[6] ? cur : (today >= days[0] && today <= days[6] ? today : days[0])))
+    }
+  }, [days, today])
 
   useEffect(() => {
     fetch('/api/me/overview')
@@ -254,6 +285,22 @@ export default function SubmitHoursClient() {
     }
   }, [loadEntries])
 
+  // Does the armed quick-fill category apply to this row? Internal categories
+  // only land on the internal row, project categories only on project rows.
+  const quickFillApplies = useCallback((row: GridRow): boolean => {
+    if (!quickFill) return false
+    return (row.projectKey === INTERNAL_KEY) === (quickFill.subject === 'EasyBIM Internal')
+  }, [quickFill])
+
+  // Stamp the armed category onto a clicked cell (sets the slot — clicking the
+  // same cell again with the same parameters changes nothing).
+  const quickApply = useCallback((row: GridRow, date: string) => {
+    if (!quickFill || !quickFillApplies(row)) return
+    const n = round25(Number(quickFill.hours))
+    if (!Number.isFinite(n) || n < 0 || n > 24) return
+    saveCategory(row, date, quickFill.subject, quickFill.subtopic, n)
+  }, [quickFill, quickFillApplies, saveCategory])
+
   const applyCellChanges = useCallback(async (
     row: GridRow, date: string, changes: Array<{ subject: string; subtopic: string; hours: number }>
   ) => {
@@ -345,6 +392,41 @@ export default function SubmitHoursClient() {
     }
   }, [user])
 
+  // Everything the hours-chat parser needs to resolve projects, see what is
+  // already logged, and approve calendar events — built fresh per message.
+  const buildChatContext = useCallback(() => ({
+    days,
+    today,
+    projects: (overview?.allProjects ?? []).map((p) => ({
+      key: p._id,
+      number: p.projectNumber,
+      name: p.projectName,
+      roles: myProjectById.get(p._id)?.roles ?? [],
+    })),
+    entries: Object.entries(cells).flatMap(([key, list]) => {
+      const [projectKey, date] = key.split('|')
+      return list.filter((e) => e.hours > 0).map((e) => ({
+        date, projectKey, subject: e.subject, subtopic: e.subtopic, hours: e.hours,
+      }))
+    }),
+    events: (calendar?.events ?? []).map((ev) => ({
+      id: ev.id,
+      day: ev.day,
+      title: ev.title,
+      startTime: ev.startTime,
+      durationHours: ev.durationHours,
+      allDay: ev.allDay,
+      logged: loggedEventIds.has(ev.id),
+      matches: ev.matches ?? [],
+    })),
+  }), [days, today, overview, myProjectById, cells, calendar, loggedEventIds])
+
+  // Chat applied entries server-side — refresh the grid and mark logged events.
+  const onChatApplied = useCallback(async (appliedCount: number, eventIds: string[]) => {
+    if (eventIds.length > 0) setLoggedEventIds((s) => new Set([...s, ...eventIds]))
+    if (appliedCount > 0) await loadEntries()
+  }, [loadEntries])
+
   // Totals come from ALL saved entries (not from visible rows), so hiding a
   // row never falsifies the day/week totals.
   const dayTotals = days.map((d) =>
@@ -354,6 +436,7 @@ export default function SubmitHoursClient() {
   const expected = overview?.kpis.expectedWeeklyHours ?? 40
 
   const weekLabel = `${weekStart.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${addDays(weekStart, 6).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+  const dayLabel = ymdToDate(selectedDay).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })
 
   return (
     <div className="max-w-[1800px] w-full mx-auto flex-1 min-h-0 flex flex-col">
@@ -367,7 +450,7 @@ export default function SubmitHoursClient() {
       </div>
       <div className="flex items-end justify-between flex-wrap gap-2 mb-3">
         <h1 className="text-2xl font-bold text-[#1e248c]">Submit working hours</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {saving > 0 && (
             <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-500">
               <Loader2 size={12} className="animate-spin" /> saving…
@@ -376,6 +459,33 @@ export default function SubmitHoursClient() {
           <span className="text-[12px] font-semibold text-[#1e248c] tabular-nums">
             {entriesLoading ? '…' : `${weekTotal} / ${expected}h this week`}
           </span>
+          {/* week ↔ day: drives BOTH the grid and the calendar */}
+          <div className="inline-flex rounded-full bg-white/80 border border-white/90 p-0.5">
+            {(['week', 'day'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => switchView(v)}
+                className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                  view === v ? 'bg-[#1e248c] text-white' : 'text-gray-500 hover:text-[#1e248c]'
+                }`}
+              >
+                {v === 'week' ? 'Week' : 'Day'}
+              </button>
+            ))}
+          </div>
+          {view === 'week' ? (
+            <WeekNav
+              onPrev={() => setWeekStart((w) => addDays(w, -7))}
+              onToday={() => setWeekStart(weekStartOf(new Date()))}
+              onNext={() => setWeekStart((w) => addDays(w, 7))}
+            />
+          ) : (
+            <WeekNav
+              onPrev={() => gotoDay(toYMD(addDays(ymdToDate(selectedDay), -1)))}
+              onToday={() => gotoDay(today)}
+              onNext={() => gotoDay(toYMD(addDays(ymdToDate(selectedDay), 1)))}
+            />
+          )}
           <Link
             href="/me/analytics"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium bg-white/80 border border-white/90 text-[#1e248c] hover:bg-blue-50 transition-colors"
@@ -393,18 +503,82 @@ export default function SubmitHoursClient() {
           each scrolls internally */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 flex-1 min-h-0">
       <section id="time" className="glass-card rounded-2xl p-4 flex flex-col min-h-0 overflow-hidden">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <h2 className="font-semibold text-[#1e248c] text-[13px] flex items-center gap-2">
-            <Clock3 size={14} /> This week · {weekLabel}
+            <Clock3 size={14} />
+            {view === 'week' ? <>This week · {weekLabel}</> : <>Day · {dayLabel}</>}
           </h2>
-          <WeekNav
-            onPrev={() => setWeekStart((w) => addDays(w, -7))}
-            onToday={() => setWeekStart(weekStartOf(new Date()))}
-            onNext={() => setWeekStart((w) => addDays(w, 7))}
-          />
         </div>
 
+        {/* quick fill: arm a category + hours once, then click cells to stamp it */}
+        {view === 'week' && (
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            {!quickFill ? (
+              <button
+                onClick={() => setQuickFill({ subject: 'Model MGMT', subtopic: 'ProjectWork', hours: '1' })}
+                title="Set a category and hours once, then click grid cells to fill them"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-medium bg-white/80 border border-white/90 text-[#1e248c] hover:bg-blue-50 transition-colors"
+              >
+                <Zap size={11} /> Quick fill
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap bg-[#e7eefe] border border-[#c5caff] rounded-full pl-2 pr-1 py-1">
+                <Zap size={11} className="text-[#1e248c] shrink-0" />
+                <select
+                  value={quickFill.subject}
+                  onChange={(e) => {
+                    const subject = e.target.value
+                    const subs = TAXONOMY.find((t) => t.subject === subject)?.subtopics ?? []
+                    setQuickFill((q) => q && ({
+                      ...q, subject,
+                      subtopic: (subs as readonly string[]).includes(q.subtopic) ? q.subtopic : subs[0],
+                    }))
+                  }}
+                  className="text-[10px] border border-[#c5caff] rounded-lg px-1 py-0.5 bg-white outline-none"
+                >
+                  {TAXONOMY.map((t) => <option key={t.subject} value={t.subject}>{t.subject}</option>)}
+                </select>
+                <select
+                  value={quickFill.subtopic}
+                  onChange={(e) => setQuickFill((q) => q && ({ ...q, subtopic: e.target.value }))}
+                  className="text-[10px] border border-[#c5caff] rounded-lg px-1 py-0.5 bg-white outline-none"
+                >
+                  {(TAXONOMY.find((t) => t.subject === quickFill.subject)?.subtopics ?? []).map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={quickFill.hours}
+                  onChange={(e) => setQuickFill((q) => q && ({ ...q, hours: e.target.value }))}
+                  className="w-10 text-[10px] text-center border border-[#c5caff] rounded-lg px-1 py-0.5 bg-white outline-none tabular-nums"
+                />
+                <span className="text-[9px] text-[#1e248c]">h — click cells to fill · Esc to stop</span>
+                <button
+                  onClick={() => setQuickFill(null)}
+                  title="Stop quick fill"
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-[#1e248c] hover:bg-white transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="overflow-auto flex-1 min-h-0">
+          {view === 'day' ? (
+            <DayGrid
+              rows={rows}
+              date={selectedDay}
+              isToday={selectedDay === today}
+              cells={cells}
+              subjectFor={subjectForProject}
+              onSaveSlot={saveCategory}
+              onOpenCell={(row) => setCellEdit({ row, date: selectedDay })}
+            />
+          ) : (
           <table className="w-full border-collapse min-w-[640px]">
             <thead>
               <tr>
@@ -458,7 +632,11 @@ export default function SubmitHoursClient() {
                         entries={cells[cellKey(row.projectKey, d)]}
                         weekend={i >= 5}
                         isToday={d === today}
-                        onOpen={() => setCellEdit({ row, date: d })}
+                        quickFill={quickFill ? {
+                          applicable: quickFillApplies(row),
+                          label: `${quickFill.subject} · ${quickFill.subtopic}: ${round25(Number(quickFill.hours) || 0)}h`,
+                        } : null}
+                        onOpen={() => (quickFill ? quickApply(row, d) : setCellEdit({ row, date: d }))}
                       />
                     ))}
                     <td className="border border-[#e8eaff] bg-[#e7eefe] text-center text-[11px] font-bold text-[#1e248c] tabular-nums">
@@ -482,6 +660,7 @@ export default function SubmitHoursClient() {
               </tr>
             </tfoot>
           </table>
+          )}
         </div>
 
         {/* add project row */}
@@ -522,18 +701,13 @@ export default function SubmitHoursClient() {
       <section id="calendar" className="glass-card rounded-2xl p-4 flex flex-col min-h-0 overflow-hidden">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <h2 className="font-semibold text-[#1e248c] text-[13px] flex items-center gap-2">
-            <CalendarDays size={14} /> My calendar · {weekLabel}
+            <CalendarDays size={14} /> My calendar · {view === 'week' ? weekLabel : dayLabel}
             <span className="text-[10px] font-normal text-gray-400">click an event to log it</span>
           </h2>
-          <WeekNav
-            onPrev={() => setWeekStart((w) => addDays(w, -7))}
-            onToday={() => setWeekStart(weekStartOf(new Date()))}
-            onNext={() => setWeekStart((w) => addDays(w, 7))}
-          />
         </div>
         <CalendarWeek
           calendar={calendar}
-          days={days}
+          days={view === 'week' ? days : [selectedDay]}
           today={today}
           loggedEventIds={loggedEventIds}
           onPick={setLogEvent}
@@ -563,6 +737,146 @@ export default function SubmitHoursClient() {
           onSaveRule={saveEventRule}
         />
       )}
+
+      <HoursChat getContext={buildChatContext} onApplied={onChatApplied} />
+    </div>
+  )
+}
+
+/* ---------------- hours chat ---------------- */
+
+interface ChatMsg { role: 'user' | 'assistant'; content: string }
+
+// Floating chat: free-text hours logging ("עבדתי על אס גי אס 5 שעות השבוע",
+// "תאשר את כל מה שצהוב ביומן"). The server parses with Claude and writes the
+// entries; onApplied refreshes the grid.
+function HoursChat({ getContext, onApplied }: {
+  getContext: () => unknown
+  onApplied: (appliedCount: number, eventIds: string[]) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [msgs, setMsgs] = useState<ChatMsg[]>([])
+  const [input, setInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+  }, [msgs, busy, open])
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || busy) return
+    const next: ChatMsg[] = [...msgs, { role: 'user', content: text }]
+    setMsgs(next)
+    setInput('')
+    setBusy(true)
+    try {
+      const res = await fetch('/api/me/hours-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: next, context: getContext() }),
+      })
+      const data = await res.json() as {
+        reply?: string
+        applied?: Array<{ projectName: string; date: string; hours: number }>
+        loggedEventIds?: string[]
+        error?: string
+      }
+      if (data.error) throw new Error(data.error)
+      setMsgs((m) => [...m, { role: 'assistant', content: data.reply ?? '…' }])
+      await onApplied(data.applied?.length ?? 0, data.loggedEventIds ?? [])
+    } catch (e) {
+      setMsgs((m) => [...m, {
+        role: 'assistant',
+        content: `שגיאה: ${e instanceof Error ? e.message : String(e)}`,
+      }])
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        title="Log hours by chat"
+        className="fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[#1e248c] text-white shadow-lg
+          hover:bg-[#333a9f] transition-colors flex items-center justify-center"
+      >
+        <MessageCircle size={20} />
+      </button>
+    )
+  }
+
+  return (
+    <div className="fixed bottom-5 right-5 z-40 w-[350px] h-[460px] max-h-[80vh] bg-white rounded-2xl shadow-2xl
+      border border-[#e8eaff] flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-[#1e248c] text-white shrink-0">
+        <span className="text-[12px] font-semibold inline-flex items-center gap-1.5">
+          <MessageCircle size={13} /> Log hours by chat
+        </span>
+        <button onClick={() => setOpen(false)} className="hover:opacity-70"><X size={14} /></button>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 bg-[#f7f8ff]">
+        {msgs.length === 0 && (
+          <div className="text-[10px] text-gray-500 leading-relaxed bg-white border border-[#e8eaff] rounded-xl p-2.5" dir="rtl">
+            אפשר לרשום שעות בשפה חופשית, למשל:
+            <ul className="list-disc pr-4 mt-1 space-y-0.5">
+              <li>עבדתי על ארנה אשדוד 3 שעות היום</li>
+              <li>עבדתי 5 שעות השבוע על אס גי אס</li>
+              <li>תאשר את כל מה שצהוב ביומן</li>
+              <li>10 שעות השבוע, תחלק שווה בין שלושה פרויקטים…</li>
+            </ul>
+          </div>
+        )}
+        {msgs.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              dir="auto"
+              className={`max-w-[85%] rounded-2xl px-3 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap ${
+                m.role === 'user'
+                  ? 'bg-[#1e248c] text-white rounded-br-md'
+                  : 'bg-white border border-[#e8eaff] text-gray-800 rounded-bl-md'
+              }`}
+            >
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {busy && (
+          <div className="flex justify-start">
+            <div className="bg-white border border-[#e8eaff] rounded-2xl rounded-bl-md px-3 py-1.5">
+              <Loader2 size={12} className="animate-spin text-[#1e248c]" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-2 border-t border-[#eef0fb] bg-white shrink-0 flex items-end gap-1.5">
+        <textarea
+          dir="auto"
+          rows={2}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+          }}
+          placeholder="עבדתי על… / approve yellow…"
+          className="flex-1 resize-none text-[11px] border border-[#e8eaff] rounded-xl px-2.5 py-1.5 outline-none
+            focus:ring-1 focus:ring-[#44b8d3] leading-relaxed"
+        />
+        <button
+          onClick={send}
+          disabled={busy || !input.trim()}
+          title="Send"
+          className="w-8 h-8 rounded-full bg-[#1e248c] text-white flex items-center justify-center
+            hover:bg-[#333a9f] transition-colors disabled:opacity-40 shrink-0"
+        >
+          <Send size={13} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -601,11 +915,13 @@ function WeekNavButton({ children, onClick, title }: { children: React.ReactNode
 }
 
 // A grid cell: shows the day's total for the project, click to edit the
-// Subject/Subtopic breakdown.
-function CellButton({ entries, weekend, isToday, onOpen }: {
+// Subject/Subtopic breakdown — or, with quick fill armed, to stamp the armed
+// category straight into the cell.
+function CellButton({ entries, weekend, isToday, quickFill, onOpen }: {
   entries: CellEntry[] | undefined
   weekend: boolean
   isToday: boolean
+  quickFill: { applicable: boolean; label: string } | null
   onOpen: () => void
 }) {
   const total = cellTotal(entries)
@@ -613,17 +929,201 @@ function CellButton({ entries, weekend, isToday, onOpen }: {
     .filter((e) => e.hours > 0)
     .map((e) => `${e.subject || 'Uncategorized'} · ${e.subtopic || '—'}: ${e.hours}h`)
     .join('\n')
+  const title = quickFill
+    ? quickFill.applicable
+      ? `Click to set ${quickFill.label}`
+      : 'This quick-fill category doesn’t apply to this row'
+    : breakdown || 'Click to log hours by category'
   return (
     <td className={`border border-[#e8eaff] p-0 ${isToday ? 'bg-[#e7eefe]/60' : weekend ? 'bg-gray-50/60' : ''}`}>
       <button
         onClick={onOpen}
-        title={breakdown || 'Click to log hours by category'}
-        className={`w-full h-full px-1 py-1.5 text-center text-[11px] tabular-nums transition-colors hover:bg-white/80
+        title={title}
+        className={`w-full h-full px-1 py-1.5 text-center text-[11px] tabular-nums transition-colors
+          ${quickFill ? (quickFill.applicable ? 'cursor-crosshair hover:bg-[#fff7e0]' : 'cursor-not-allowed opacity-40') : 'hover:bg-white/80'}
           ${total ? 'text-gray-800 font-semibold' : 'text-gray-300'}`}
       >
         {total || '–'}
       </button>
     </td>
+  )
+}
+
+// Editable hours field for the day view — commits on blur/Enter, rounds to
+// quarter hours, reverts on invalid input.
+function HoursInput({ value, onCommit, title }: {
+  value: number
+  onCommit: (n: number) => void
+  title?: string
+}) {
+  const [draft, setDraft] = useState<string>(value ? String(value) : '')
+  useEffect(() => { setDraft(value ? String(value) : '') }, [value])
+  const commit = () => {
+    const raw = draft.trim()
+    const n = raw === '' ? 0 : Number(raw)
+    if (!Number.isFinite(n) || n < 0 || n > 24) { setDraft(value ? String(value) : ''); return }
+    if (round25(n) !== value) onCommit(round25(n))
+  }
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={draft}
+      placeholder="–"
+      title={title}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      className="w-full text-center text-[11px] tabular-nums bg-transparent outline-none py-1.5
+        placeholder:text-gray-300 focus:bg-white/90 focus:ring-1 focus:ring-[#44b8d3] rounded"
+    />
+  )
+}
+
+/* Single-day view: a Meetings/ProjectWork column pair PER SUBJECT (Model MGMT,
+   Superposition, …), so it's always visible which subject hours belong to.
+   Shown subjects = the roles the user holds across their projects plus any
+   subject that already has hours today; each input reads/writes its own
+   Subject·Subtopic slot directly. The internal row keeps its five categories. */
+function DayGrid({ rows, date, isToday, cells, subjectFor, onSaveSlot, onOpenCell }: {
+  rows: GridRow[]
+  date: string
+  isToday: boolean
+  cells: Record<string, CellEntry[]>
+  subjectFor: (projectKey: string) => string
+  onSaveSlot: (row: GridRow, date: string, subject: string, subtopic: string, hours: number) => void
+  onOpenCell: (row: GridRow) => void
+}) {
+  const DAY_SUBTOPICS = ['Meetings', 'ProjectWork'] as const
+  const internalSubtopics = TAXONOMY.find((t) => t.subject === 'EasyBIM Internal')?.subtopics ?? []
+  const projectRows = rows.filter((r) => r.projectKey !== INTERNAL_KEY)
+  const internalRow = rows.find((r) => r.projectKey === INTERNAL_KEY)
+
+  const relevant = new Set<string>(projectRows.map((r) => subjectFor(r.projectKey)))
+  for (const [k, list] of Object.entries(cells)) {
+    if (!k.endsWith(`|${date}`) || k.startsWith(`${INTERNAL_KEY}|`)) continue
+    for (const e of list) if (e.hours > 0) relevant.add(e.subject)
+  }
+  const subjects = TAXONOMY
+    .filter((t) => t.subject !== 'EasyBIM Internal' && relevant.has(t.subject))
+    .map((t) => t.subject)
+  if (subjects.length === 0) subjects.push('Model MGMT', 'Superposition')
+
+  const slotSum = (entries: CellEntry[], subject: string, subtopic: string) =>
+    entries.filter((e) => e.subject === subject && e.subtopic === subtopic).reduce((s, e) => s + e.hours, 0)
+
+  const dayTotal = Object.entries(cells).reduce(
+    (s, [k, list]) => (k.endsWith(`|${date}`) ? s + cellTotal(list) : s), 0
+  )
+
+  const th = `sticky z-10 text-[10px] font-semibold border border-[#e8eaff] px-1 ${isToday ? 'bg-[#e7eefe] text-[#1e248c]' : 'bg-[#f0f3ff] text-gray-500'}`
+
+  return (
+    <table className="w-full border-collapse min-w-[560px]">
+      <thead>
+        <tr>
+          <th rowSpan={2} className={`${th} top-0 text-left px-2 align-bottom pb-1.5`}>Project</th>
+          {subjects.map((s) => (
+            <th key={s} colSpan={DAY_SUBTOPICS.length} className={`${th} top-0 py-1 border-b-0`}>{s}</th>
+          ))}
+          <th rowSpan={2} className="sticky top-0 z-10 text-[10px] font-semibold text-[#1e248c] border border-[#e8eaff] bg-[#e7eefe] px-1 py-1.5 w-[56px] align-bottom pb-1.5">Total</th>
+        </tr>
+        <tr>
+          {subjects.flatMap((s) =>
+            DAY_SUBTOPICS.map((t) => (
+              <th key={`${s}|${t}`} className={`${th} top-[22px] py-1 w-[72px] font-normal`}>{t}</th>
+            ))
+          )}
+        </tr>
+      </thead>
+      <tbody>
+        {projectRows.map((row) => {
+          const entries = cells[cellKey(row.projectKey, date)] ?? []
+          const total = cellTotal(entries)
+          const roleSubject = subjectFor(row.projectKey)
+          return (
+            <tr key={row.projectKey}>
+              <td className="border border-[#e8eaff] px-2 py-1">
+                <div className="text-[11px] font-semibold text-gray-800 whitespace-nowrap overflow-hidden text-ellipsis max-w-[220px]">
+                  {row.projectNumber && (
+                    <span className="font-mono text-[10px] text-[#44b8d3] mr-1">{row.projectNumber}</span>
+                  )}
+                  <bdi>{row.projectName}</bdi>
+                </div>
+                {row.subLabel && <div className="text-[9px] text-gray-400">{row.subLabel}</div>}
+              </td>
+              {subjects.flatMap((s) =>
+                DAY_SUBTOPICS.map((t) => (
+                  <td key={`${s}|${t}`} className={`border border-[#e8eaff] p-0 ${s === roleSubject ? '' : 'bg-gray-50/60'}`}>
+                    <HoursInput
+                      value={round25(slotSum(entries, s, t))}
+                      title={`${s} · ${t}${s === roleSubject ? ' (your role on this project)' : ''}`}
+                      onCommit={(n) => onSaveSlot(row, date, s, t, n)}
+                    />
+                  </td>
+                ))
+              )}
+              <td
+                onClick={() => onOpenCell(row)}
+                title="All categories — open the full editor"
+                className="border border-[#e8eaff] bg-[#e7eefe]/70 text-center text-[11px] font-bold text-[#1e248c] tabular-nums cursor-pointer hover:bg-[#dbe4fd]"
+              >
+                {total || ''}
+              </td>
+            </tr>
+          )
+        })}
+        {internalRow && (() => {
+          const entries = cells[cellKey(INTERNAL_KEY, date)] ?? []
+          const slotHours = (subtopic: string) =>
+            entries.filter((e) => e.subject === 'EasyBIM Internal' && e.subtopic === subtopic).reduce((s, e) => s + e.hours, 0)
+          return (
+            <tr>
+              <td className="border border-[#e8eaff] px-2 py-1">
+                <div className="text-[11px] font-semibold text-gray-800">{internalRow.projectName}</div>
+                <div className="text-[9px] text-gray-400">{internalRow.subLabel}</div>
+              </td>
+              <td colSpan={subjects.length * DAY_SUBTOPICS.length} className="border border-[#e8eaff] px-1.5 py-1">
+                <div className="flex flex-wrap gap-1.5">
+                  {internalSubtopics.map((s) => (
+                    <label key={s} className="flex items-center gap-1 bg-[#f0f3ff] rounded-lg px-1.5 py-0.5">
+                      <span className="text-[9px] text-gray-600">{s}</span>
+                      <span className="w-11">
+                        <HoursInput
+                          value={round25(slotHours(s))}
+                          title={`EasyBIM Internal · ${s}`}
+                          onCommit={(n) => onSaveSlot(internalRow, date, 'EasyBIM Internal', s, n)}
+                        />
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </td>
+              <td
+                onClick={() => onOpenCell(internalRow)}
+                title="All categories — open the full editor"
+                className="border border-[#e8eaff] bg-[#e7eefe]/70 text-center text-[11px] font-bold text-[#1e248c] tabular-nums cursor-pointer hover:bg-[#dbe4fd]"
+              >
+                {cellTotal(entries) || ''}
+              </td>
+            </tr>
+          )
+        })()}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td
+            colSpan={1 + subjects.length * DAY_SUBTOPICS.length}
+            className="sticky bottom-0 z-10 border border-[#e8eaff] bg-[#f0f3ff] px-2 py-1.5 text-[11px] font-bold text-gray-700 shadow-[0_-1px_0_#e8eaff]"
+          >
+            Day total
+          </td>
+          <td className="sticky bottom-0 z-10 border border-[#e8eaff] bg-[#e7eefe] text-center text-[12px] font-bold text-[#1e248c] tabular-nums shadow-[0_-1px_0_#e8eaff]">
+            {dayTotal || ''}
+          </td>
+        </tr>
+      </tfoot>
+    </table>
   )
 }
 
@@ -636,10 +1136,12 @@ function CellEditorModal({ row, date, entries, onClose, onApply }: {
   onApply: (changes: Array<{ subject: string; subtopic: string; hours: number }>) => void
 }) {
   const slotKey = (s: string, t: string) => `${s}|${t}`
-  // The internal row only takes EasyBIM Internal categories; project rows take the rest.
+  // The internal row only takes EasyBIM Internal categories; project rows take
+  // the rest (internal hours belong on the internal row, not on projects —
+  // legacy leaks still show below as "uncategorized").
   const visibleTaxonomy = row.projectKey === INTERNAL_KEY
     ? TAXONOMY.filter((t) => t.subject === 'EasyBIM Internal')
-    : TAXONOMY
+    : TAXONOMY.filter((t) => t.subject !== 'EasyBIM Internal')
   // Hours outside the visible categories (legacy entries, or a subject that no
   // longer applies to this row) — shown as their own editable rows below.
   const uncategorized = entries.filter(
@@ -857,7 +1359,7 @@ function CalendarWeek({ calendar, days, today, loggedEventIds, onPick, onGrantAc
                 d === today ? 'text-[#1e248c] bg-[#e7eefe]/70' : 'text-gray-400'
               }`}
             >
-              {DAY_LABELS[i]} {Number(d.slice(8))}
+              {DAY_LABELS[ymdToDate(d).getDay()]} {Number(d.slice(8))}
             </div>
           ))}
         </div>

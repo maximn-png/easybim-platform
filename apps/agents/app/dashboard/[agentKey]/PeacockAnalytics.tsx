@@ -4,19 +4,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   TrendingUp, Eye, Upload, Link2, Check, AlertCircle, X, BarChart3, Table2, ExternalLink, RefreshCw,
 } from 'lucide-react'
-import { CARD, PURPLE, PURPLE_2 } from './postMeta'
+import { ACCENT, ACCENT_BG, CARD } from './postMeta'
 
 // Chart decisions, per the dataviz method:
 // • Form: weekly impressions is change-over-time on discrete buckets → columns.
 // • ONE series, one color — so no legend (the card title names what is plotted),
 //   and engagements are NOT a second y-axis. They live in the tooltip and in the
 //   summary line; a dual-axis chart would invent a correlation.
-// • #7b5cff validated on a light surface (lightness band, chroma floor, ≥3:1
-//   contrast all pass) via the palette validator.
+// • #1e248c (the platform navy) validated on a light surface (lightness band,
+//   chroma floor, ≥3:1 contrast all pass) via the palette validator.
 // • Values are never tooltip-gated: the card has a table-view twin, and the
 //   extreme + latest columns are directly labelled.
-const SERIES = PURPLE
-const GRID = '#eeecf6' // hairline, one step off the white surface
+const SERIES = ACCENT
+const GRID = '#e7ebf5' // hairline, one step off the white surface
 const INK_2 = '#8b909c'
 const INK_1 = '#3a3f4d'
 const PLOT_H = 140
@@ -124,14 +124,14 @@ export function ImpressionsCard({
     <div style={{ ...CARD, padding: '22px 24px' }}>
       <div className="flex items-start justify-between mb-4 gap-3">
         <div>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Impressions</h3>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: ACCENT }}>Impressions</h3>
           <p style={{ margin: '5px 0 0', fontSize: 13, color: INK_2 }}>
             Last 8 weeks{data?.organizationName ? ` · ${data.organizationName}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {hasNumbers && (
-            <div className="flex items-center" style={{ background: '#f5f4fa', borderRadius: 9, padding: 2 }}>
+            <div className="flex items-center" style={{ background: '#eef1f8', borderRadius: 9, padding: 2 }}>
               <IconToggle active={view === 'chart'} onClick={() => setView('chart')} title="Chart"><BarChart3 size={14} /></IconToggle>
               <IconToggle active={view === 'table'} onClick={() => setView('table')} title="Numbers"><Table2 size={14} /></IconToggle>
             </div>
@@ -139,7 +139,7 @@ export function ImpressionsCard({
           <button
             onClick={() => setImportOpen((v) => !v)}
             className="flex items-center gap-1.5"
-            style={{ border: '1px solid #e7e3f7', background: '#fff', color: PURPLE, borderRadius: 9,
+            style={{ border: '1px solid #dfe6f3', background: '#fff', color: ACCENT, borderRadius: 9,
               padding: '6px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
           >
             <Upload size={13} /> Import
@@ -284,8 +284,8 @@ function Chart({
         <div
           style={{ position: 'absolute', top: -6, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}
         >
-          <div style={{ background: '#fff', border: '1px solid #eeecf6', borderRadius: 10, padding: '7px 11px',
-            boxShadow: '0 8px 22px rgba(60,40,140,.14)', fontSize: 11.5, color: INK_1, whiteSpace: 'nowrap' }}>
+          <div style={{ background: '#fff', border: '1px solid #e7ebf5', borderRadius: 10, padding: '7px 11px',
+            boxShadow: '0 8px 22px rgba(30,36,140,.14)', fontSize: 11.5, color: INK_1, whiteSpace: 'nowrap' }}>
             <strong style={{ fontWeight: 800 }}>week of {active.label}</strong>
             {' · '}{active.impressions.toLocaleString('en-US')} impressions
             {' · '}{active.engagements.toLocaleString('en-US')} engagements
@@ -338,7 +338,7 @@ function EmptyAnalytics({
   onImport: () => void
 }) {
   return (
-    <div style={{ border: `1px dashed ${GRID}`, borderRadius: 14, background: '#faf9ff', padding: '20px 18px' }}>
+    <div style={{ border: `1px dashed ${GRID}`, borderRadius: 14, background: '#f7f9fd', padding: '20px 18px' }}>
       <div className="flex items-center gap-2 mb-2">
         <Eye size={18} style={{ color: '#c8cdd8' }} />
         <span style={{ fontSize: 13.5, fontWeight: 700, color: INK_1 }}>No LinkedIn numbers yet</span>
@@ -352,7 +352,7 @@ function EmptyAnalytics({
           onClick={onImport}
           className="flex items-center gap-1.5 text-white"
           style={{ border: 'none', borderRadius: 10, padding: '9px 14px', fontSize: 12.5, fontWeight: 700,
-            cursor: 'pointer', background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})` }}
+            cursor: 'pointer', background: ACCENT }}
         >
           <Upload size={14} /> Paste page export
         </button>
@@ -360,7 +360,7 @@ function EmptyAnalytics({
           <a
             href={`/api/dashboard/${agentKey}/linkedin/connect`}
             className="flex items-center gap-1.5"
-            style={{ border: '1px solid #e7e3f7', background: '#fff', color: PURPLE, borderRadius: 10,
+            style={{ border: '1px solid #dfe6f3', background: '#fff', color: ACCENT, borderRadius: 10,
               padding: '9px 14px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none' }}
           >
             <Link2 size={14} /> Connect LinkedIn
@@ -428,7 +428,7 @@ function ImportPanel({
   }
 
   return (
-    <div style={{ border: '1px solid #eeecf6', borderRadius: 14, padding: 14, marginBottom: 16, background: '#fcfbff' }}>
+    <div style={{ border: '1px solid #e7ebf5', borderRadius: 14, padding: 14, marginBottom: 16, background: '#f9fafd' }}>
       <div className="flex items-center justify-between mb-2">
         <span style={{ fontSize: 12.5, fontWeight: 800, color: INK_1 }}>Import LinkedIn page analytics</span>
         <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#b0aebc' }}>
@@ -445,7 +445,7 @@ function ImportPanel({
         onChange={(e) => { setText(e.target.value); setPreview(null); setDone(null); setError(null) }}
         placeholder={'Date,Impressions,Engagements\n01/07/2026,1204,64\n02/07/2026,2010,120'}
         rows={5}
-        style={{ width: '100%', border: '1px solid #e7e3f7', borderRadius: 10, padding: 10, outline: 'none',
+        style={{ width: '100%', border: '1px solid #dfe6f3', borderRadius: 10, padding: 10, outline: 'none',
           fontSize: 12, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', resize: 'vertical' }}
       />
 
@@ -481,7 +481,7 @@ function ImportPanel({
         <button
           onClick={() => send(true)}
           disabled={!text.trim() || busy}
-          style={{ border: '1px solid #e7e3f7', background: '#fff', color: PURPLE, borderRadius: 9, padding: '7px 12px',
+          style={{ border: '1px solid #dfe6f3', background: '#fff', color: ACCENT, borderRadius: 9, padding: '7px 12px',
             fontSize: 12.5, fontWeight: 700, cursor: text.trim() && !busy ? 'pointer' : 'not-allowed', opacity: text.trim() && !busy ? 1 : 0.5 }}
         >
           Check columns
@@ -491,7 +491,7 @@ function ImportPanel({
           disabled={!text.trim() || busy || done != null}
           className="text-white"
           style={{ border: 'none', borderRadius: 9, padding: '7px 13px', fontSize: 12.5, fontWeight: 700,
-            background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`,
+            background: ACCENT,
             cursor: text.trim() && !busy && done == null ? 'pointer' : 'not-allowed',
             opacity: text.trim() && !busy && done == null ? 1 : 0.5 }}
         >
@@ -512,8 +512,8 @@ export function TopPostsCard({ data, onOpenPost }: { data: AnalyticsData | null;
     <div style={{ ...CARD, padding: '22px 24px 14px' }}>
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
-          <TrendingUp size={16} style={{ color: PURPLE }} />
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>Top Posts</h3>
+          <TrendingUp size={14} style={{ color: ACCENT }} />
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: ACCENT }}>Top Posts</h3>
         </div>
         <span style={{ fontSize: 11.5, color: '#a9adb8' }}>by impressions</span>
       </div>
@@ -533,7 +533,7 @@ export function TopPostsCard({ data, onOpenPost }: { data: AnalyticsData | null;
               borderTopWidth: 1, borderTopStyle: 'solid', borderTopColor: GRID, cursor: 'pointer', fontFamily: 'inherit' }}
           >
             <span className="flex items-center justify-center font-extrabold" style={{ width: 26, height: 26, borderRadius: 8,
-              background: '#f0ecff', color: PURPLE, fontSize: 12, flex: 'none' }}>{i + 1}</span>
+              background: ACCENT_BG, color: ACCENT, fontSize: 12, flex: 'none' }}>{i + 1}</span>
             <div className="flex-1 min-w-0">
               <div dir="auto" style={{ fontSize: 13.5, fontWeight: 600, color: INK_1, overflow: 'hidden',
                 textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</div>
@@ -584,7 +584,7 @@ export function LinkedInStatusRow({ agentKey, data, onChanged }: { agentKey: str
       ) : data.configured ? (
         <>
           <span>LinkedIn not connected — numbers come from imports and manual entry.</span>
-          <a href={`/api/dashboard/${agentKey}/linkedin/connect`} style={{ color: PURPLE, fontWeight: 700, textDecoration: 'none' }}>
+          <a href={`/api/dashboard/${agentKey}/linkedin/connect`} style={{ color: ACCENT, fontWeight: 700, textDecoration: 'none' }}>
             connect →
           </a>
         </>
@@ -602,8 +602,8 @@ function IconToggle({ active, onClick, title, children }: { active: boolean; onC
   return (
     <button onClick={onClick} title={title} aria-pressed={active}
       style={{ border: 'none', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center',
-        background: active ? '#fff' : 'transparent', color: active ? PURPLE : '#9aa0ac',
-        boxShadow: active ? '0 1px 4px rgba(90,70,180,.12)' : 'none' }}>
+        background: active ? '#fff' : 'transparent', color: active ? ACCENT : '#9aa0ac',
+        boxShadow: active ? '0 1px 4px rgba(30,36,140,.12)' : 'none' }}>
       {children}
     </button>
   )

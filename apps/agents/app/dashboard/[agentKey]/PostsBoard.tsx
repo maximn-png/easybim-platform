@@ -1,11 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CalendarRange, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle } from 'lucide-react'
+import { ArrowLeft, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle } from 'lucide-react'
 import PostDrawer from './PostDrawer'
 import {
-  addDays, CARD, dayStart, daysBetween, fmtDayMon, isoDay, isOverdue,
-  POST_TYPES, PortalUser, PostDTO, PostStatus, PURPLE, PURPLE_2, STATUS_META, statusMeta,
+  ACCENT, ACCENT_BG, addDays, CARD, dayStart, daysBetween, fmtDayMon, isoDay, isOverdue,
+  POST_TYPES, PortalUser, PostDTO, PostStatus, STATUS_META, statusMeta,
   STATUS_ORDER, typeColor,
 } from './postMeta'
 
@@ -198,54 +198,45 @@ export default function PostsBoard({
     <>
         {/* header */}
         <header className="flex items-center justify-between mb-5 flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            {!embedded && <span style={{ fontSize: 28 }}>🦚</span>}
-            {embedded && (
-              <span className="flex items-center justify-center text-white" style={{ width: 32, height: 32, borderRadius: 10, background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, flex: 'none' }}>
-                <CalendarRange size={17} />
+          <div>
+            <div className="flex items-center gap-2.5">
+              <span style={{ fontSize: embedded ? 15 : 20, fontWeight: 600, color: ACCENT }}>Posts &amp; Timeline</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: ACCENT, background: ACCENT_BG, padding: '3px 9px', borderRadius: 999 }}>
+                {rows.length} posts
               </span>
-            )}
-            <div>
-              <div className="flex items-center gap-2.5">
-                <span style={{ fontSize: embedded ? 16 : 21, fontWeight: 800, letterSpacing: '-.02em' }}>Posts &amp; Timeline</span>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: PURPLE, background: '#f0ecff', padding: '4px 10px', borderRadius: 999 }}>
-                  {rows.length} posts
-                </span>
-              </div>
-              <div style={{ fontSize: 12.5, color: '#9aa0ac', fontWeight: 500, marginTop: 2 }}>
-                Plan two months ahead · click a post to open the draft and work on it with Peacock
-              </div>
+            </div>
+            <div style={{ fontSize: 12.5, color: '#6b7280', marginTop: 2 }}>
+              Plan two months ahead · click a post to open the draft and work on it with Peacock
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center" style={{ background: '#fff', border: '1px solid #eeecf6', borderRadius: 12, padding: 3 }}>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center" style={{ background: '#fff', border: '1px solid #e3e8f4', borderRadius: 999, padding: 2 }}>
               {SCOPES.map((s) => (
                 <button key={s.key} onClick={() => { setLoading(true); setScope(s.key) }}
-                  style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 11px', borderRadius: 9, border: 'none', cursor: 'pointer',
-                    background: scope === s.key ? '#f0ecff' : 'transparent', color: scope === s.key ? PURPLE : '#9aa0ac' }}>
+                  style={{ fontSize: 12, fontWeight: 600, padding: '5px 11px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                    background: scope === s.key ? ACCENT_BG : 'transparent', color: scope === s.key ? ACCENT : '#6b7280' }}>
                   {s.label}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2" style={{ ...CARD, borderRadius: 12, padding: '8px 12px', boxShadow: 'none' }}>
-              <Search size={15} style={{ color: '#9aa0ac' }} />
+            <div className="flex items-center gap-2" style={{ background: '#fff', border: '1px solid #e3e8f4', borderRadius: 999, padding: '6px 12px' }}>
+              <Search size={13} style={{ color: '#9ca3af' }} />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search post…" dir="auto"
-                style={{ border: 'none', outline: 'none', fontSize: 13.5, background: 'transparent', width: 160, fontFamily: 'inherit' }} />
+                style={{ border: 'none', outline: 'none', fontSize: 13, background: 'transparent', width: 150, fontFamily: 'inherit' }} />
             </div>
-            <div className="flex items-center" style={{ background: '#fff', border: '1px solid #eeecf6', borderRadius: 12, padding: 3 }}>
+            <div className="flex items-center" style={{ background: '#fff', border: '1px solid #e3e8f4', borderRadius: 999, padding: 2 }}>
               {RANGE_OPTIONS.map((o) => (
                 <button key={o.weeks} onClick={() => setWeeks(o.weeks)}
-                  style={{ fontSize: 12.5, fontWeight: 700, padding: '6px 11px', borderRadius: 9, border: 'none', cursor: 'pointer',
-                    background: weeks === o.weeks ? '#f0ecff' : 'transparent', color: weeks === o.weeks ? PURPLE : '#9aa0ac' }}>
+                  style={{ fontSize: 12, fontWeight: 600, padding: '5px 11px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                    background: weeks === o.weeks ? ACCENT_BG : 'transparent', color: weeks === o.weeks ? ACCENT : '#6b7280' }}>
                   {o.label}
                 </button>
               ))}
             </div>
             {!embedded && onBack && (
-              <button onClick={onBack} className="flex items-center gap-2 font-bold"
-                style={{ fontSize: 14, padding: '10px 16px', borderRadius: 12, border: '1px solid #e7e3f7', background: '#fff', color: PURPLE }}>
-                <ArrowLeft size={15} /> Dashboard
+              <button onClick={onBack} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/80 border border-white/90 text-[#1e248c] hover:bg-blue-50 transition-colors cursor-pointer">
+                <ArrowLeft size={13} /> Dashboard
               </button>
             )}
           </div>
@@ -254,10 +245,10 @@ export default function PostsBoard({
         {/* split: list | timeline */}
         <div style={{ ...CARD, overflow: 'hidden', display: 'grid', gridTemplateColumns: 'minmax(520px, 1.1fr) minmax(420px, 1fr)' }}>
           {/* ---------- LEFT: list ---------- */}
-          <div style={{ borderRight: '1px solid #eeecf6', minWidth: 0 }}>
+          <div style={{ borderRight: '1px solid #e7ebf5', minWidth: 0 }}>
             <div className="grid items-center"
               style={{ gridTemplateColumns: '1fr 150px 104px 132px', height: HEADER_H, padding: '0 16px',
-                borderBottom: '1px solid #f2f1f8', fontSize: 12, fontWeight: 700, color: '#9aa0ac' }}>
+                borderBottom: '1px solid #eef1f8', fontSize: 12, fontWeight: 700, color: '#9aa0ac' }}>
               <span>Item</span>
               <span>Status</span>
               <span>Publish Date</span>
@@ -284,8 +275,8 @@ export default function PostsBoard({
             ))}
 
             {/* add item */}
-            <div className="flex items-center gap-2" style={{ height: ROW_H, padding: '0 16px', borderTop: '1px solid #f6f5fb' }}>
-              <Plus size={15} style={{ color: '#c0b8e8' }} />
+            <div className="flex items-center gap-2" style={{ height: ROW_H, padding: '0 16px', borderTop: '1px solid #f2f5fa' }}>
+              <Plus size={15} style={{ color: '#b6c0e2' }} />
               <input
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
@@ -302,12 +293,12 @@ export default function PostsBoard({
           <div style={{ overflowX: 'auto', minWidth: 0 }}>
             <div style={{ width: gridW, position: 'relative' }}>
               {/* header: months + days */}
-              <div style={{ height: HEADER_H, borderBottom: '1px solid #f2f1f8', position: 'relative' }}>
+              <div style={{ height: HEADER_H, borderBottom: '1px solid #eef1f8', position: 'relative' }}>
                 <div className="flex" style={{ height: 22 }}>
                   {months.map((m, i) => (
                     <div key={`${m.label}-${i}`}
                       style={{ width: m.span * DAY_W, flex: 'none', fontSize: 11.5, fontWeight: 800, color: '#5a5f6e',
-                        padding: '4px 0 0 8px', borderRight: '1px solid #f2f1f8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                        padding: '4px 0 0 8px', borderRight: '1px solid #eef1f8', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                       {m.label}
                     </div>
                   ))}
@@ -318,12 +309,12 @@ export default function PostsBoard({
                     const isToday = daysBetween(rangeStart, d) === todayOffset
                     return (
                       <div key={d.toISOString()} className="flex flex-col items-center justify-center"
-                        style={{ width: DAY_W, flex: 'none', background: isToday ? '#f0ecff' : weekend ? '#fbfaff' : '#fff',
-                          borderLeft: d.getDay() === 0 ? '1px solid #eeecf6' : 'none' }}>
-                        <span style={{ fontSize: 10.5, fontWeight: isToday ? 800 : 600, color: isToday ? PURPLE : '#8b909c', lineHeight: 1.1 }}>
+                        style={{ width: DAY_W, flex: 'none', background: isToday ? '#eef3fe' : weekend ? '#f7f9fd' : '#fff',
+                          borderLeft: d.getDay() === 0 ? '1px solid #e7ebf5' : 'none' }}>
+                        <span style={{ fontSize: 10.5, fontWeight: isToday ? 800 : 600, color: isToday ? ACCENT : '#8b909c', lineHeight: 1.1 }}>
                           {d.getDate()}
                         </span>
-                        <span style={{ fontSize: 8.5, color: isToday ? PURPLE : '#c0c4ce', fontWeight: 600 }}>
+                        <span style={{ fontSize: 8.5, color: isToday ? ACCENT : '#c0c4ce', fontWeight: 600 }}>
                           {['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()]}
                         </span>
                       </div>
@@ -335,7 +326,7 @@ export default function PostsBoard({
               {/* today line */}
               {todayOffset >= 0 && todayOffset < totalDays && (
                 <div style={{ position: 'absolute', top: HEADER_H, bottom: 0, left: todayOffset * DAY_W + DAY_W / 2,
-                  width: 2, background: `${PURPLE}66`, pointerEvents: 'none', zIndex: 2 }} />
+                  width: 2, background: `${ACCENT}66`, pointerEvents: 'none', zIndex: 2 }} />
               )}
 
               {/* rows */}
@@ -354,7 +345,7 @@ export default function PostsBoard({
                   onDragStart={(startX) => beginDrag(post, startX)}
                 />
               ))}
-              <div style={{ height: ROW_H, borderTop: '1px solid #f6f5fb' }} />
+              <div style={{ height: ROW_H, borderTop: '1px solid #f2f5fa' }} />
             </div>
           </div>
         </div>
@@ -383,7 +374,7 @@ export default function PostsBoard({
   }
 
   return (
-    <div style={{ minHeight: '100vh', fontFamily: "'Manrope','Assistant',system-ui,sans-serif", color: '#1f2430', background: 'linear-gradient(180deg,#faf9ff 0%,#f5f3fd 100%)' }}>
+    <div style={{ minHeight: '100vh', color: '#1f2430', background: 'linear-gradient(135deg,#f0f3ff 0%,#e7eefe 100%)' }}>
       <div style={{ padding: '20px 24px 48px' }}>{body}</div>
       {drawer}
     </div>
@@ -429,8 +420,8 @@ function PostRow({
       className="grid items-center group"
       onClick={onSelect}
       style={{ gridTemplateColumns: '1fr 150px 104px 132px', height: ROW_H, padding: '0 16px',
-        borderTop: '1px solid #f6f5fb', background: selected ? '#f8f5ff' : '#fff', cursor: 'pointer',
-        boxShadow: selected ? `inset 3px 0 0 ${PURPLE}` : 'none' }}
+        borderTop: '1px solid #f2f5fa', background: selected ? '#f0f4fd' : '#fff', cursor: 'pointer',
+        boxShadow: selected ? `inset 3px 0 0 ${ACCENT}` : 'none' }}
     >
       {/* item + thread bubble */}
       <div className="flex items-center gap-2 min-w-0 pr-3">
@@ -450,7 +441,7 @@ function PostRow({
           title={post.commentCount ? `${post.commentCount} messages with Peacock` : 'Discuss this post with Peacock'}
           className="flex items-center gap-1 shrink-0"
           style={{ border: 'none', background: 'transparent', cursor: 'pointer',
-            color: post.commentCount ? PURPLE : '#cbd0da', padding: 0 }}
+            color: post.commentCount ? ACCENT : '#cbd0da', padding: 0 }}
         >
           {post.commentCount ? <MessageSquare size={15} /> : <MessageSquarePlus size={15} />}
           {post.commentCount > 0 && <span style={{ fontSize: 11, fontWeight: 800 }}>{post.commentCount}</span>}
@@ -518,7 +509,7 @@ function DateCell({ value, onChange }: { value: string | null; onChange: (iso: s
         defaultValue={value ? isoDay(new Date(value)) : ''}
         onBlur={(e) => { setEditing(false); onChange(e.target.value || null) }}
         onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-        style={{ fontSize: 12.5, fontFamily: 'inherit', border: `1px solid ${PURPLE}`, borderRadius: 7, padding: '3px 5px', outline: 'none', width: 118 }}
+        style={{ fontSize: 12.5, fontFamily: 'inherit', border: `1px solid ${ACCENT}`, borderRadius: 7, padding: '3px 5px', outline: 'none', width: 118 }}
       />
     )
   }
@@ -559,13 +550,13 @@ function Dropdown({
       </button>
       {open && (
         <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 5, zIndex: 40, minWidth: 178,
-          background: '#fff', border: '1px solid #eeecf6', borderRadius: 12, boxShadow: '0 12px 30px rgba(60,40,140,.16)', padding: 5, maxHeight: 280, overflowY: 'auto' }}>
+          background: '#fff', border: '1px solid #e7ebf5', borderRadius: 12, boxShadow: '0 12px 30px rgba(30,36,140,.16)', padding: 5, maxHeight: 280, overflowY: 'auto' }}>
           {items.map((it) => (
             <button key={it.key} onClick={() => { onPick(it.key); setOpen(false) }}
               className="flex items-center gap-2 w-full text-left"
               style={{ border: 'none', cursor: 'pointer', borderRadius: 8, padding: '7px 9px', fontFamily: 'inherit',
                 fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
-                background: it.key === activeKey ? '#f6f2ff' : 'transparent', color: it.key === activeKey ? PURPLE : '#4b5060' }}>
+                background: it.key === activeKey ? '#eef3fe' : 'transparent', color: it.key === activeKey ? ACCENT : '#4b5060' }}>
               {it.color && <span style={{ width: 9, height: 9, borderRadius: 3, background: it.color, flex: 'none' }} />}
               {it.label}
             </button>
@@ -615,8 +606,8 @@ function GanttRow({
   return (
     <div
       onClick={onSelect}
-      style={{ height: ROW_H, borderTop: '1px solid #f6f5fb', position: 'relative',
-        background: selected ? '#f8f5ff' : 'transparent', cursor: 'pointer' }}
+      style={{ height: ROW_H, borderTop: '1px solid #f2f5fa', position: 'relative',
+        background: selected ? '#f0f4fd' : 'transparent', cursor: 'pointer' }}
     >
       {/* day grid */}
       <div className="flex" style={{ height: '100%' }}>
@@ -625,8 +616,8 @@ function GanttRow({
           return (
             <div key={d.toISOString()}
               style={{ width: DAY_W, flex: 'none', height: '100%',
-                background: weekend && !selected ? '#fbfaff' : 'transparent',
-                borderLeft: d.getDay() === 0 ? '1px solid #eeecf6' : 'none' }} />
+                background: weekend && !selected ? '#f7f9fd' : 'transparent',
+                borderLeft: d.getDay() === 0 ? '1px solid #e7ebf5' : 'none' }} />
           )
         })}
       </div>
@@ -679,7 +670,7 @@ function GanttRow({
         >
           <span style={{ width: 13, height: 13, background: meta.color, transform: 'translateX(-50%) rotate(45deg)',
             flex: 'none', borderRadius: 2, pointerEvents: 'none',
-            boxShadow: drag ? '0 4px 12px rgba(60,40,140,.30)' : '0 1px 3px rgba(60,40,140,.20)' }} />
+            boxShadow: drag ? '0 4px 12px rgba(30,36,140,.30)' : '0 1px 3px rgba(30,36,140,.20)' }} />
           <span dir="auto" style={{ fontSize: 11, fontWeight: 700, color: meta.color, marginInlineStart: -3,
             whiteSpace: 'nowrap', pointerEvents: 'none' }}>
             {post.title}

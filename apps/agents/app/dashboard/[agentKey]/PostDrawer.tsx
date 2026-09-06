@@ -7,8 +7,8 @@ import {
 } from 'lucide-react'
 import MarkdownView from './Markdown'
 import {
-  bodyToPlainText, engagementRate, engagementTotal, initials, isoDay, POST_TYPES, PortalUser,
-  PostDTO, PostMetrics, PostStatus, PURPLE, PURPLE_2, STATUS_META, STATUS_ORDER, statusMeta, typeColor,
+  ACCENT, ACCENT_BG, bodyToPlainText, engagementRate, engagementTotal, initials, isoDay, POST_TYPES, PortalUser,
+  PostDTO, PostMetrics, PostStatus, STATUS_META, STATUS_ORDER, statusMeta, typeColor,
 } from './postMeta'
 
 interface Msg { id: string; role: string; content: string }
@@ -142,13 +142,12 @@ export default function PostDrawer({
   const owner = users.find((u) => u.id === p.ownerUserId)
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" style={{ fontFamily: "'Manrope','Assistant',system-ui,sans-serif" }}>
-      <div className="flex-1" onClick={onClose} style={{ background: 'rgba(30,25,60,.34)', backdropFilter: 'blur(2px)' }} />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <div className="flex-1" onClick={onClose} style={{ background: 'rgba(20,28,70,.34)', backdropFilter: 'blur(2px)' }} />
 
-      <div className="flex flex-col h-full" style={{ width: 'min(1180px, 96vw)', background: '#fff', boxShadow: '-18px 0 50px rgba(50,35,120,.20)' }}>
+      <div className="flex flex-col h-full" style={{ width: 'min(1180px, 96vw)', background: '#fff', boxShadow: '-18px 0 50px rgba(20,28,90,.18)' }}>
         {/* header */}
-        <div className="flex items-center gap-3 shrink-0" style={{ padding: '13px 18px', borderBottom: '1px solid #f0eef8' }}>
-          <span style={{ fontSize: 22 }}>🦚</span>
+        <div className="flex items-center gap-3 shrink-0" style={{ padding: '13px 18px', borderBottom: '1px solid #eef1f8' }}>
           <input
             value={p.title}
             dir="auto"
@@ -158,13 +157,13 @@ export default function PostDrawer({
               letterSpacing: '-.01em', color: '#1f2430', fontFamily: 'inherit', background: 'transparent' }}
           />
           <button onClick={onClose} title="Close (Esc)" className="flex items-center justify-center shrink-0"
-            style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #eeecf6', background: '#fff', color: '#9aa0ac', cursor: 'pointer' }}>
+            style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid #e7ebf5', background: '#fff', color: '#9aa0ac', cursor: 'pointer' }}>
             <X size={17} />
           </button>
         </div>
 
         {/* meta strip */}
-        <div className="flex items-center gap-2 flex-wrap shrink-0" style={{ padding: '10px 18px', borderBottom: '1px solid #f4f2fa', background: '#fcfbff' }}>
+        <div className="flex items-center gap-2 flex-wrap shrink-0" style={{ padding: '10px 18px', borderBottom: '1px solid #eff2f9', background: '#f9fafd' }}>
           <Select
             value={p.status}
             options={STATUS_ORDER.map((s) => ({ value: s, label: STATUS_META[s].label }))}
@@ -183,7 +182,7 @@ export default function PostDrawer({
               type="date"
               value={p.publishDate ? isoDay(new Date(p.publishDate)) : ''}
               onChange={(e) => edit({ publishDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
-              style={{ fontSize: 12.5, fontFamily: 'inherit', border: '1px solid #e7e3f7', borderRadius: 8, padding: '5px 7px', outline: 'none', color: '#4b5060' }}
+              style={{ fontSize: 12.5, fontFamily: 'inherit', border: '1px solid #dfe6f3', borderRadius: 8, padding: '5px 7px', outline: 'none', color: '#4b5060' }}
             />
           </label>
           <Select
@@ -193,7 +192,7 @@ export default function PostDrawer({
               const u = users.find((x) => x.id === v)
               edit({ ownerUserId: v || null, ownerName: u?.name ?? null, ownerImageUrl: u?.imageUrl ?? null })
             }}
-            style={{ background: '#f0ecff', color: PURPLE, fontWeight: 700 }}
+            style={{ background: ACCENT_BG, color: ACCENT, fontWeight: 700 }}
             prefix={owner?.imageUrl ? undefined : initials(p.ownerName)}
           />
           {p.projectNumber && (
@@ -212,15 +211,15 @@ export default function PostDrawer({
         {/* body: draft | chat */}
         <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: 'minmax(0,1.12fr) minmax(0,1fr)' }}>
           {/* ---- draft ---- */}
-          <div className="flex flex-col min-h-0" style={{ borderRight: '1px solid #f0eef8' }}>
-            <div className="flex items-center gap-2 shrink-0" style={{ padding: '9px 16px', borderBottom: '1px solid #f6f5fb' }}>
+          <div className="flex flex-col min-h-0" style={{ borderRight: '1px solid #eef1f8' }}>
+            <div className="flex items-center gap-2 shrink-0" style={{ padding: '9px 16px', borderBottom: '1px solid #f2f5fa' }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, color: '#5a5f6e' }}>Draft</span>
-              <div className="flex items-center" style={{ background: '#f5f4fa', borderRadius: 9, padding: 2, marginInlineStart: 6 }}>
+              <div className="flex items-center" style={{ background: '#eef1f8', borderRadius: 9, padding: 2, marginInlineStart: 6 }}>
                 <ModeButton active={mode === 'preview'} onClick={() => setMode('preview')} icon={<Eye size={13} />} label="Preview" />
                 <ModeButton active={mode === 'html'} onClick={() => setMode('html')} icon={<Code2 size={13} />} label="HTML" />
               </div>
               <button onClick={copyForLinkedIn} disabled={!p.body} className="flex items-center gap-1.5"
-                style={{ marginInlineStart: 'auto', border: '1px solid #e7e3f7', background: '#fff', color: copied ? '#16a34a' : PURPLE,
+                style={{ marginInlineStart: 'auto', border: '1px solid #dfe6f3', background: '#fff', color: copied ? '#16a34a' : ACCENT,
                   borderRadius: 9, padding: '6px 10px', fontSize: 12.5, fontWeight: 700, cursor: p.body ? 'pointer' : 'not-allowed', opacity: p.body ? 1 : 0.45 }}>
                 {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? 'Copied' : 'Copy for LinkedIn'}
               </button>
@@ -253,20 +252,20 @@ export default function PostDrawer({
                   onChange={(e) => setP((cur) => ({ ...cur, body: e.target.value }))}
                   onBlur={(e) => { if (e.target.value !== (post.body ?? '')) edit({ body: e.target.value }) }}
                   placeholder='<div dir="rtl">…</div>'
-                  style={{ width: '100%', minHeight: '100%', border: '1px solid #eeecf6', borderRadius: 12, padding: 12,
+                  style={{ width: '100%', minHeight: '100%', border: '1px solid #e7ebf5', borderRadius: 12, padding: 12,
                     fontSize: 13, lineHeight: 1.6, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', outline: 'none', resize: 'none' }}
                 />
               )}
             </div>
 
             {/* draft footer: source, image, linkedin link, performance */}
-            <div className="shrink-0" style={{ borderTop: '1px solid #f6f5fb', background: '#fcfbff' }}>
+            <div className="shrink-0" style={{ borderTop: '1px solid #f2f5fa', background: '#f9fafd' }}>
               {p.sourceUrl && (
                 <div className="flex items-center gap-2" style={{ padding: '8px 16px 0', fontSize: 11.5, color: '#a9adb8' }}>
                   <Newspaper size={13} style={{ flex: 'none' }} />
                   based on{' '}
                   <a href={p.sourceUrl} target="_blank" rel="noreferrer"
-                    style={{ color: PURPLE, fontWeight: 700, textDecoration: 'none' }}>
+                    style={{ color: ACCENT, fontWeight: 700, textDecoration: 'none' }}>
                     {p.sourceName ?? 'newsletter topic'}
                   </a>
                 </div>
@@ -275,7 +274,7 @@ export default function PostDrawer({
               <div className="flex items-center gap-3" style={{ padding: '10px 16px' }}>
                 {p.imageUrl ? (
                   <a href={p.imageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5"
-                    style={{ fontSize: 12.5, fontWeight: 700, color: PURPLE }}>
+                    style={{ fontSize: 12.5, fontWeight: 700, color: ACCENT }}>
                     <ImageIcon size={14} /> Cover image <ExternalLink size={12} />
                   </a>
                 ) : (
@@ -289,7 +288,7 @@ export default function PostDrawer({
                   onBlur={(e) => { if (e.target.value !== (post.linkedinUrl ?? '')) edit({ linkedinUrl: e.target.value || null }) }}
                   placeholder="LinkedIn URL once published…"
                   style={{ marginInlineStart: 'auto', width: 260, fontSize: 12.5, fontFamily: 'inherit',
-                    border: '1px solid #eeecf6', borderRadius: 9, padding: '6px 9px', outline: 'none', color: '#4b5060' }}
+                    border: '1px solid #e7ebf5', borderRadius: 9, padding: '6px 9px', outline: 'none', color: '#4b5060' }}
                 />
               </div>
 
@@ -298,8 +297,8 @@ export default function PostDrawer({
           </div>
 
           {/* ---- chat ---- */}
-          <div className="flex flex-col min-h-0" style={{ background: 'linear-gradient(180deg,#fbfaff 0%,#f7f5fd 100%)' }}>
-            <div className="flex items-center gap-2 shrink-0" style={{ padding: '9px 16px', borderBottom: '1px solid #f0eef8' }}>
+          <div className="flex flex-col min-h-0" style={{ background: '#f5f7fc' }}>
+            <div className="flex items-center gap-2 shrink-0" style={{ padding: '9px 16px', borderBottom: '1px solid #eef1f8' }}>
               <span style={{ fontSize: 12.5, fontWeight: 800, color: '#5a5f6e' }}>Work on it with Peacock</span>
               <span style={{ fontSize: 11.5, color: '#a9adb8', marginInlineStart: 'auto' }}>
                 this thread stays on the post
@@ -317,7 +316,7 @@ export default function PostDrawer({
                   {SUGGESTIONS.map((s) => (
                     <button key={s} onClick={() => send(s)} dir="auto"
                       style={{ textAlign: 'start', fontSize: 12.5, fontWeight: 600, padding: '9px 12px', borderRadius: 11,
-                        border: `1px solid ${PURPLE}2e`, background: 'rgba(255,255,255,.7)', color: PURPLE, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        border: `1px solid ${ACCENT}2e`, background: 'rgba(255,255,255,.7)', color: ACCENT, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {s}
                     </button>
                   ))}
@@ -329,19 +328,19 @@ export default function PostDrawer({
                     return (
                       <div key={m.id} className={`max-w-[88%] ${isUser ? 'self-end' : 'self-start'}`}
                         style={{ borderRadius: 16, padding: '10px 13px',
-                          background: isUser ? `${PURPLE}1c` : '#fff',
-                          boxShadow: isUser ? 'none' : '0 2px 8px rgba(90,70,180,.06)' }}>
+                          background: isUser ? `${ACCENT}1c` : '#fff',
+                          boxShadow: isUser ? 'none' : '0 2px 8px rgba(30,36,140,.06)' }}>
                         {isUser ? (
                           <p dir="auto" style={{ fontSize: 13.5, lineHeight: 1.6, color: '#3a3f4d', whiteSpace: 'pre-wrap', margin: 0 }}>{m.content}</p>
                         ) : (
-                          <MarkdownView content={m.content} accent={PURPLE} />
+                          <MarkdownView content={m.content} accent={ACCENT} />
                         )}
                       </div>
                     )
                   })}
                   {sending && (
                     <div className="self-start flex items-center gap-1.5" style={{ borderRadius: 16, padding: '10px 13px', background: '#fff' }}>
-                      <Sparkles size={13} className="animate-pulse" style={{ color: PURPLE }} />
+                      <Sparkles size={13} className="animate-pulse" style={{ color: ACCENT }} />
                       <span style={{ fontSize: 12, color: '#a9adb8' }}>עובד על הטיוטה…</span>
                     </div>
                   )}
@@ -352,7 +351,7 @@ export default function PostDrawer({
             <form
               onSubmit={(e) => { e.preventDefault(); send(input) }}
               className="flex items-end gap-2 shrink-0"
-              style={{ padding: '11px 14px', borderTop: '1px solid #f0eef8', background: 'rgba(255,255,255,.6)' }}
+              style={{ padding: '11px 14px', borderTop: '1px solid #eef1f8', background: 'rgba(255,255,255,.6)' }}
             >
               <textarea
                 ref={taRef}
@@ -364,7 +363,7 @@ export default function PostDrawer({
                 placeholder="מה לשנות בפוסט הזה?"
                 dir="auto"
                 rows={1}
-                style={{ flex: 1, fontSize: 13.5, padding: '11px 13px', borderRadius: 14, border: '1px solid #e7e3f7',
+                style={{ flex: 1, fontSize: 13.5, padding: '11px 13px', borderRadius: 14, border: '1px solid #dfe6f3',
                   outline: 'none', background: '#fff', resize: 'none', maxHeight: 130, fontFamily: 'inherit', lineHeight: 1.55 }}
               />
               {sending ? (
@@ -377,7 +376,7 @@ export default function PostDrawer({
                 <button type="submit" disabled={!input.trim()} title="שלח (Enter)"
                   className="flex items-center justify-center shrink-0"
                   style={{ width: 42, height: 42, borderRadius: 14, border: 'none', cursor: 'pointer',
-                    background: `linear-gradient(135deg,${PURPLE},${PURPLE_2})`, opacity: input.trim() ? 1 : 0.4 }}>
+                    background: ACCENT, opacity: input.trim() ? 1 : 0.4 }}>
                   <Send size={16} color="#fff" />
                 </button>
               )}
@@ -428,7 +427,7 @@ function PerformanceRow({ metrics, onSave }: { metrics: PostMetrics | null; onSa
   }
 
   return (
-    <div className="flex items-end gap-3 flex-wrap" style={{ padding: '10px 16px 12px', borderTop: '1px solid #f4f2fa' }}>
+    <div className="flex items-end gap-3 flex-wrap" style={{ padding: '10px 16px 12px', borderTop: '1px solid #eff2f9' }}>
       <span className="flex items-center gap-1.5" style={{ fontSize: 12, fontWeight: 800, color: '#5a5f6e', paddingBottom: 6 }}>
         <BarChart3 size={13} /> Performance
       </span>
@@ -443,7 +442,7 @@ function PerformanceRow({ metrics, onSave }: { metrics: PostMetrics | null; onSa
             inputMode="numeric"
             placeholder="—"
             style={{ width: 72, fontSize: 12.5, fontFamily: 'inherit', fontVariantNumeric: 'tabular-nums',
-              border: '1px solid #eeecf6', borderRadius: 8, padding: '5px 7px', outline: 'none', color: '#3a3f4d' }}
+              border: '1px solid #e7ebf5', borderRadius: 8, padding: '5px 7px', outline: 'none', color: '#3a3f4d' }}
           />
         </label>
       ))}
@@ -459,7 +458,7 @@ function PerformanceRow({ metrics, onSave }: { metrics: PostMetrics | null; onSa
         disabled={!dirty}
         style={{ marginInlineStart: 'auto', border: 'none', borderRadius: 9, padding: '7px 12px', fontSize: 12.5,
           fontWeight: 700, fontFamily: 'inherit', cursor: dirty ? 'pointer' : 'default',
-          background: dirty ? `linear-gradient(135deg,${PURPLE},${PURPLE_2})` : '#f2f1f8',
+          background: dirty ? ACCENT : '#eef1f8',
           color: dirty ? '#fff' : '#b0aebc' }}
       >
         {saved ? 'Saved' : 'Save'}
@@ -479,8 +478,8 @@ function ModeButton({ active, onClick, icon, label }: { active: boolean; onClick
   return (
     <button onClick={onClick} className="flex items-center gap-1.5"
       style={{ border: 'none', borderRadius: 7, padding: '5px 9px', cursor: 'pointer', fontFamily: 'inherit',
-        fontSize: 12, fontWeight: 700, background: active ? '#fff' : 'transparent', color: active ? PURPLE : '#9aa0ac',
-        boxShadow: active ? '0 1px 4px rgba(90,70,180,.12)' : 'none' }}>
+        fontSize: 12, fontWeight: 700, background: active ? '#fff' : 'transparent', color: active ? ACCENT : '#9aa0ac',
+        boxShadow: active ? '0 1px 4px rgba(30,36,140,.12)' : 'none' }}>
       {icon} {label}
     </button>
   )

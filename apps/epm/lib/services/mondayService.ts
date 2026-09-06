@@ -231,6 +231,40 @@ export async function fetchMA003ByItemIds(itemIds: string[]): Promise<Map<string
   return result
 }
 
+// ── User directory: Monday identity by email ───────────────────────────────
+
+export interface MondayUser { id: string; name: string; email: string }
+
+// Per-instance memo — identity resolution runs on every /me request and the
+// directory answer for one email never changes within an instance's lifetime.
+const mondayUserByEmail = new Map<string, MondayUser | null>()
+
+// Find the Monday account behind a work email. This is THE identity bridge
+// between Clerk and Monday: project snapshots store members by mondayId, so a
+// resolved id matches regardless of how either side spells the display name.
+export async function fetchMondayUserByEmail(email: string): Promise<MondayUser | null> {
+  const key = email.trim().toLowerCase()
+  if (!key) return null
+  if (mondayUserByEmail.has(key)) return mondayUserByEmail.get(key) ?? null
+
+  const query = `
+    query ($emails: [String!]) {
+      users(emails: $emails, kind: all) {
+        id
+        name
+        email
+      }
+    }
+  `
+  const data = await mondayQuery(query, { emails: [key] }) as {
+    users: Array<{ id: string; name: string; email: string }> | null
+  }
+  const hit = (data.users ?? []).find((u) => u.email?.toLowerCase() === key) ?? null
+  const user = hit ? { id: String(hit.id), name: hit.name, email: hit.email } : null
+  mondayUserByEmail.set(key, user)
+  return user
+}
+
 // ── User photos ───────────────────────────────────────────────────────────
 
 export interface UserData { name: string; avatarUrl?: string }

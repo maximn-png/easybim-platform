@@ -63,13 +63,17 @@ export interface PortalUser {
   imageUrl: string | null
 }
 
-export const PURPLE = '#7b5cff'
-export const PURPLE_2 = '#9d6bff'
+// EPM-aligned design tokens: the platform navy on flat white cards, so Peacock
+// reads as part of the same product family as apps/epm.
+export const ACCENT = '#1e248c'
+export const ACCENT_2 = '#3d47b8'
+/** Light accent wash — active chips, icon squares, selected rows. */
+export const ACCENT_BG = '#eef3fe'
 export const CARD = {
   background: '#fff',
-  border: '1px solid #eeecf6',
-  borderRadius: 22,
-  boxShadow: '0 6px 20px rgba(90,70,180,.05)',
+  border: '1px solid #e3e8f4',
+  borderRadius: 16,
+  boxShadow: '0 1px 3px rgba(30,36,140,.06)',
 }
 
 /**

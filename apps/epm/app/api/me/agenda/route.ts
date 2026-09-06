@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth, clerkClient } from '@clerk/nextjs/server'
-import { samePerson } from '@/lib/people'
+import { auth } from '@clerk/nextjs/server'
+import { resolveMeIdentity, slotIsMe } from '@/lib/server/meIdentity'
 import type { AgendaMilestone, MeAgenda, MyRole } from '@/lib/meTypes'
 
 export const runtime = 'nodejs'
@@ -39,14 +39,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    let me = { name: '', email: null as string | null }
-    try {
-      const user = await (await clerkClient()).users.getUser(userId)
-      me = {
-        name: [user.firstName, user.lastName].filter(Boolean).join(' '),
-        email: user.primaryEmailAddress?.emailAddress ?? null,
-      }
-    } catch { /* matching falls back to nothing */ }
+    // Monday identity resolved from the Clerk email — the tasks sweep and the
+    // milestone Employee matching both key off the Monday user id, so they
+    // work even for users not (yet) staffed on any project snapshot.
+    const me = await resolveMeIdentity(userId)
 
     const { connectDB } = await import('@easybim/db')
     const Project = (await import('@/app/models/Project')).default
@@ -57,7 +53,9 @@ export async function GET(req: NextRequest) {
     const docs = await Project.find({}).lean()
     const ma004Ids: string[] = []
     const byMa004 = new Map<string, { number: string; name: string; roles: MyRole[] }>()
-    let mondayId: string | null = null
+    // Directory-resolved id first; matched snapshot slots as a fallback for
+    // users whose Monday email differs from their Clerk email.
+    let mondayId: string | null = me.mondayId
 
     for (const doc of docs) {
       const s = doc.snapshot
@@ -67,7 +65,7 @@ export async function GET(req: NextRequest) {
         ['MEP Coordinator', s?.mepCoordinator],
         ['BIM Modeller', s?.bimModeller],
       ]
-      const mine = slots.filter(([, m]) => samePerson(m, me))
+      const mine = slots.filter(([, m]) => slotIsMe(m, me))
       if (mine.length === 0) continue
       if (!mondayId) mondayId = mine.find(([, m]) => m?.mondayId)?.[1]?.mondayId ?? null
 
@@ -129,7 +127,7 @@ export async function GET(req: NextRequest) {
         ;(history[b.projectItemId] ??= []).push(row)
         const personal = b.employeeIds.length > 0
           ? mondayId != null && b.employeeIds.includes(String(mondayId))
-          : teamMatchesUser(b.team, proj.roles, me.name)
+          : teamMatchesUser(b.team, proj.roles, [me.name, me.mondayName ?? ''].join(' '))
         if (personal) rows.push(row)
       }
       return { rows, history }
@@ -137,16 +135,16 @@ export async function GET(req: NextRequest) {
 
     const [milestonesRes, tasksRes] = await Promise.all([
       swrCacheBackground(
-        // v2: undated bills + bill-less milestones included (hover history)
-        `me-milestones:v2:${userId}`,
+        // v3: identity matched by Monday user id (email-resolved)
+        `me-milestones:v3:${userId}`,
         5 * 60_000,
         buildMilestones,
         forceRefresh,
       ),
       uid
         ? swrCacheBackground(
-            // v5: editable due/status columns
-            `me-tasks:v5:${userId}`,
+            // v6: Monday id resolved from email, not from project staffing
+            `me-tasks:v6:${userId}`,
             15 * 60_000,
             () => fetchMyTasksAllBoards(uid, overdueSince, today, monthEnd),
             forceRefresh,

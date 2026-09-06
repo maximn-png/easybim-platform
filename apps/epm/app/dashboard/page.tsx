@@ -60,6 +60,8 @@ async function fetchProjects(): Promise<ProjectsApiResponse> {
         bimManager: snap.bimManager as import('@/lib/types').TeamMemberPayload | undefined,
         mepCoordinator: snap.mepCoordinator as import('@/lib/types').TeamMemberPayload | undefined,
         bimModeller: snap.bimModeller as import('@/lib/types').TeamMemberPayload | undefined,
+        // Needed by the hours-cell hover to bucket subjects into disciplines.
+        hoursConfig: (doc.hoursConfig as import('@/lib/types').ProjectRow['hoursConfig']) ?? undefined,
         sync: {
           lastSyncedAt: snap.lastSyncedAt ? new Date(snap.lastSyncedAt as string).toISOString() : null,
           syncStatus: (snap.syncStatus as import('@/lib/types').ProjectSyncMeta['syncStatus']) ?? 'never',
@@ -95,6 +97,12 @@ export default async function DashboardPage() {
       <div className="px-6 lg:px-10 py-8">
         {/* Page heading */}
         <div className="mb-6">
+          {/* breadcrumb — back to the platform portal */}
+          <div className="flex items-center gap-1 text-xs text-gray-500 mb-1">
+            <a href={process.env.NEXT_PUBLIC_PORTAL_URL || 'http://localhost:3000'} className="hover:text-[#1e248c]">Platform</a>
+            <span aria-hidden>›</span>
+            <span className="text-[#1e248c] font-medium">Projects</span>
+          </div>
           <h1 className="text-3xl font-bold text-[#1e248c]">Projects</h1>
           <p className="text-gray-500 text-sm mt-1">
             {projects.filter(p => p.status !== 'Done').length} active ·{' '}

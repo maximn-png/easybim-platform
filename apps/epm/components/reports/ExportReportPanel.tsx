@@ -11,6 +11,7 @@ import type { AccIssue, AccMember } from '@/lib/services/apsService'
 import { type GroupKey, buildGroupOptions, statusLabel, normalizeStatus, dropDraft, issueMonthKey } from '@/lib/reportGrouping'
 import {
   REPORT_TEMPLATES, pdfNameFor, matchHints, seedBodyLines, accIssuesUrl, segmentBodyText, resolveVariant,
+  sortIssuesForTemplate,
   type ReportTemplate, type BodyLink,
 } from '@/lib/reportTemplates'
 import { buildEmailHtml } from '@/lib/emailHtml'
@@ -188,6 +189,9 @@ export default function ExportReportPanel({
     setVariantId(vId)
     seedBody(template, vId)
     setSelStatuses(defaultStatuses.filter(s => normalizeStatus(s) !== 'draft'))
+    // The page's own issue-type filter wins on open; without one, the initial
+    // template seeds its types (QA → BIM Quality etc.), same as switching to it.
+    if (defaultTypes.length === 0) setSelIssueTypes(matchHints(template.issueTypeHints, issueTypes))
     setMembersLoading(true)
     fetch(`/api/projects/${project._id}/team`)
       .then(async r => {
@@ -256,6 +260,14 @@ export default function ExportReportPanel({
     setGroupBy(disc?.value ?? 'discipline')
   }, [templateId, template.forceAllIssues, groupOptions])
 
+  // Templates that declare a default grouping (QA / Arch-Struct / MEP group by
+  // סוג נושא) apply it on open and on template switch; the user can still change it.
+  useEffect(() => {
+    if (template.forceAllIssues || !template.defaultGroupBy) return
+    setGroupBy(template.defaultGroupBy as GroupKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId])
+
   // Statuses selectable here never include Draft (Draft is never reported).
   const statusOptions = useMemo(() => allStatuses.filter(s => normalizeStatus(s) !== 'draft'), [allStatuses])
 
@@ -279,13 +291,16 @@ export default function ExportReportPanel({
       if (monthFilter && issueMonthKey(i.createdAt) !== monthFilter) return false
       return true
     })
-    // Follow the page table's sort so the PDF/Excel rows match the screen.
+    // Follow the page table's sort so the PDF/Excel rows match the screen;
+    // otherwise default to the template's order: by issue type (hint order,
+    // the report's headline type first), then by issue #.
     if (pageOrder) {
       const rank = new Map(pageOrder.map((id, idx) => [id, idx]))
       picked.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity))
+      return picked
     }
-    return picked
-  }, [issues, selAssignees, selIssueTypes, selDisciplines, extraFilters, monthFilter, pageScopeIds, pageOrder])
+    return sortIssuesForTemplate(template, picked)
+  }, [issues, selAssignees, selIssueTypes, selDisciplines, extraFilters, monthFilter, pageScopeIds, pageOrder, template])
 
   const imageIssues = useMemo(
     () => (selStatuses.length ? docIssues.filter(i => selStatuses.includes(i.status)) : docIssues),
@@ -329,14 +344,23 @@ export default function ExportReportPanel({
     filtersSummary,
     extraColumns,
     includeLegend: true, // the PDF always carries the legend; the checkbox is email-only
-    // Issues are sent pre-ordered when the page table was sorted — keep that order.
-    preserveOrder: !!pageOrder,
+    // Issues are always sent pre-ordered now (page-table sort, or the template's
+    // issue-type default) — the server must not re-sort by displayId.
+    preserveOrder: true,
   }
 
-  const addManual = () => {
-    const email = manualEmail.trim()
-    if (!email || recipients.some(r => r.email === email)) { setManualEmail(''); return }
-    setRecipients(prev => [...prev, { id: email, name: email, email, role: '', companyName: '' }])
+  // Accepts a single address or a pasted address-book list — extracts the actual
+  // addresses out of formats like `"Name" <a@b.com>, שם עברי <c@d.com>` and
+  // ignores the surrounding names/quotes/punctuation.
+  const addManual = (extra = '') => {
+    const found = ((manualEmail + ' ' + extra).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? [])
+      .map(e => e.toLowerCase())
+    setRecipients(prev => {
+      const next = [...new Set(found)]
+        .filter(email => !prev.some(r => r.email.toLowerCase() === email))
+        .map(email => ({ id: email, name: email, email, role: '', companyName: '' }))
+      return next.length ? [...prev, ...next] : prev
+    })
     setManualEmail('')
   }
   const removeRecipient = (email: string) => setRecipients(prev => prev.filter(r => r.email !== email))
@@ -347,7 +371,9 @@ export default function ExportReportPanel({
   const toLine = recipients.length ? recipients.map(r => r.name).join(' · ') : '—'
 
   // ── PDF review (server-rendered via headless Chromium) ────────────────────
-  const handleOpenPdf = async () => {
+  // mode 'view' opens a preview tab; 'download' saves the file under pdfName —
+  // a blob tab's own download button would name the file by the blob UUID.
+  const handleOpenPdf = async (mode: 'view' | 'download' = 'view') => {
     if (pdfBusy) return
     setPdfBusy(true); setActionError(null)
     try {
@@ -361,7 +387,14 @@ export default function ExportReportPanel({
         throw new Error(err.error || `HTTP ${res.status}`)
       }
       const blob = await res.blob()
-      window.open(URL.createObjectURL(blob), '_blank')
+      if (mode === 'download') {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = pdfName
+        document.body.appendChild(a); a.click(); a.remove()
+      } else {
+        window.open(URL.createObjectURL(blob), '_blank')
+      }
     } catch (e) {
       setActionError('שגיאה ביצירת ה-PDF: ' + String(e))
     } finally {
@@ -818,7 +851,9 @@ export default function ExportReportPanel({
               <input
                 value={manualEmail}
                 onChange={e => setManualEmail(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManual() } }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ',' || e.key === ';') { e.preventDefault(); addManual() } }}
+                onPaste={e => { e.preventDefault(); addManual(e.clipboardData.getData('text')) }}
+                onBlur={() => { if (manualEmail.trim()) addManual() }}
                 placeholder="הוסף נמען / אימייל…"
                 className="flex-1 min-w-[140px] border-none outline-none text-xs bg-transparent text-gray-700"
               />
@@ -924,9 +959,10 @@ export default function ExportReportPanel({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={template.bodyImage} alt="" className="w-full rounded-xl border border-gray-100" />
               )}
-              {/* PDF attachment chip (click to review) */}
+              {/* PDF attachment chip (click to review, download icon to save) */}
+              <span className="inline-flex items-center gap-1 max-w-full">
               <button
-                onClick={handleOpenPdf}
+                onClick={() => handleOpenPdf('view')}
                 disabled={pdfBusy}
                 className="inline-flex items-center gap-3 border border-gray-200 rounded-xl p-2.5 bg-gray-50 max-w-full text-right hover:border-[#44b8d3] transition disabled:opacity-60"
               >
@@ -939,6 +975,15 @@ export default function ExportReportPanel({
                 </span>
                 <ExternalLink size={13} className="text-gray-400 shrink-0" />
               </button>
+              <button
+                onClick={() => handleOpenPdf('download')}
+                disabled={pdfBusy}
+                title={`הורד את ${pdfName}`}
+                className="w-8 h-8 grid place-items-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 hover:border-[#44b8d3] hover:text-[#1e248c] transition disabled:opacity-60 shrink-0"
+              >
+                <Download size={13} />
+              </button>
+              </span>
               {/* Excel attachment chip (click to download) */}
               <button
                 onClick={handleOpenXlsx}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { guardSharedProjectForAna } from '@/lib/server/anaAccess'
+import { contentDisposition } from '@/lib/server/httpFilename'
 
 // Streams the stored PDF bytes for embedding / download in the report view.
 export async function GET(
@@ -39,12 +40,11 @@ export async function GET(
       bytes = Buffer.from(pdf as Uint8Array)
     }
     const disposition = req.nextUrl.searchParams.get('download') === '1' ? 'attachment' : 'inline'
-    const filename = (d.pdfName || 'report.pdf').replace(/"/g, '')
 
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `${disposition}; filename="${filename}"`,
+        'Content-Disposition': contentDisposition(disposition, d.pdfName || 'report.pdf'),
         'Content-Length': String(bytes.length),
       },
     })
