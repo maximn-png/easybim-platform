@@ -272,15 +272,41 @@ Fold it into the extension repo once it works.
 Prefer a coordination model for a realistic run, but these are known-good GUIDs
 for a first "does it open at all" test.
 
+Writes its result JSON to `SYNCGUARD_RESULT_FILE` and appends NDJSON progress events
+to `SYNCGUARD_PROGRESS_FILE` — see Phase 4 for why stdout cannot serve as the
+progress channel. Step keys are `open-model` and `sync-central` only: `open-revit`
+belongs to the agent and `publish` to the platform.
+
 **Deliverable:** `pyrevit run syncguard.py --revit=2025 --purge` syncs a real model end to
 end, driven by hand.
 
 ### Phase 4 — The tray agent (2 days)
 
 Logon scheduled task. Heartbeat (incl. `autodeskSignedIn`, `revitRunning`, `openModels`),
-claim, shell out to `pyrevit run` with the project's `rvtVersion`
-(`app/models/Project.ts:78`), stream stdout as log lines, hard timeout ~45 min then
-`taskkill`, report result. Pre-flight the "Revit already open" refusal.
+claim, shell out to `pyrevit run` with the model's own `revitVersion`, forward progress,
+kill on timeout, report result. Pre-flight the "Revit already open" refusal.
+
+**Progress does NOT come from stdout.** pyRevit's `print` goes to its own output
+window, which is not captured when running headlessly, so a 45-minute sync would
+show nothing until it finished. The script instead appends NDJSON events to a file
+whose path the agent passes in `SYNCGUARD_PROGRESS_FILE` (the result JSON goes to
+`SYNCGUARD_RESULT_FILE`); the agent tails it and forwards to
+`/api/syncguard/agent/runs/[runId]/log`. Line kinds map 1:1 onto that endpoint so
+the agent forwards rather than translates:
+
+    {"t":"…","kind":"line","level":"info","text":"Revit 2025 started"}
+    {"t":"…","kind":"step","key":"sync-central","status":"running"}
+
+Each event is open-append-close rather than a held handle: events are rare, it
+avoids a Windows locking fight with the tailing agent, and everything up to the
+last event survives a `taskkill` — so a timeout can report *where* the run hung
+instead of just that it did. The tail reader must skip a trailing line that fails
+to parse (killed mid-write is exactly the case this file exists for).
+
+**Time out on silence, not on total duration.** With a progress channel, "no new
+event for ~10 min" catches a hang quickly and never kills a legitimately slow sync
+of a large model. This matches the server-side watchdog, which already expires
+claimed runs off `lastProgressAt` rather than `startedAt`.
 
 **Deliverable:** button in EPM → Revit opens on the target machine → run completes green.
 
