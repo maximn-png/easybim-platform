@@ -81,7 +81,11 @@ Step 3 needs no Revit at all. Steps 1–2 do. That split drives the whole plan.
 | Decision | Rationale |
 |---|---|
 | Revit-side executor is a **pyRevit script**, not a new C# add-in | `pyrevit run` already launches Revit, plays a journal, runs a script, tears down. CLI confirmed installed at `C:\Program Files\pyRevit-Master\bin\pyrevit`. Deletes the C# toolchain, per-version compile, installer and code signing. |
-| **Dialogs suppressed by default** | `pyrevit run` takes `--allowdialogs` as opt-*in*. Kills the `DialogBoxShowing` handler work. |
+| **Dialogs suppressed by default** | `pyrevit run` takes `--allowdialogs` as opt-*in*, so no `DialogBoxShowing` handler is needed to suppress. A record-only handler is still worth having to learn which dialog ids actually appear. |
+| **Hard version guard inside Revit — safety requirement, not a nicety** | Because dialogs are suppressed, a Revit newer than the model would auto-dismiss the upgrade prompt and **silently, irreversibly upgrade a coordination model**. The script must refuse and touch nothing when `HOST_APP.app.VersionNumber != SYNCGUARD_EXPECTED_REVIT`. This is the one guard that stops a Phase 4 misconfiguration becoming unrecoverable. `revitVersion` is snapshotted at enqueue (so an ACC re-crawl cannot move the target mid-run), which means an upgrade between enqueue and execution correctly produces a clean refusal. |
+| **Answer the cloud-open conflict prompt explicitly** (`IOpenFromCloudCallback`) | Headless with no callback, the journal picks — and two of the four answers are actively harmful: `DetachFromCentral` makes the model unsyncable, `KeepLocalChanges` would commit a crashed prior run's leftovers. Answer `DiscardLocalChangesAndOpenLatestVersion` for OutOfDate/Relinquished/Rollback, `Cancel` → `needs_attention` for VersionArchived. This state is exactly what a timed-out or crashed Syncguard run leaves behind, so it will be hit in practice. |
+| **Bound the locked-central wait** (`ICentralLockedCallback`) | Revit's default on a locked central is to wait *indefinitely*, not raise — headless that is an unbounded hang, and plausibly the likeliest production failure. A deadline callback turns it into a prompt `CentralModelContentionException` → `failed`, retry later. |
+| **Unresolvable failures return `Continue`, never `ProceedWithRollBack`** | A rollback returns a success-looking result having done nothing. Letting Revit raise instead is what keeps `success` meaningful. |
 | Script runs on **IronPython** (no shebang) | Confirmed against the extension's own shebang census: `python3` appears only where a CPython library is needed (the openpyxl Excel tools), on `lib/` scaffolding, and on "Coming soon" stubs — while all ~36 files doing real Revit API work (Project Base Points, Coordination Graphics, Head Height Check, Level Sheets, Cable Trays, Power, `coordination_settings_ui.py`, `acc_issues_export.py`) carry no shebang and run IronPython. The team's actual rule is *CPython only when a CPython library demands it*. Syncguard is API work with a `FailuresProcessing` delegate, so it goes IronPython. This also keeps Phase 3 to ONE unknown: a pythonnet event-delegate failure would be indistinguishable from "the cloud model didn't open". The PR template's `#! python3` default does not apply to API-event code — the repo already departs from it 36 times. |
 | Agent makes **outbound HTTPS only** | Claim / heartbeat / log / complete. No inbound ports, no VPN, no firewall tickets. Deployable on any office or home machine. |
 | Runs as a **logon scheduled task**, not a Windows service | Session 0 isolation: a LocalSystem service cannot start an interactive Revit, and licensing + Autodesk tokens live in the user profile. |
@@ -261,10 +265,26 @@ with a per-agent lock, stale-run expiry.
 → relinquish all → close → write result JSON. Add a `FailuresProcessing` handler for
 sync-time warnings (dialog suppression is already free).
 
-**No extension scaffold needed for this phase.** `pyrevit run` takes a bare script
-path, so Phase 3 is a single `.py` file — it does not wait on Phase 0 of
-PYREVIT_PORT_PLAN.md, and it needs no ribbon button, bundle.yaml or repo layout.
-Fold it into the extension repo once it works.
+**Ships as three files, not one** — revised after review of the extension-side
+plan. A shared core in `lib/easybim/syncguard.py` (everything touching
+worksharing), a headless entry at `commands/syncguard_command.py` (pyRevit's own
+sanctioned home for `pyrevit run` scripts), and a ribbon button that syncs the
+already-open document.
+
+**The button is fault isolation, not convenience.** It exercises the entire
+sync/relinquish/failure-handler core interactively, with visible output, minus
+the `pyrevit run` and cloud-open unknowns. "Button works, headless doesn't"
+localises the fault to the runner or the cloud open — a far sharper signal than
+one all-or-nothing headless attempt.
+
+**Inputs arrive as env vars.** `pyrevit run` accepts only `--revit`, `--purge`,
+`--allowdialogs`, `--import`, `--models` and `<model_file>` — there is no channel
+for custom arguments. So: `SYNCGUARD_PROJECT_GUID`, `SYNCGUARD_MODEL_GUID`,
+`SYNCGUARD_REGION`, `SYNCGUARD_EXPECTED_REVIT`, `SYNCGUARD_RESULT_JSON` (all
+required), plus optional `SYNCGUARD_PROGRESS_NDJSON`, `SYNCGUARD_COMMENT`,
+`SYNCGUARD_LOCK_WAIT_SEC`. Keeps test GUIDs out of the repo.
+
+**Worksets: the enum member is `OpenAllWorksets`** (`OpenAll` does not exist).
 
 **Test fixture that already exists** (from the Phase 1 spike — a real cloud model):
 `projectGuid 43ae728e-848e-4050-b072-4b5cb0911e4b`,
@@ -272,8 +292,8 @@ Fold it into the extension repo once it works.
 Prefer a coordination model for a realistic run, but these are known-good GUIDs
 for a first "does it open at all" test.
 
-Writes its result JSON to `SYNCGUARD_RESULT_FILE` and appends NDJSON progress events
-to `SYNCGUARD_PROGRESS_FILE` — see Phase 4 for why stdout cannot serve as the
+Writes its result JSON to `SYNCGUARD_RESULT_JSON` and appends NDJSON progress events
+to `SYNCGUARD_PROGRESS_NDJSON` — see Phase 4 for why stdout cannot serve as the
 progress channel. Step keys are `open-model` and `sync-central` only: `open-revit`
 belongs to the agent and `publish` to the platform.
 
@@ -289,8 +309,8 @@ kill on timeout, report result. Pre-flight the "Revit already open" refusal.
 **Progress does NOT come from stdout.** pyRevit's `print` goes to its own output
 window, which is not captured when running headlessly, so a 45-minute sync would
 show nothing until it finished. The script instead appends NDJSON events to a file
-whose path the agent passes in `SYNCGUARD_PROGRESS_FILE` (the result JSON goes to
-`SYNCGUARD_RESULT_FILE`); the agent tails it and forwards to
+whose path the agent passes in `SYNCGUARD_PROGRESS_NDJSON` (the result JSON goes to
+`SYNCGUARD_RESULT_JSON`); the agent tails it and forwards to
 `/api/syncguard/agent/runs/[runId]/log`. Line kinds map 1:1 onto that endpoint so
 the agent forwards rather than translates:
 
