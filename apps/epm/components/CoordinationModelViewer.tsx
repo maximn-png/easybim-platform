@@ -2,7 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react'
-import { Box, Loader2, AlertCircle, RefreshCw, Eye } from 'lucide-react'
+import { Box, Loader2, AlertCircle, RefreshCw, Eye, UploadCloud } from 'lucide-react'
 
 // Autodesk Viewer SDK (v7) — same on-demand CDN loader as the ANA combined
 // viewer; the two components can share the injected <script> safely because
@@ -46,8 +46,14 @@ interface CoordModel {
   accModifiedAt: string | null
   accUrl: string | null
   processingVersion?: number   // newer version still translating in ACC
+  itemId: string              // what Publish acts on
+  workshared: boolean         // false ⇒ not a cloud model, nothing to publish
 }
 interface View3D { guid: string; name: string; node: any }
+
+// Publish button lifecycle: 'working' while ACC processes, then a short-lived
+// terminal note that decays back to 'idle'.
+type PublishUiState = 'idle' | 'working' | 'up-to-date' | 'needs-auth' | 'error'
 
 const nameOfNode = (n: any) => String((typeof n?.name === 'function' ? n.name() : n?.data?.name) ?? '')
 
@@ -76,6 +82,9 @@ export default function CoordinationModelViewer({
   const viewer = useRef<any>(null)
   const docByUrn = useRef<Map<string, any>>(new Map())
   const initialized = useRef(false)
+  // Guards the publish poll, which outlives any single render.
+  const alive = useRef(true)
+  useEffect(() => () => { alive.current = false }, [])
 
   const [state, setState] = useState<'loading' | 'unsupported' | 'empty' | 'error' | 'ready'>('loading')
   const [models, setModels] = useState<CoordModel[]>([])
@@ -85,6 +94,10 @@ export default function CoordinationModelViewer({
   const [selectedView, setSelectedView] = useState<string>('')
   const [viewerBusy, setViewerBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  // Publish (Syncguard step 3): 'idle' → 'working' while ACC processes, then a
+  // short-lived terminal note that decays back to 'idle'.
+  const [publishState, setPublishState] = useState<PublishUiState>('idle')
+  const [publishNote, setPublishNote] = useState<string | null>(null)
 
   async function fetchModels(refresh = false): Promise<{ models: CoordModel[]; unsupported?: boolean } | null> {
     try {
@@ -224,6 +237,50 @@ export default function CoordinationModelViewer({
     setRefreshing(false)
   }
 
+  // Publish Latest — Syncguard step 3, server-side (no Revit involved).
+  // ACC processes asynchronously, so poll the job, then re-crawl so the
+  // Published date and version in the title row reflect the new version.
+  async function publish(model: CoordModel) {
+    if (publishState === 'working') return
+    setPublishState('working'); setPublishNote(null)
+
+    const settle = (s: PublishUiState, note?: string) => {
+      if (!alive.current) return
+      setPublishState(s); setPublishNote(note ?? null)
+      // Terminal notes are informational; don't leave them on screen forever.
+      if (s !== 'working') setTimeout(() => { if (alive.current) { setPublishState('idle'); setPublishNote(null) } }, 6000)
+    }
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/syncguard/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: model.itemId }),
+      })
+      const data = await res.json() as { state?: string; detail?: string; needsApsAuth?: boolean }
+
+      if (data.needsApsAuth) return settle('needs-auth', 'Connect Autodesk to publish')
+      if (data.state === 'up-to-date') return settle('up-to-date', 'Already up to date')
+      if (data.state === 'unauthorized') return settle('error', 'You lack publish rights on this project')
+      if (data.state !== 'published' && data.state !== 'in-progress') {
+        return settle('error', data.detail ?? 'Publish failed')
+      }
+
+      // Poll until ACC stops reporting a running job (cap ~5 min).
+      for (let i = 0; i < 60 && alive.current; i++) {
+        await new Promise(r => setTimeout(r, 5000))
+        const s = await fetch(`/api/projects/${projectId}/syncguard/publish?itemId=${encodeURIComponent(model.itemId)}`)
+          .then(r => r.json() as Promise<{ running?: boolean }>).catch(() => null)
+        if (s && !s.running) break
+      }
+      if (!alive.current) return
+      await refresh()
+      settle('idle')
+    } catch {
+      settle('error', 'Publish failed')
+    }
+  }
+
   // Hidden entirely for unsupported hubs (only EasyBIM/ANA have viewer
   // credentials) and for projects with no coordination model to show.
   if (state === 'unsupported' || state === 'empty') return null
@@ -240,7 +297,7 @@ export default function CoordinationModelViewer({
         {selected && (
           <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-[10px] text-gray-500">
             <span>Published <b className="text-[#1e248c] font-semibold">{fmtDateTime(selected.publishedAt)}</b>{selected.publishedBy ? <> · {selected.publishedBy}</> : null}</span>
-            <span>Last synced to platform <b className="text-[#1e248c] font-semibold">{fmtDateTime(syncedAt)}</b></span>
+            <span>Last refreshed <b className="text-[#1e248c] font-semibold">{fmtDateTime(syncedAt)}</b></span>
           </div>
         )}
       </div>
@@ -287,12 +344,44 @@ export default function CoordinationModelViewer({
                     </select>
                   </>
                 )}
+                {/* Publish Latest (Syncguard step 3). Hidden for non-cloud
+                    models — there is nothing to publish. Disabled while ACC is
+                    already translating a newer version; that state is already
+                    shown by the amber processing badge above, so no second
+                    indicator here. */}
+                {selected.workshared && (
+                  <button
+                    onClick={() => publish(selected)}
+                    disabled={publishState === 'working' || selected.processingVersion != null}
+                    title={
+                      selected.processingVersion != null
+                        ? `ACC is already translating v${selected.processingVersion}`
+                        : 'Publish the model’s latest committed state to ACC and Forma'
+                    }
+                    className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-[#1e248c] hover:text-[#44b8d3] transition-colors shrink-0 disabled:text-gray-400 disabled:cursor-not-allowed"
+                  >
+                    {publishState === 'working'
+                      ? <><Loader2 size={12} className="animate-spin" /> Publishing…</>
+                      : <><UploadCloud size={12} /> Publish</>}
+                  </button>
+                )}
+                {publishNote && (
+                  <span
+                    className={`text-[9.5px] font-medium rounded-full px-2 py-px border shrink-0 ${
+                      publishState === 'error' || publishState === 'needs-auth'
+                        ? 'text-amber-600 bg-amber-50 border-amber-200'
+                        : 'text-gray-600 bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    {publishNote}
+                  </span>
+                )}
                 <button
                   onClick={refresh}
-                  title="Re-sync from ACC"
+                  title="Re-crawl ACC for new versions of this project’s models"
                   className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold text-[#1e248c] hover:text-[#44b8d3] transition-colors shrink-0"
                 >
-                  <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> Sync to platform
+                  <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} /> Refresh from ACC
                 </button>
               </div>
             </div>

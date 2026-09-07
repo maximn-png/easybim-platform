@@ -30,6 +30,7 @@ const COORD_NAME_RE = /(^|[-_ ])(co|comb|mep)([-_ .)]|$)/i
 export interface CoordinationModel {
   name: string
   urn: string                     // base64url derivative URN for Document.load
+  itemId: string                  // DM item (lineage) urn — what Publish acts on
   path: string                    // folder path under Project Files
   area: 'WIP' | 'Shared' | null   // which side of the ACC tree it lives on
   versionNumber: number
@@ -40,14 +41,54 @@ export interface CoordinationModel {
   // Set when a NEWER version exists whose translation is still running in ACC
   // — the viewer shows the last translated version meanwhile.
   processingVersion?: number
+  // Revit Cloud Worksharing identity, from the version's C4R extension data.
+  // Syncguard opens a model on a workstation by (region, projectGuid,
+  // modelGuid) — ModelPathUtils.ConvertCloudGUIDsToCloudPath takes exactly
+  // these. A plain uploaded .rvt is not cloud-workshared and has none of them,
+  // which is why `workshared` gates the Syncguard action rather than letting it
+  // fail inside Revit.
+  projectGuid: string | null
+  modelGuid: string | null
+  region: CloudRegion | null      // wipprod → US, wipemea → EMEA
+  revitVersion: number | null     // revitProjectVersion — the model's OWN version
+  workshared: boolean             // modelType === 'multiuser'
+}
+
+export type CloudRegion = 'US' | 'EMEA'
+
+// Fields we read off a C4R version's extension.data. ACC sends plenty more
+// (processState, timelineVersion, hasLinks…); these are the ones Syncguard and
+// the viewer need.
+type C4RVersionData = {
+  projectGuid?: string
+  modelGuid?: string
+  revitProjectVersion?: number
+  modelType?: string              // 'multiuser' for cloud-workshared models
+  originalItemUrn?: string        // urn:adsk.wipprod:… / urn:adsk.wipemea:…
 }
 
 type DmEntity = {
   id: string
   type: string
-  attributes?: { name?: string; displayName?: string; createTime?: string; lastModifiedTime?: string; createUserName?: string; versionNumber?: number }
+  attributes?: { name?: string; displayName?: string; createTime?: string; lastModifiedTime?: string; createUserName?: string; versionNumber?: number; extension?: { type?: string; data?: C4RVersionData } }
   links?: { webView?: { href?: string } }
   relationships?: { item?: { data?: { id?: string } }; derivatives?: { data?: { id?: string } } }
+}
+
+// Cloud-worksharing identity of a version, or nulls when it isn't a C4R model.
+// Region isn't a field of its own — it's encoded in the WIP urn prefix.
+function cloudIdentity(v: DmEntity | undefined): Pick<
+  CoordinationModel, 'projectGuid' | 'modelGuid' | 'region' | 'revitVersion' | 'workshared'
+> {
+  const d = v?.attributes?.extension?.data ?? {}
+  const urn = d.originalItemUrn ?? ''
+  return {
+    projectGuid: d.projectGuid ?? null,
+    modelGuid: d.modelGuid ?? null,
+    region: /wipemea/i.test(urn) ? 'EMEA' : /wipprod/i.test(urn) ? 'US' : null,
+    revitVersion: typeof d.revitProjectVersion === 'number' ? d.revitProjectVersion : null,
+    workshared: d.modelType === 'multiuser',
+  }
 }
 type DmContents = { data?: DmEntity[]; included?: DmEntity[] }
 
@@ -100,7 +141,7 @@ function areaFromPath(path: string): 'WIP' | 'Shared' | null {
 // children etc.), skipping OLD/Consumed archives.
 async function collectModels(
   projId: string, folderId: string, token: string,
-  relPath: string, depth: number, out: (CoordinationModel & { itemId: string })[],
+  relPath: string, depth: number, out: (CoordinationModel)[],
 ): Promise<void> {
   if (depth > 3) return
   const c = await contents(projId, folderId, token)
@@ -128,6 +169,7 @@ async function collectModels(
         publishedBy: v?.attributes?.createUserName ?? null,
         accModifiedAt: v?.attributes?.lastModifiedTime ?? null,
         accUrl: e.links?.webView?.href ?? null,
+        ...cloudIdentity(v),
         itemId: e.id,
       })
     }
@@ -144,7 +186,10 @@ async function isTranslated(urn: string, token: string): Promise<boolean> {
 // so the card keeps showing a model instead of vanishing mid-translation.
 async function latestViewableVersion(
   projId: string, itemId: string, token: string,
-): Promise<{ urn: string; versionNumber: number; publishedAt: string | null; publishedBy: string | null; accModifiedAt: string | null } | null> {
+): Promise<Pick<CoordinationModel,
+  'urn' | 'versionNumber' | 'publishedAt' | 'publishedBy' | 'accModifiedAt'
+  | 'projectGuid' | 'modelGuid' | 'region' | 'revitVersion' | 'workshared'
+> | null> {
   const vs = await dmGet<{ data?: DmEntity[] }>(
     `${DM_BASE}/projects/${projId}/items/${encodeURIComponent(itemId)}/versions?page[limit]=8`, token,
   )
@@ -158,6 +203,7 @@ async function latestViewableVersion(
         publishedAt: v.attributes?.createTime ?? null,
         publishedBy: v.attributes?.createUserName ?? null,
         accModifiedAt: v.attributes?.lastModifiedTime ?? null,
+        ...cloudIdentity(v),
       }
     }
   }
@@ -187,8 +233,8 @@ export async function listCoordinationModels(
   // BFS for coordination folders (bounded), collecting models inside each.
   // Models seen OUTSIDE coordination folders are recorded too — they feed the
   // filename fallback when the project has no coordination folder at all.
-  const found: (CoordinationModel & { itemId: string })[] = []
-  const elsewhere: (CoordinationModel & { itemId: string })[] = []
+  const found: (CoordinationModel)[] = []
+  const elsewhere: (CoordinationModel)[] = []
   let visited = 0
   while (queue.length && visited < 120) {
     const { id, path } = queue.shift()!
@@ -223,6 +269,7 @@ export async function listCoordinationModels(
           publishedBy: v?.attributes?.createUserName ?? null,
           accModifiedAt: v?.attributes?.lastModifiedTime ?? null,
           accUrl: e.links?.webView?.href ?? null,
+          ...cloudIdentity(v),
           itemId: e.id,
         })
       }
@@ -247,8 +294,7 @@ export async function listCoordinationModels(
     }),
   )
   return checked
-    .filter((m): m is CoordinationModel & { itemId: string } => m !== null)
+    .filter((m): m is CoordinationModel => m !== null)
     .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''))
     .slice(0, 10)
-    .map(({ itemId: _itemId, ...m }) => m)
 }

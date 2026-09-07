@@ -13,6 +13,11 @@ const isPublicRoute = createRouteMatcher([
   '/api/report-image/(.*)',
   // Integration probe — carries no data; consumed by the portal admin Integrations board.
   '/api/health',
+  // Syncguard workstation agent: a headless process on a BIM workstation with no
+  // browser session. It self-guards with a per-agent bearer token issued at
+  // enrollment (lib/server/syncguardAuth.ts). Only the /agent/ namespace is
+  // public — the dashboard's /api/syncguard/agents and /enroll stay Clerk-gated.
+  '/api/syncguard/agent/(.*)',
 ])
 
 // Paths an ANA-only client (the `ana` grant without `epm`) may reach. Everything
