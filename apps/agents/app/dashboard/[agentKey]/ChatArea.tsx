@@ -27,6 +27,7 @@ export default function ChatArea({
   copy,
   conversationId,
   shared,
+  compact = false,
   onConversationCreated,
   onConversationTouched,
 }: {
@@ -36,6 +37,9 @@ export default function ChatArea({
   copy: ChatCopy
   conversationId: string | null
   shared: boolean
+  /** Narrow column (the dashboard dock): drop the max-width centering and the
+   *  generous page padding, which in ~400px leave almost no room for text. */
+  compact?: boolean
   onConversationCreated: (c: CreatedConversation) => void
   onConversationTouched: (id: string) => void
 }) {
@@ -153,7 +157,7 @@ export default function ChatArea({
   return (
     <div className="flex-1 flex flex-col min-w-0 h-full">
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-3 min-h-full">
+        <div className={`${compact ? 'px-3 py-4' : 'max-w-3xl mx-auto px-4 sm:px-6 py-6'} flex flex-col gap-3 min-h-full`}>
           {!loaded ? (
             <p className="text-xs text-center my-auto" style={{ color: '#9ca3af' }}>Loading…</p>
           ) : messages.length === 0 ? (
@@ -179,7 +183,7 @@ export default function ChatArea({
             messages.map((m) => {
               const isUser = m.role === 'user'
               return (
-                <div key={m.id} className={`group relative max-w-[85%] ${isUser ? 'self-end' : 'self-start'}`}>
+                <div key={m.id} className={`group relative ${compact ? 'max-w-[94%]' : 'max-w-[85%]'} ${isUser ? 'self-end' : 'self-start'}`}>
                   <div
                     className="rounded-2xl px-4 py-3 break-words shadow-sm"
                     style={{ background: isUser ? 'rgba(68,184,211,0.16)' : 'rgba(255,255,255,0.75)' }}
@@ -219,7 +223,7 @@ export default function ChatArea({
       </div>
 
       <div className="shrink-0 border-t bg-white/50 backdrop-blur-sm" style={{ borderColor: 'rgba(0,0,0,0.05)' }}>
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
+        <div className={compact ? 'px-3 py-2.5' : 'max-w-3xl mx-auto px-4 sm:px-6 py-3'}>
           {shared ? (
             <p className="text-xs text-center py-2 inline-flex items-center gap-1.5 w-full justify-center" style={{ color: '#9ca3af' }}>
               <Users size={13} /> שיחת צוות (ארכיון) — לקריאה בלבד · פתחו שיחה חדשה כדי לכתוב

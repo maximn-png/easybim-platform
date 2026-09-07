@@ -11,6 +11,23 @@ export type PostStatus =
 
 export type MetricsSource = 'manual' | 'import' | 'linkedin'
 
+/** Where a post came from — mirrors PostSource in lib/models/PeacockPost.ts. */
+export type PostSource = 'newsletter' | 'peacock' | 'manual' | 'monday'
+
+/**
+ * The content plan the weekly author cron reads — mirrors ContentPlan in
+ * lib/agents/peacock/plan.ts, which cannot be imported here because it pulls in
+ * mongoose. plan.ts stays the source of truth and clamps whatever it is sent.
+ */
+export interface ContentPlan {
+  /** 0 is a real setting: Peacock stops drafting unprompted. */
+  postsPerWeek: number
+  postTypes: string[]
+}
+
+/** Stepper ceiling — keep in step with MAX_POSTS_PER_WEEK in plan.ts. */
+export const MAX_POSTS_PER_WEEK = 7
+
 export interface PostMetrics {
   impressions?: number
   reactions?: number
@@ -34,6 +51,7 @@ export interface PostDTO {
   linkedinUrl: string | null
   projectNumber: string | null
   notes: string | null
+  source: PostSource
   sourceUrl: string | null
   sourceName: string | null
   metrics: PostMetrics | null
@@ -138,6 +156,46 @@ export const TYPE_COLOR: Record<string, string> = {
   '5. Social': '#ff9f4a',
   '6. Personal': '#e2597e',
   '7. Other': '#9aa0ac',
+}
+
+export const SOURCE_META: Record<PostSource, { label: string; short: string; color: string; hint: string }> = {
+  newsletter: {
+    label: 'Newsletter Ideas',
+    short: 'Newsletter',
+    color: '#0ea5e9',
+    hint: 'Seeded from a BIM-newsletter topic — the post cites its source',
+  },
+  peacock: {
+    label: 'Peacock design',
+    short: 'Peacock',
+    color: '#a78bfa',
+    hint: 'Peacock put this in the plan itself (weekly author run, or from chat)',
+  },
+  manual: {
+    label: 'Maxim — manual',
+    short: 'Manual',
+    color: '#1e248c',
+    hint: 'Added by hand in the platform',
+  },
+  monday: {
+    label: 'Monday (imported)',
+    short: 'Monday',
+    color: '#9aa0ac',
+    hint: 'Came over from the retired EasyBIM_Posts board',
+  },
+}
+
+export const SOURCE_ORDER: PostSource[] = ['newsletter', 'peacock', 'manual', 'monday']
+
+export function sourceMeta(s: PostSource | string | null | undefined) {
+  return (
+    SOURCE_META[s as PostSource] ?? {
+      label: String(s ?? 'unknown'),
+      short: String(s ?? '—'),
+      color: '#9aa0ac',
+      hint: 'Unrecognised source value',
+    }
+  )
 }
 
 export function typeColor(t: string | null): string {

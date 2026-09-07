@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runAgent } from '@/lib/core/agentRuntime'
-import { peacock, AUTHOR_SYSTEM, authorInstruction, buildDateContext } from '@/lib/agents/peacock'
+import {
+  peacock, authorSystem, authorInstruction, buildDateContext, getContentPlan, isAutopilotOff,
+} from '@/lib/agents/peacock'
 import { getGuidance, guidanceBlock } from '@/lib/agents/peacock/guidance'
 
 export const runtime = 'nodejs'
@@ -20,17 +22,26 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const dateContext = buildDateContext(new Date())
-    const guidance = await getGuidance(peacock.key)
+    // The dashboard's Content Plan governs this pass. At 0 posts/week the run
+    // still happens, but only to pick up posts Maxim bounced back with
+    // `revise` — it will not propose content of its own.
+    const [plan, guidance] = await Promise.all([getContentPlan(), getGuidance(peacock.key)])
+    const dateContext = buildDateContext(new Date(), plan.postsPerWeek)
     const { runId, summary } = await runAgent({
       agentKey: peacock.key,
       pass: 'author',
       trigger: 'cron',
-      system: AUTHOR_SYSTEM + guidanceBlock(guidance),
+      system: authorSystem(plan) + guidanceBlock(guidance),
+      userMessage: authorInstruction(dateContext, plan),
       tools: peacock.tools,
-      userMessage: authorInstruction(dateContext),
     })
-    return NextResponse.json({ ok: true, runId, summary })
+    return NextResponse.json({
+      ok: true,
+      runId,
+      summary,
+      plan,
+      autopilot: isAutopilotOff(plan) ? 'off (revise-only)' : `${plan.postsPerWeek}/week`,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'author run failed'
     return NextResponse.json({ ok: false, error: message }, { status: 500 })

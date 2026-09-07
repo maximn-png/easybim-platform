@@ -5,38 +5,82 @@ import { connectDB } from '@/lib/db/mongoose'
 import PeacockPost, {
   DRAFT_WINDOW_DAYS,
   IPeacockPost,
+  POST_SOURCES,
   POST_STATUSES,
   POST_TYPES,
   PostMetrics,
+  PostSource,
   PostStatus,
 } from '@/lib/models/PeacockPost'
 import { postCommentCounts } from '@/lib/core/conversations'
 import { generatePostImage } from './image'
+import { recordDriveArchive, storePostImage } from './postImage'
 import { getSharedDriveId, findChildFolder, createFolder, uploadBytes } from '@/lib/integrations/google/client'
 
 export const AGENT_KEY = 'peacock'
 
 const GENERATED_IMAGES_FOLDER = 'Peacock-Generated'
+const MARKETING_DRIVE = 'Marketing'
 
-/** Generate an on-brand cover for a post, store it in the Marketing drive, and link it on the post. */
-export async function generateImageForPost(postId: string): Promise<{ imageUrl: string } | null> {
+export interface GenerateImageResult {
+  imageUrl: string
+  /** Drive archive link, when the upload was possible. */
+  driveUrl: string | null
+  /** Why the Drive archive was skipped — surfaced to the agent, not an error. */
+  driveNote: string | null
+}
+
+/**
+ * Generate an on-brand cover for a post, store it, and link it on the post.
+ *
+ * The bytes are the deliverable and they land in Mongo, so generation succeeds
+ * on its own. Archiving to the Marketing shared drive is a bonus attempted
+ * afterwards and allowed to fail: the service account is only a member of the
+ * Finance drive, and the previous upload-first order turned that permission gap
+ * into "image generation failed" even though the image itself was fine.
+ */
+export async function generateImageForPost(postId: string): Promise<GenerateImageResult | null> {
   await connectDB()
   const post = await PeacockPost.findById(postId)
   if (!post) return null
-  const { base64, mimeType } = await generatePostImage(post.body || post.title, post.postType || '1. Professional')
+
+  const source = post.body || post.title
+  const { base64, mimeType } = await generatePostImage(source, post.postType || '1. Professional')
   const bytes = Buffer.from(base64, 'base64')
 
-  const driveId = await getSharedDriveId('Marketing')
-  const folderId =
-    (await findChildFolder(driveId, GENERATED_IMAGES_FOLDER, driveId)) ??
-    (await createFolder(GENERATED_IMAGES_FOLDER, driveId))
-  const ext = mimeType.includes('jpeg') ? 'jpg' : 'png'
-  const fileId = await uploadBytes(folderId, `post-${postId}.${ext}`, bytes, mimeType)
-  const imageUrl = `https://drive.google.com/file/d/${fileId}/view`
+  // Same store the composer and hand-uploads use, so all three stay consistent
+  // about replacing the row and moving the cache-busting ?v= stamp.
+  const { imageUrl } = await storePostImage({
+    postId,
+    bytes,
+    mimeType,
+    origin: 'generated',
+    prompt: source.slice(0, 800),
+  })
 
-  post.imageUrl = imageUrl
-  await post.save()
-  return { imageUrl }
+  const { driveUrl, driveNote } = await archiveImageToDrive(postId, bytes, mimeType)
+  if (driveUrl) await recordDriveArchive(postId, driveUrl)
+
+  return { imageUrl, driveUrl, driveNote }
+}
+
+/** Best-effort copy of a generated cover into the Marketing drive. Never throws. */
+async function archiveImageToDrive(
+  postId: string,
+  bytes: Buffer,
+  mimeType: string
+): Promise<{ driveUrl: string | null; driveNote: string | null }> {
+  try {
+    const driveId = await getSharedDriveId(MARKETING_DRIVE)
+    const folderId =
+      (await findChildFolder(driveId, GENERATED_IMAGES_FOLDER, driveId)) ??
+      (await createFolder(GENERATED_IMAGES_FOLDER, driveId))
+    const ext = mimeType.includes('jpeg') ? 'jpg' : 'png'
+    const fileId = await uploadBytes(folderId, `post-${postId}.${ext}`, bytes, mimeType)
+    return { driveUrl: `https://drive.google.com/file/d/${fileId}/view`, driveNote: null }
+  } catch (e) {
+    return { driveUrl: null, driveNote: (e as Error).message }
+  }
 }
 
 export interface PostDTO {
@@ -52,6 +96,7 @@ export interface PostDTO {
   linkedinUrl: string | null
   projectNumber: string | null
   notes: string | null
+  source: PostSource
   sourceUrl: string | null
   sourceName: string | null
   metrics: PostMetrics | null
@@ -61,6 +106,27 @@ export interface PostDTO {
   commentCount: number
   createdAt: string
   updatedAt: string
+}
+
+/**
+ * A post's origin for the Source column. Prefers the stored value, then falls
+ * back to whatever provenance an older row carries, so rows written before the
+ * field existed still classify rather than showing blank.
+ *
+ * Order matters, and was checked against the live store (181 posts): the board
+ * import wins first because "came over from Monday" is the truer statement
+ * about those rows; a sourceUrl means a newsletter topic; and a row with no
+ * createdBy was written by the weekly author cron, since every path through the
+ * UI stamps the signed-in user. That last rule is what separates Peacock's own
+ * output from Maxim's — it resolved 6 of the 8 otherwise-unclassifiable rows,
+ * all of them recognisably cron-authored, leaving the 2 hand-added ones manual.
+ */
+export function postSource(d: Partial<IPeacockPost>): PostSource {
+  if (d.source && (POST_SOURCES as string[]).includes(d.source)) return d.source
+  if (d.mondayItemId) return 'monday'
+  if (d.sourceUrl) return 'newsletter'
+  if (!d.createdBy) return 'peacock'
+  return 'manual'
 }
 
 export function serializePost(p: IPeacockPost | Record<string, unknown>, commentCount = 0): PostDTO {
@@ -78,6 +144,7 @@ export function serializePost(p: IPeacockPost | Record<string, unknown>, comment
     linkedinUrl: d.linkedinUrl ?? null,
     projectNumber: d.projectNumber ?? null,
     notes: d.notes ?? null,
+    source: postSource(d),
     sourceUrl: d.sourceUrl ?? null,
     sourceName: d.sourceName ?? null,
     metrics: d.metrics ?? null,
@@ -156,6 +223,8 @@ export interface CreatePostInput {
   draftStartDate?: string
   projectNumber?: string
   notes?: string
+  /** Origin for the Source column. Callers that know it should say so. */
+  source?: PostSource
   sourceUrl?: string
   sourceName?: string
   ownerUserId?: string
@@ -182,6 +251,9 @@ export async function createPost(input: CreatePostInput): Promise<PostDTO> {
         : undefined,
     projectNumber: input.projectNumber,
     notes: input.notes,
+    // A sourceUrl means the idea came off a newsletter topic, so infer that
+    // rather than mislabelling such a post as hand-typed.
+    source: input.source ?? (input.sourceUrl ? 'newsletter' : 'manual'),
     sourceUrl: input.sourceUrl,
     sourceName: input.sourceName,
     ownerUserId: input.ownerUserId,
@@ -314,8 +386,12 @@ export function makePostTools(userId?: string) {
       sourceName: z.string().optional().describe('source name, e.g. "Autodesk Dev Blog"'),
     }),
     run: async (args) => {
-      const post = await createPost({ ...args, createdBy: userId })
-      return `created post ${post.id} (${post.status})`
+      const post = await createPost({
+        ...args,
+        source: args.sourceUrl ? 'newsletter' : 'peacock',
+        createdBy: userId,
+      })
+      return `created post ${post.id} (${post.status}, source ${post.source})`
     },
   })
 
@@ -345,11 +421,14 @@ export function makePostTools(userId?: string) {
   const generateImageTool = betaZodTool({
     name: 'generate_image',
     description:
-      'Generate an on-brand EasyBIM cover image for a post (by id), store it in the Marketing drive, and set it as the post\'s image. Use on a "ready" post before publishing.',
+      'Generate an on-brand EasyBIM cover image for a post (by id) and set it as the post\'s image. The image is stored by the platform and shows in the post drawer immediately. It is also archived to the Marketing Drive folder when that drive is reachable — if it is not, the image is still generated and linked, so report it as done and mention only that the Drive archive was skipped. Use on a post whose draft is settled.',
     inputSchema: z.object({ id: z.string() }),
     run: async ({ id }) => {
       const res = await generateImageForPost(id)
-      return res ? `generated + linked cover image: ${res.imageUrl}` : 'NOT_FOUND'
+      if (!res) return 'NOT_FOUND'
+      return res.driveUrl
+        ? `generated + linked cover image (archived to Drive: ${res.driveUrl})`
+        : `generated + linked cover image. Drive archive skipped (not fatal): ${res.driveNote}`
     },
   })
 

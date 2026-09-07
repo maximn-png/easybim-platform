@@ -277,8 +277,9 @@ function ImprovementsTab({ agentKey, accent, emoji }: { agentKey: string; accent
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs leading-relaxed" style={{ color: '#6b7280' }}>
-        Everything the agent has learned through chat — shared across all users. Active items are injected into the
-        agent&apos;s instructions on every run; switch one off (or delete it) to stop applying it.
+        Everything the agent has learned through chat. These are <strong>global, not per-chat</strong>: an active item is
+        injected into every conversation with this agent, into each per-post thread, and into its scheduled runs — for
+        all users, whichever chat it was first said in. Switch one off (or delete it) to stop applying it.
       </p>
 
       {items.length === 0 ? (

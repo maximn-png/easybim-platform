@@ -11,5 +11,7 @@ export const peacock: AgentDefinition = {
   tools: peacockTools,
 }
 
-export { AUTHOR_SYSTEM, authorInstruction, buildDateContext } from './prompts'
+export { authorSystem, authorInstruction, buildDateContext } from './prompts'
+export { getContentPlan, saveContentPlan, isAutopilotOff, normalizePlan, DEFAULT_PLAN, MAX_POSTS_PER_WEEK } from './plan'
+export type { ContentPlan } from './plan'
 export { peacockTools } from './tools'

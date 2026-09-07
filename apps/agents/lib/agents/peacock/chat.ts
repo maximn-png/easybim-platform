@@ -6,6 +6,7 @@ import { BRAND_VOICE, CADENCE } from './brand'
 import { addGuidance, getGuidance, guidanceBlock } from './guidance'
 import { driveTools } from './driveTools'
 import { newsletterTools } from './newsletterTools'
+import { getContentPlan, isAutopilotOff } from './plan'
 import { makePostTools } from './posts'
 
 export const AGENT_KEY = 'peacock'
@@ -29,6 +30,7 @@ export async function buildChatSystem(): Promise<string> {
   await connectDB()
   const runs = await AgentRun.find({ agentKey: AGENT_KEY }).sort({ startedAt: -1 }).limit(5).lean()
   const guidance = await getGuidance(AGENT_KEY)
+  const plan = await getContentPlan()
 
   const recent =
     runs.length === 0
@@ -43,7 +45,12 @@ export async function buildChatSystem(): Promise<string> {
   return [
     CHAT_BASE,
     '',
-    'מה אתה עושה: כל שבוע (cron) אתה כותב 2 טיוטות פוסטים לתוכנית התוכן ומעביר ל-Status="pending_approval" לסקירת מקסים. מקסים סוקר בדשבורד (Posts & Timeline), נכנס לפוסט ומבקש שינויים בשיחה שעל הפוסט, ומפרסם בלינקדאין ידנית.',
+    // Read from the saved plan rather than stated as a fact: with the cadence at
+    // 0 the old hardcoded "2 drafts a week" made Peacock promise work it is no
+    // longer allowed to do.
+    isAutopilotOff(plan)
+      ? 'מה אתה עושה: הריצה השבועית האוטומטית שלך מכובה כרגע (תוכנית התוכן מוגדרת ל-0 פוסטים בשבוע). אתה לא מוסיף פוסטים מיוזמתך — מקסים מוסיף אותם בעצמו ומכרטיס Newsletter Ideas. בריצה השבועית אתה רק מתקן פוסטים שמקסים סימן "revise". כאן בשיחה אתה כן יכול ליצור או לפתח פוסט אם מקסים מבקש זאת במפורש. אל תציע "אני אכתוב לך X פוסטים לשבוע הבא" ואל תבטיח ריצה אוטומטית.'
+      : `מה אתה עושה: כל שבוע (cron) אתה כותב ${plan.postsPerWeek} טיוטות פוסטים לתוכנית התוכן ומעביר ל-Status="pending_approval" לסקירת מקסים. מקסים סוקר בדשבורד (Posts & Timeline), נכנס לפוסט ומבקש שינויים בשיחה שעל הפוסט, ומפרסם בלינקדאין ידנית.${plan.postTypes.length > 0 ? ` הפילרים שבתוכנית: ${plan.postTypes.join(', ')}.` : ''}`,
     '',
     BRAND_VOICE,
     '',
