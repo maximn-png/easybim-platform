@@ -328,6 +328,29 @@ event for ~10 min" catches a hang quickly and never kills a legitimately slow sy
 of a large model. This matches the server-side watchdog, which already expires
 claimed runs off `lastProgressAt` rather than `startedAt`.
 
+Timeouts nest, innermost first, and must stay in this order:
+
+    central-lock callback 300s  <  agent silence ~10 min  <  server stale-claim 45 min
+
+so a locked central surfaces as a clean retryable `failed` instead of being killed
+as a hang. The script emits a progress line from the lock callback on each
+`ShouldWaitForLockAvailability` call — without it, a legitimate 5-minute lock wait
+is indistinguishable from the start of a hang, and the console cannot explain why
+the run is slow.
+
+Two agent behaviours the Phase 3/4 seam requires:
+
+- **No result file *and* no progress file ⇒ configuration fault, not `failed`.**
+  If `SYNCGUARD_RESULT_JSON` is itself unset, the script has nowhere to write its
+  verdict, so the absence of a result would otherwise be misread as a retryable
+  failure that will in fact fail identically forever. Classify it as
+  `needs_attention`. A missing result file *with* a populated progress file is a
+  genuine crash and stays `failed`.
+- **Result file written but the process never exits ⇒ kill after a grace period.**
+  Revit can hang on teardown after a successful sync. The agent should honour the
+  result file it can already read rather than waiting out the silence timeout and
+  reporting a failure that did not happen.
+
 **Deliverable:** button in EPM → Revit opens on the target machine → run completes green.
 
 ### Phase 5 — UI (2–3 days)
