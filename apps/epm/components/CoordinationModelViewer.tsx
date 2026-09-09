@@ -99,6 +99,8 @@ export default function CoordinationModelViewer({
   // short-lived terminal note that decays back to 'idle'.
   const [publishState, setPublishState] = useState<PublishUiState>('idle')
   const [publishNote, setPublishNote] = useState<string | null>(null)
+  // Which APS app to run the OAuth through when publish needs a user token.
+  const [publishAuthHub, setPublishAuthHub] = useState<string | null>(null)
 
   async function fetchModels(refresh = false): Promise<{ models: CoordModel[]; unsupported?: boolean } | null> {
     try {
@@ -248,8 +250,11 @@ export default function CoordinationModelViewer({
     const settle = (s: PublishUiState, note?: string) => {
       if (!alive.current) return
       setPublishState(s); setPublishNote(note ?? null)
-      // Terminal notes are informational; don't leave them on screen forever.
-      if (s !== 'working') setTimeout(() => { if (alive.current) { setPublishState('idle'); setPublishNote(null) } }, 6000)
+      // Terminal notes are informational and decay — except 'needs-auth', which
+      // is an action the user has to take, so it must stay until they take it.
+      if (s !== 'working' && s !== 'needs-auth') {
+        setTimeout(() => { if (alive.current) { setPublishState('idle'); setPublishNote(null) } }, 6000)
+      }
     }
 
     try {
@@ -258,9 +263,16 @@ export default function CoordinationModelViewer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId: model.itemId }),
       })
-      const data = await res.json() as { state?: string; detail?: string; needsApsAuth?: boolean }
+      const data = await res.json() as { state?: string; detail?: string; needsApsAuth?: boolean; hub?: string }
 
-      if (data.needsApsAuth) return settle('needs-auth', 'Connect Autodesk to publish')
+      // Publishing needs the caller's own 3-legged token (the ACC commands
+      // endpoint rejects service tokens), so this is an action, not an error —
+      // the note becomes a link into the existing Autodesk OAuth flow. The hub
+      // key matters: Autodesk scopes hub access to the app the token came from.
+      if (data.needsApsAuth) {
+        setPublishAuthHub(data.hub && data.hub !== 'easybim' ? data.hub : null)
+        return settle('needs-auth', 'Connect Autodesk to publish')
+      }
       if (data.state === 'up-to-date') return settle('up-to-date', 'Already up to date')
       if (data.state === 'unauthorized') return settle('error', 'You lack publish rights on this project')
       if (data.state !== 'published' && data.state !== 'in-progress') {
@@ -366,17 +378,27 @@ export default function CoordinationModelViewer({
                       : <><UploadCloud size={12} /> Publish</>}
                   </button>
                 )}
-                {publishNote && (
+                {/* 'needs-auth' is a task, not a message: link it straight into
+                    the existing Autodesk OAuth flow and come back to this page. */}
+                {publishNote && publishState === 'needs-auth' ? (
+                  <a
+                    href={`/api/auth/autodesk?returnTo=/dashboard/${projectId}${publishAuthHub ? `&hub=${publishAuthHub}` : ''}`}
+                    title="Publishing acts as you in ACC, so it needs your Autodesk account connected"
+                    className="text-[9.5px] font-semibold rounded-full px-2 py-px border shrink-0 text-amber-700 bg-amber-50 border-amber-300 hover:bg-amber-100 hover:border-amber-400 transition-colors"
+                  >
+                    {publishNote} →
+                  </a>
+                ) : publishNote ? (
                   <span
                     className={`text-[9.5px] font-medium rounded-full px-2 py-px border shrink-0 ${
-                      publishState === 'error' || publishState === 'needs-auth'
+                      publishState === 'error'
                         ? 'text-amber-600 bg-amber-50 border-amber-200'
                         : 'text-gray-600 bg-gray-50 border-gray-200'
                     }`}
                   >
                     {publishNote}
                   </span>
-                )}
+                ) : null}
                 <button
                   onClick={refresh}
                   title="Re-crawl ACC for new versions of this project’s models"

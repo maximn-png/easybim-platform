@@ -375,8 +375,13 @@ function EnrollDialog({ onClose, onDone }: { onClose: () => void; onDone: () => 
 
               {code ? (
                 <div className="flex flex-col gap-1.5">
+                  {/* Say WHICH program takes the code. Calling it just "the
+                      agent" sends people hunting in the Revit ribbon, where it
+                      isn't — it's a separate background program per machine. */}
                   <p className="text-[11px] text-gray-600">
-                    On that computer, open the EasyBIM Syncguard agent and enter this code:
+                    On that computer, open the <b>EasyBIM Syncguard agent</b> — the small
+                    background program installed on the machine itself, not a button in
+                    Revit — and enter this code:
                   </p>
                   <div className="flex items-center gap-2">
                     <code className="flex-1 text-center text-[20px] font-bold tracking-[0.2em] text-[#1e248c] bg-[#f4f6ff] border border-[#dfe4ff] rounded-lg py-2.5">
