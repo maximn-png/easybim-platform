@@ -85,7 +85,7 @@ export default function CoordinationModelViewer({
   const initialized = useRef(false)
   // Guards the publish poll, which outlives any single render.
   const alive = useRef(true)
-  useEffect(() => () => { alive.current = false }, [])
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
   const [state, setState] = useState<'loading' | 'unsupported' | 'empty' | 'error' | 'ready'>('loading')
   const [models, setModels] = useState<CoordModel[]>([])

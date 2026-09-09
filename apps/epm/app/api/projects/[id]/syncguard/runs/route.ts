@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { resolveViewerHub } from '@/lib/services/apsHubs'
-import { listCoordinationModels, type CoordinationModel } from '@/lib/services/apsCoordination'
+import { listCoordinationModels, coordCacheKey, type CoordinationModel } from '@/lib/services/apsCoordination'
 import { swrCache } from '@/lib/server/pageCache'
 
 // Syncguard runs for one project.
@@ -28,7 +28,7 @@ async function resolveModel(projectDocId: string, itemId: string) {
   if (!hub || !accProjectId) return { error: NextResponse.json({ unsupported: true }) }
 
   const { data: models } = await swrCache<CoordinationModel[]>(
-    `coord:${projectDocId}`, CACHE_TTL_MS, false,
+    coordCacheKey(projectDocId), CACHE_TTL_MS, false,
     () => listCoordinationModels(accProjectId, hub),
   )
   const model = models.find(m => m.itemId === itemId)

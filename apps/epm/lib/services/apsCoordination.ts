@@ -56,6 +56,22 @@ export interface CoordinationModel {
 
 export type CloudRegion = 'US' | 'EMEA'
 
+/**
+ * Cache key for a project's coordination snapshot — VERSIONED, and it must be
+ * bumped whenever CoordinationModel gains a field a caller depends on.
+ *
+ * The snapshots live in Mongo, which every environment shares, so a deployed
+ * older build keeps rewriting old-shape payloads under the same key. Without a
+ * version in the key, a newer build silently reads a snapshot missing its
+ * fields — which is exactly how Syncguard first appeared to be missing from the
+ * card: 65 cached snapshots had no `itemId`/`workshared`, so the panel hid
+ * itself with no error anywhere.
+ *
+ * v2 = added the Revit Cloud Worksharing identity (itemId, projectGuid,
+ * modelGuid, region, revitVersion, workshared).
+ */
+export const coordCacheKey = (projectId: string) => `coord:v2:${projectId}`
+
 // Fields we read off a C4R version's extension.data. ACC sends plenty more
 // (processState, timelineVersion, hasLinks…); these are the ones Syncguard and
 // the viewer need.

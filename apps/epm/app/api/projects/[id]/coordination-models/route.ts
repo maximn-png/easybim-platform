@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { resolveViewerHub } from '@/lib/services/apsHubs'
-import { listCoordinationModels, type CoordinationModel } from '@/lib/services/apsCoordination'
+import { listCoordinationModels, coordCacheKey, type CoordinationModel } from '@/lib/services/apsCoordination'
 import { swrCache } from '@/lib/server/pageCache'
 
 // GET /api/projects/[id]/coordination-models
@@ -39,7 +39,7 @@ export async function GET(
   const refresh = req.nextUrl.searchParams.get('refresh') === '1'
   try {
     const { data: models, cachedAt } = await swrCache<CoordinationModel[]>(
-      `coord:${id}`, CACHE_TTL_MS, refresh,
+      coordCacheKey(id), CACHE_TTL_MS, refresh,
       () => listCoordinationModels(accProjectId, hub),
     )
     return NextResponse.json({
