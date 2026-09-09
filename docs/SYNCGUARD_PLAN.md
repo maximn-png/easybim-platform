@@ -9,7 +9,7 @@
 | 2 · Job queue + agent protocol | **done** — agent half verified end to end over HTTP |
 | 3 · pyRevit script | **done — green on two real coordination models.** `pyrevit run` opens a cloud-workshared model headlessly: no sign-in prompt, no hang, `OpenDocumentFile` succeeded first try (fallback never needed), `Close(false)` worked. Relinquish-all via `SetRelinquishOptions` left zero owned worksets across all four kinds on both models. Zero dialogs recorded — the no-dialog-handler call was right. The failure handler is real, not decorative: 23 and 245 events, auto-resolving two Spot Dimension errors. **Unproven:** neither callback was ever invoked (`lockWaitCalls: 0`, no open conflicts) — central was never locked and no conflict arose, which is exactly the looks-like-success failure mode; and the ribbon button is unverified because `pyrevit run` is UI-less and it needs a human click. |
 | 4 · Tray agent | not started (ships with the script — see Phase 4) |
-| 5 · UI | not started |
+| 5 · UI | **enrollment + card done** — pairing-code dialog, target-computer picker, Sync &amp; Publish, live step list, `needs_attention` banner. Enrollment seam verified end to end (15 assertions). The Automation page (scrollback console, run history, schedule editor) is still open. |
 | 6 · Scheduling | not started |
 | 7 · Pilot | not started |
 

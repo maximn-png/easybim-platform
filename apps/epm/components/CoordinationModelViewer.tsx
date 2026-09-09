@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from 'react'
 import { Box, Loader2, AlertCircle, RefreshCw, Eye, UploadCloud } from 'lucide-react'
+import SyncguardPanel from './SyncguardPanel'
 
 // Autodesk Viewer SDK (v7) — same on-demand CDN loader as the ANA combined
 // viewer; the two components can share the injected <script> safely because
@@ -385,6 +386,17 @@ export default function CoordinationModelViewer({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* Syncguard — hides itself for non-cloud models. Sits above the canvas
+              so a live run's step list is visible without scrolling the card. */}
+          {selected && (
+            <SyncguardPanel
+              projectId={projectId}
+              itemId={selected.itemId}
+              modelName={selected.name}
+              workshared={selected.workshared}
+            />
           )}
 
           {/* 3D canvas — fills the card's remaining height on lg+. */}
