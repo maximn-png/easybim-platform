@@ -7,7 +7,7 @@
 | 0 · Publish Now | **code complete**, publish trigger not yet fired against a live model |
 | 1 · Cloud GUID spike | **done** — GUIDs confirmed present; fields persisted |
 | 2 · Job queue + agent protocol | **done** — agent half verified end to end over HTTP |
-| 3 · pyRevit script | not started (extension repo) |
+| 3 · pyRevit script | **done — green on two real coordination models.** `pyrevit run` opens a cloud-workshared model headlessly: no sign-in prompt, no hang, `OpenDocumentFile` succeeded first try (fallback never needed), `Close(false)` worked. Relinquish-all via `SetRelinquishOptions` left zero owned worksets across all four kinds on both models. Zero dialogs recorded — the no-dialog-handler call was right. The failure handler is real, not decorative: 23 and 245 events, auto-resolving two Spot Dimension errors. **Unproven:** neither callback was ever invoked (`lockWaitCalls: 0`, no open conflicts) — central was never locked and no conflict arose, which is exactly the looks-like-success failure mode; and the ribbon button is unverified because `pyrevit run` is UI-less and it needs a human click. |
 | 4 · Tray agent | not started (ships with the script — see Phase 4) |
 | 5 · UI | not started |
 | 6 · Scheduling | not started |
@@ -328,15 +328,63 @@ event for ~10 min" catches a hang quickly and never kills a legitimately slow sy
 of a large model. This matches the server-side watchdog, which already expires
 claimed runs off `lastProgressAt` rather than `startedAt`.
 
+**The open dominates, not the sync — measured, 2026-09-09.** On the two pilot
+models:
+
+| | TZE_CO-URS-R25 (v3) | TZE_C-CO-EAB-MAIN-R25 (v14) |
+|---|---|---|
+| resolve cloud path | 1.4s | 0.6s |
+| **open (all worksets)** | **18.8s** | **6m 55s** |
+| sync + relinquish | 11.1s | 23.6s |
+| verify | 0.05s | 0.06s |
+| total | 32s | 7m 20s |
+
+So ~95% of wall clock is the open, and it is the part that scales with model size
+and link count. **A timeout tuned on sync time would be badly wrong.**
+
+**Timeouts must be phase-aware.** The script is blocked inside
+`OpenDocumentFile` for the whole open and there is no progress callback for it, so
+a large model emits nothing for many minutes — 7 on a merely *representative*
+model, and the hub holds far bigger ones (Sheba's coordination model is at v235).
+A flat ~10-minute silence window would kill a healthy run. The agent must allow a
+long window (~40 min) between `open-model: running` and `open-model: done`, then
+the tight window for everything after; those step transitions are the signal that
+makes it possible.
+
 Timeouts nest, innermost first, and must stay in this order:
 
-    central-lock callback 300s  <  agent silence ~10 min  <  server stale-claim 45 min
+    central-lock callback 300s  <  agent silence (open ~40 min / post-open ~10 min)  <  server stale-claim 45 min
 
 so a locked central surfaces as a clean retryable `failed` instead of being killed
 as a hang. The script emits a progress line from the lock callback on each
 `ShouldWaitForLockAvailability` call — without it, a legitimate 5-minute lock wait
 is indistinguishable from the start of a hang, and the console cannot explain why
 the run is slow.
+
+**Three `pyrevit run` gotchas found the hard way in Phase 3** — all Phase 4's to
+honour:
+
+- **The script path must be ABSOLUTE.** A relative path is copied verbatim into
+  the journal's `ScriptSource`, Revit runs from its own temp cwd, and the script
+  is silently never found: no error, no output, exit 0.
+- **`%TEMP%` inside Revit is redirected** to the per-run folder that `--purge`
+  deletes. Every output path the agent passes must be absolute and outside TEMP.
+- **`SearchPaths` is empty**, so `lib/easybim` is not importable from a
+  `commands/` script. Solved script-side with a `__file__`-relative bootstrap, so
+  the agent needs no `--import` flag.
+
+**Status mapping — three tiers, so `warning` keeps its meaning.** With 245
+failure events on a representative model, letting any recorded warning set
+`warning` would make almost every run a warning. Benign warnings go to `lines`
+and leave the status `success`; auto-resolved *errors* set `warning` (the model
+genuinely needed fixing, which a BIM manager wants to see); unresolvable errors
+are `needs_attention`. This differs from the ownership sweep, which is suppressed
+because it reads an unreliable cache — the distinction is signal reliability, not
+severity.
+
+**`steps[open-model].message` carries the model title, not an ACC version.** Revit
+does not expose the ACC version number; the agent knows it at enqueue and should
+substitute if a version string is wanted.
 
 Two agent behaviours the Phase 3/4 seam requires:
 
