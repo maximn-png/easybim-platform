@@ -82,10 +82,16 @@ export async function POST(
     : !online               ? 'That computer is offline — turn it on and make sure the Syncguard agent is running'
     : !agent.autodeskSignedIn ? 'Revit on that computer is not signed in to Autodesk — sign in there first'
     : agent.currentRunId    ? 'That computer is already running a Syncguard job'
-    // pyrevit run starts its OWN Revit; if the model is already open there,
-    // the sync collides over workset ownership.
-    : agent.revitRunning && agent.openModels?.some(m => m && model!.name.toLowerCase().includes(m.toLowerCase()))
-        ? `Revit is open with ${model!.name} on that computer — close it first`
+    // ANY open Revit blocks a run, not just one holding this model. `pyrevit run`
+    // starts its OWN Revit, and a second instance cannot obtain a licence: it dies
+    // on "The License Manager is not functioning or is improperly installed."
+    // That dialog appears BEFORE journal playback, so pyRevit's dialog suppression
+    // never applies — and `taskkill /F` cannot clear it, so the run hangs until the
+    // silence window kills it ten minutes later. Refusing here is the difference
+    // between an instant accurate answer and ten wasted minutes ending in a
+    // misleading "stopped responding". openModels only words the message.
+    : agent.revitRunning
+        ? `Revit is open on that computer${agent.openModels?.length ? ` (${agent.openModels.slice(0, 3).join(', ')})` : ''} — close it first. A second Revit cannot get a licence, so the run would fail.`
     : null
   if (refusal) return NextResponse.json({ error: refusal }, { status: 409 })
 

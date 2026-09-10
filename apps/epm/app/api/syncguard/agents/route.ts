@@ -32,11 +32,17 @@ export async function GET() {
     const lastHeartbeatAt = a.lastHeartbeatAt ? new Date(a.lastHeartbeatAt) : null
     const online = !!lastHeartbeatAt && now - lastHeartbeatAt.getTime() < ONLINE_WINDOW_MS
 
+    // Kept in step with the enqueue refusal in
+    // app/api/projects/[id]/syncguard/runs/route.ts — a machine that would be
+    // refused there must look unavailable here, or the user only finds out on
+    // click. `revitRunning` blocks regardless of WHICH model is open: a second
+    // Revit cannot obtain a licence, so the run dies before the script loads.
     const blockedReason =
       !a.enabled            ? 'Disabled by an administrator'
       : !online             ? 'Offline — the machine is off or the agent is not running'
       : !a.autodeskSignedIn ? 'Needs Autodesk sign-in on that machine'
       : a.currentRunId      ? 'Already running a Syncguard job'
+      : a.revitRunning      ? 'Revit is open there — close it first (a second Revit cannot get a licence)'
       : null
 
     return {

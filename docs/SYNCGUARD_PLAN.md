@@ -361,6 +361,43 @@ as a hang. The script emits a progress line from the lock callback on each
 is indistinguishable from the start of a hang, and the console cannot explain why
 the run is slow.
 
+**ANY open Revit blocks a run — a licensing constraint, not a collision.**
+Measured in Phase 4. `pyrevit run` starts its *own* Revit, and a second instance
+cannot obtain a licence: it dies on *"The License Manager is not functioning or is
+improperly installed. Revit will shut down now."* That dialog appears **before**
+journal playback, so pyRevit's dialog suppression never applies. Consequences:
+
+- The earlier framing here was wrong. This was written up as a workset-ownership
+  collision with the *target* model, so the refusal only fired when that model was
+  open. It must refuse on **any** running Revit; `openModels` serves only to word
+  the message. Fixed in the enqueue route and the picker's `blockedReason`, which
+  must stay in step or the user only learns on click.
+- **`taskkill /F` does not work** on a Revit stuck on that dialog — it returns
+  "the operation returned because the timeout period expired" and the process
+  survives. The plan's "hard timeout + `taskkill`" mitigation was insufficient.
+  The agent presses the dialog's button first, then falls back to
+  `TerminateProcess`, and captures the dialog text into the run log.
+- Silence during startup **with zero bytes written** is `needs_attention`, not
+  `failed`: Revit never reaching the script is machine state, not a transient, and
+  retrying changes nothing.
+
+**`autodeskSignedIn` can report identity but not validity.** The collaboration
+cache is keyed by the Autodesk user id and matches what the Revit API reports as
+`LoginUserId`, so `autodeskUser` is knowable without launching Revit.
+`LoginState.xml` is *not* usable — it records only a logout date and read stale
+while Revit was demonstrably signed in. The optimistic-with-evidence fallback also
+had a deadlock: the enqueue route refuses when `autodeskSignedIn` is false, so a
+stuck false meant no run could be claimed and therefore no run could ever prove
+sign-in worked again. The agent now always expires a false after 20 minutes, plus
+a tray "Recheck".
+
+**Two hard contract constraints for the agent:**
+
+- `openModels` must be model-name **basenames**. A GUID or a full `Autodesk
+  Docs://` path never matches the server's name comparison.
+- Idle heartbeat backoff must stay **under 5 minutes** — `ONLINE_WINDOW_MS` is
+  5 min, so a slower cadence makes the agent read as offline and un-bookable.
+
 **Three `pyrevit run` gotchas found the hard way in Phase 3** — all Phase 4's to
 honour:
 
