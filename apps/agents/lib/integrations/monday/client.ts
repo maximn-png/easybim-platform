@@ -37,6 +37,8 @@ export interface MondayColumnValue {
   value: string | null
   /** Present for mirror / formula / board-relation columns (their computed label). */
   display_value?: string | null
+  /** Board-relation columns only: the ids of the linked items (the `value` field returns null for them). */
+  linked_item_ids?: string[]
 }
 
 export interface MondayItem {
@@ -51,7 +53,7 @@ const COLUMN_VALUES = `column_values(ids: $columnIds) {
   id text value
   ... on MirrorValue { display_value }
   ... on FormulaValue { display_value }
-  ... on BoardRelationValue { display_value }
+  ... on BoardRelationValue { display_value linked_item_ids }
 }`
 
 /** Items in a board filtered to a set of status label IDs (e.g. [7,9] = Idea,Drafting). */

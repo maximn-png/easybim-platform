@@ -50,6 +50,23 @@ export const POST_TYPES = [
   '7. Other',
 ] as const
 
+/**
+ * Where a post came from. Three live origins plus the board archive:
+ * - `newsletter` — seeded from a BIM-newsletter topic (the Newsletter Ideas
+ *   card, or the agent's create_post carrying a sourceUrl).
+ * - `peacock` — the agent put it in the plan itself (weekly author cron, or a
+ *   create_post call from chat).
+ * - `manual` — typed into the platform by hand.
+ * - `monday` — one of the rows imported from the retired EasyBIM_Posts board.
+ *
+ * Rows written before this field existed carry no value, so postSource() in
+ * peacock/posts.ts derives one from the provenance they do carry (mondayItemId,
+ * sourceUrl) and the Source column is never blank.
+ */
+export type PostSource = 'newsletter' | 'peacock' | 'manual' | 'monday'
+
+export const POST_SOURCES: PostSource[] = ['newsletter', 'peacock', 'manual', 'monday']
+
 /** Default length of the drafting window before publish (Gantt bar span), in days. */
 export const DRAFT_WINDOW_DAYS = 4
 
@@ -109,6 +126,7 @@ export interface IPeacockPost extends Document {
   linkedinUrl?: string // set once published to LinkedIn
   projectNumber?: string // for "4. Project" case-study posts
   notes?: string
+  source?: PostSource // who put this post in the plan — see PostSource
   // Provenance when the idea came from the BIM newsletter (see peacock/newsletter.ts)
   sourceUrl?: string
   sourceName?: string
@@ -135,6 +153,7 @@ const PeacockPostSchema = new Schema<IPeacockPost>(
     linkedinUrl: String,
     projectNumber: String,
     notes: String,
+    source: { type: String, enum: POST_SOURCES },
     sourceUrl: String,
     sourceName: String,
     metrics: PostMetricsSchema,

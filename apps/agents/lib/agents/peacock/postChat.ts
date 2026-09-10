@@ -99,11 +99,14 @@ export function makePostChatTools(postId: string, userId?: string) {
   const generateImage = betaZodTool({
     name: 'generate_image',
     description:
-      'Generate an on-brand EasyBIM cover image for THIS post, store it in the Marketing drive, and link it. Use once the draft body is settled.',
+      'Generate an on-brand EasyBIM cover image for THIS post and link it. The image is stored by the platform and appears in the drawer straight away; it is additionally archived to the Marketing Drive folder when that drive is reachable. A failed Drive archive does NOT mean the image failed — report the cover as ready and mention the archive was skipped. Use once the draft body is settled.',
     inputSchema: z.object({}),
     run: async () => {
       const res = await generateImageForPost(postId)
-      return res ? `generated + linked cover image: ${res.imageUrl}` : 'NOT_FOUND'
+      if (!res) return 'NOT_FOUND'
+      return res.driveUrl
+        ? `generated + linked cover image (archived to Drive: ${res.driveUrl})`
+        : `generated + linked cover image. Drive archive skipped (not fatal): ${res.driveNote}`
     },
   })
 

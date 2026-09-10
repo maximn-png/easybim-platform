@@ -116,6 +116,7 @@ const MAP: Record<string, AgentPresentation> = {
     tagline: 'Price quotes',
     why: 'Core trait: finding & collecting. A squirrel is always finding nuts and stashing them in the right spot — Squirrel spots every new price-quote request and collects the whole package (folders, template, client materials, links) in one place, ready to work.',
     hasChat: true,
+    hasDashboard: true,
     howItWorks: {
       title: 'איך סנאי עובד',
       rtl: true,
@@ -153,6 +154,8 @@ const MAP: Record<string, AgentPresentation> = {
       chatItems: [
         'לשאול איפה עומדת הצעה: "מה קורה עם ההצעה של…?"',
         'להשוות ולנתח הצעות — מחירים, שטחים, מחיר למ"ר — לפי לקוח, סוג שימוש או תקופה.',
+        'לשאול איך יצאנו בפרויקטים שהסתיימו: "איך עמדנו בשעות בפרויקטים מסוג C?", "איפה תאום מערכות חרג?" — אותם מספרים שבכרטיס Completed Projects.',
+        'לשאול על בריאות הקשר עם הלקוחות: "מי הפסיק לבקש הצעות?", "מה אחוז ההצלחה מול לקוח X?" — אותם מספרים שבכרטיס Analytics by Client.',
         'לבקש הקמת פרויקט ידנית לפריט מסוים.',
         'ללמד אותו הנחיות קבועות (למשל "תמיד תתייג גם את X") — הוא זוכר אותן, והן מופיעות בלשונית Improvements.',
       ],
@@ -164,7 +167,12 @@ const MAP: Record<string, AgentPresentation> = {
       emptyTitle: 'Ask Squirrel anything',
       emptyHint: 'or ask it to set up a project',
       thinking: 'Squirrel is thinking…',
-      suggestions: ['השווה את ההצעות של לקוח מסוים', 'מה המחיר הממוצע למ"ר לפי סוג שימוש?', 'השווה שטחים של פרויקטים', 'רענן את האינדקס'],
+      suggestions: [
+        'איך עמדנו בשעות בפרויקטים מסוג C?',
+        'מי מהלקוחות הפסיק לבקש הצעות?',
+        'מה המחיר הממוצע למ"ר לפי סוג שימוש?',
+        'רענן את האינדקס',
+      ],
     },
   },
 

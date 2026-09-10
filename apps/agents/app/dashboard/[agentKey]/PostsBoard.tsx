@@ -5,12 +5,15 @@ import { ArrowLeft, MessageSquare, MessageSquarePlus, Plus, Search, AlertCircle 
 import PostDrawer from './PostDrawer'
 import {
   ACCENT, ACCENT_BG, addDays, CARD, dayStart, daysBetween, fmtDayMon, isoDay, isOverdue,
-  POST_TYPES, PortalUser, PostDTO, PostStatus, STATUS_META, statusMeta,
-  STATUS_ORDER, typeColor,
+  POST_TYPES, PortalUser, PostDTO, PostSource, PostStatus, SOURCE_ORDER, sourceMeta,
+  STATUS_META, statusMeta, STATUS_ORDER, typeColor,
 } from './postMeta'
 
 // Timeline geometry. Both panes share HEADER_H and ROW_H so a post's row lines
 // up with its bar across the split.
+// The list columns, shared by the header and every row so the two cannot drift.
+const LIST_COLS = '1fr 138px 100px 126px 104px'
+
 const DAY_W = 26
 const ROW_H = 46
 const HEADER_H = 52
@@ -63,6 +66,9 @@ export default function PostsBoard({
   const [drag, setDrag] = useState<DragState | null>(null)
   const [newTitle, setNewTitle] = useState('')
   const [adding, setAdding] = useState(false)
+  // Source filter — null = all. Client-side: the board already holds every row
+  // it can show, so filtering here costs no round-trip.
+  const [sourceFilter, setSourceFilter] = useState<PostSource | null>(null)
 
   const load = useCallback(async () => {
     const params = new URLSearchParams({ slim: '1' })
@@ -149,13 +155,28 @@ export default function PostsBoard({
   // render this exact order.
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()
+    const bySource = sourceFilter ? posts.filter((p) => p.source === sourceFilter) : posts
     const matched = s
-      ? posts.filter((p) => p.title.toLowerCase().includes(s) || (p.postType ?? '').toLowerCase().includes(s))
-      : posts
+      ? bySource.filter(
+          (p) =>
+            p.title.toLowerCase().includes(s) ||
+            (p.postType ?? '').toLowerCase().includes(s) ||
+            sourceMeta(p.source).label.toLowerCase().includes(s)
+        )
+      : bySource
     const dated = matched.filter((p) => p.publishDate).sort((a, b) => a.publishDate!.localeCompare(b.publishDate!))
     const undated = matched.filter((p) => !p.publishDate).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     return [...dated, ...undated]
-  }, [posts, q])
+  }, [posts, q, sourceFilter])
+
+  // Per-source totals for the filter chips, counted before the filter is
+  // applied so each chip keeps advertising what it would select.
+  const sourceCounts = useMemo(() => {
+    const out = {} as Record<PostSource, number>
+    for (const s of SOURCE_ORDER) out[s] = 0
+    for (const p of posts) if (p.source in out) out[p.source] += 1
+    return out
+  }, [posts])
 
   // Timeline starts on a Sunday (Israeli week), one week back so slipped posts
   // stay visible; the labelled span is the forward planning horizon.
@@ -220,6 +241,28 @@ export default function PostsBoard({
                 </button>
               ))}
             </div>
+            {/* source filter — click a chip to see only what that origin produced */}
+            <div className="flex items-center" style={{ background: '#fff', border: '1px solid #e3e8f4', borderRadius: 999, padding: 2 }}>
+              <button onClick={() => setSourceFilter(null)}
+                title="All sources"
+                style={{ fontSize: 12, fontWeight: 600, padding: '5px 11px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                  background: sourceFilter === null ? ACCENT_BG : 'transparent', color: sourceFilter === null ? ACCENT : '#6b7280' }}>
+                All
+              </button>
+              {SOURCE_ORDER.map((s) => {
+                const m = sourceMeta(s)
+                const on = sourceFilter === s
+                return (
+                  <button key={s} onClick={() => setSourceFilter(on ? null : s)}
+                    title={m.hint}
+                    style={{ fontSize: 12, fontWeight: 600, padding: '5px 10px', borderRadius: 999, border: 'none', cursor: 'pointer',
+                      background: on ? `${m.color}1f` : 'transparent', color: on ? m.color : '#6b7280' }}>
+                    {m.short}
+                    <span style={{ marginLeft: 5, fontSize: 10.5, opacity: 0.75 }}>{sourceCounts[s] ?? 0}</span>
+                  </button>
+                )
+              })}
+            </div>
             <div className="flex items-center gap-2" style={{ background: '#fff', border: '1px solid #e3e8f4', borderRadius: 999, padding: '6px 12px' }}>
               <Search size={13} style={{ color: '#9ca3af' }} />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search post…" dir="auto"
@@ -243,16 +286,21 @@ export default function PostsBoard({
         </header>
 
         {/* split: list | timeline */}
-        <div style={{ ...CARD, overflow: 'hidden', display: 'grid', gridTemplateColumns: 'minmax(520px, 1.1fr) minmax(420px, 1fr)' }}>
+        {/* The list needs 620px for its five columns; the timeline pane scrolls
+            its own day grid, so it can be squeezed hard. Keeping its floor low
+            is what lets the board sit next to the 400px chat dock on a 1440px
+            screen without the page itself scrolling sideways. */}
+        <div style={{ ...CARD, overflow: 'hidden', display: 'grid', gridTemplateColumns: 'minmax(620px, 1.15fr) minmax(260px, 1fr)' }}>
           {/* ---------- LEFT: list ---------- */}
           <div style={{ borderRight: '1px solid #e7ebf5', minWidth: 0 }}>
             <div className="grid items-center"
-              style={{ gridTemplateColumns: '1fr 150px 104px 132px', height: HEADER_H, padding: '0 16px',
+              style={{ gridTemplateColumns: LIST_COLS, height: HEADER_H, padding: '0 16px',
                 borderBottom: '1px solid #eef1f8', fontSize: 12, fontWeight: 700, color: '#9aa0ac' }}>
               <span>Item</span>
               <span>Status</span>
               <span>Publish Date</span>
               <span>PostType</span>
+              <span title="Who put this post in the plan">Source</span>
             </div>
 
             {loading && <div style={{ padding: 28, textAlign: 'center', color: '#a9adb8', fontSize: 14 }}>Loading…</div>}
@@ -419,7 +467,7 @@ function PostRow({
     <div
       className="grid items-center group"
       onClick={onSelect}
-      style={{ gridTemplateColumns: '1fr 150px 104px 132px', height: ROW_H, padding: '0 16px',
+      style={{ gridTemplateColumns: LIST_COLS, height: ROW_H, padding: '0 16px',
         borderTop: '1px solid #f2f5fa', background: selected ? '#f0f4fd' : '#fff', cursor: 'pointer',
         boxShadow: selected ? `inset 3px 0 0 ${ACCENT}` : 'none' }}
     >
@@ -474,7 +522,7 @@ function PostRow({
       </div>
 
       {/* post type */}
-      <div className="flex items-center justify-between gap-1" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center pr-2" onClick={(e) => e.stopPropagation()}>
         <Dropdown
           trigger={
             <span style={{ fontSize: 11.5, fontWeight: 700, color: '#fff', background: typeColor(post.postType),
@@ -486,6 +534,12 @@ function PostRow({
           activeKey={post.postType ?? ''}
           onPick={(key) => onPatch(post.id, { postType: key }, { postType: key })}
         />
+      </div>
+
+      {/* source — read-only: it records where the post came from, and making
+          that editable would just be rewriting history */}
+      <div className="flex items-center justify-between gap-1" onClick={(e) => e.stopPropagation()}>
+        <SourceChip source={post.source} sourceUrl={post.sourceUrl} sourceName={post.sourceName} />
         <button
           onClick={(e) => { e.stopPropagation(); if (confirm(`Delete "${post.title}"?`)) onDelete() }}
           title="Delete post"
@@ -497,6 +551,38 @@ function PostRow({
       </div>
     </div>
   )
+}
+
+/**
+ * Provenance chip. Outlined rather than filled, so Source reads as reference
+ * and stays visually behind Status and PostType — the two columns that are
+ * actually controls. A newsletter post links straight to the article behind it.
+ */
+function SourceChip({
+  source, sourceUrl, sourceName,
+}: {
+  source: PostSource
+  sourceUrl: string | null
+  sourceName: string | null
+}) {
+  const m = sourceMeta(source)
+  const title = sourceName ? `${m.hint} — ${sourceName}` : m.hint
+  const chip = (
+    <span
+      style={{ fontSize: 11, fontWeight: 700, color: m.color, background: `${m.color}12`,
+        border: `1px solid ${m.color}3d`, padding: '4px 8px', borderRadius: 7, whiteSpace: 'nowrap' }}
+    >
+      {m.short}
+    </span>
+  )
+  if (source === 'newsletter' && sourceUrl) {
+    return (
+      <a href={sourceUrl} target="_blank" rel="noreferrer" title={`${title} — open the source`} style={{ textDecoration: 'none' }}>
+        {chip}
+      </a>
+    )
+  }
+  return <span title={title}>{chip}</span>
 }
 
 function DateCell({ value, onChange }: { value: string | null; onChange: (iso: string | null) => void }) {

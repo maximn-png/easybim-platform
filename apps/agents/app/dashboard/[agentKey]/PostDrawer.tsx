@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   X, Send, Square, Sparkles, Copy, Check, Code2, Eye, Trash2, ExternalLink,
-  Image as ImageIcon, CalendarClock, Newspaper, BarChart3,
+  Image as ImageIcon, CalendarClock, Newspaper, BarChart3, Upload,
 } from 'lucide-react'
 import MarkdownView from './Markdown'
 import {
@@ -12,6 +12,120 @@ import {
 } from './postMeta'
 
 interface Msg { id: string; role: string; content: string }
+
+/**
+ * The post's cover: shows it, replaces it, removes it.
+ *
+ * Accepts a dropped or browsed file because an image often exists before a way
+ * to get it in does — a BIM Composer render, a photo from site, something a
+ * designer sent. Peacock's generator and the composer's "Use in a post" both
+ * write through the same endpoint this posts to.
+ */
+function CoverCell({
+  agentKey, postId, imageUrl, onChanged,
+}: {
+  agentKey: string
+  postId: string
+  imageUrl: string | null
+  onChanged: (imageUrl: string | null) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function upload(file: File) {
+    if (busy) return
+    if (!file.type.startsWith('image/')) { setError('That is not an image file.'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      body.append('origin', 'upload')
+      const res = await fetch(`/api/dashboard/${agentKey}/posts/${postId}/image`, { method: 'POST', body })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok && d.imageUrl) onChanged(d.imageUrl)
+      else setError(d.error ?? 'Upload failed.')
+    } catch {
+      setError('Upload failed — check the connection.')
+    } finally { setBusy(false) }
+  }
+
+  async function remove() {
+    if (busy || !confirm('Remove the cover image from this post?')) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/dashboard/${agentKey}/posts/${postId}/image`, { method: 'DELETE' })
+      if (res.ok) onChanged(null)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="flex items-center gap-2" style={{ minWidth: 0 }}>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = '' }}
+      />
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault()
+          setDragOver(false)
+          const f = e.dataTransfer.files?.[0]
+          if (f) upload(f)
+        }}
+        className="flex items-center gap-2"
+        style={{ borderRadius: 8, padding: '2px 4px',
+          outline: dragOver ? `2px dashed ${ACCENT}` : 'none', background: dragOver ? ACCENT_BG : 'transparent' }}
+        title="Drop an image here to use it as the cover"
+      >
+        {imageUrl ? (
+          // Thumbnail rather than a bare link: covers are served by the platform,
+          // so the one thing you want to know — whether it is any good — is
+          // visible without a round-trip to Drive.
+          <a href={imageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2"
+            style={{ fontSize: 12.5, fontWeight: 700, color: ACCENT, textDecoration: 'none' }}
+            title="Open the cover full size">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imageUrl} alt="Post cover" style={{ width: 64, height: 36, objectFit: 'cover',
+              borderRadius: 6, border: '1px solid #e7ebf5', flex: 'none' }} />
+            Cover <ExternalLink size={12} />
+          </a>
+        ) : (
+          <span className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: '#b0aebc', fontWeight: 600 }}>
+            <ImageIcon size={14} /> {dragOver ? 'drop to use as cover' : 'no cover image yet'}
+          </span>
+        )}
+      </div>
+
+      <button
+        onClick={() => fileRef.current?.click()}
+        disabled={busy}
+        title={imageUrl ? 'Replace the cover with a file' : 'Use an image file as the cover'}
+        className="flex items-center gap-1"
+        style={{ border: '1px solid #e7ebf5', background: '#fff', borderRadius: 8, padding: '4px 8px',
+          fontSize: 11.5, fontWeight: 700, color: ACCENT, cursor: busy ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+      >
+        <Upload size={12} /> {busy ? '…' : imageUrl ? 'Replace' : 'Add'}
+      </button>
+
+      {imageUrl && !busy && (
+        <button onClick={remove} title="Remove the cover"
+          style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#cbd0da', padding: 2, display: 'flex' }}>
+          <Trash2 size={13} />
+        </button>
+      )}
+
+      {error && <span style={{ fontSize: 11, color: '#e2445c', maxWidth: 200 }}>{error}</span>}
+    </div>
+  )
+}
 
 const SUGGESTIONS = [
   'כתוב טיוטה ראשונה לפוסט הזה',
@@ -272,16 +386,16 @@ export default function PostDrawer({
               )}
 
               <div className="flex items-center gap-3" style={{ padding: '10px 16px' }}>
-                {p.imageUrl ? (
-                  <a href={p.imageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1.5"
-                    style={{ fontSize: 12.5, fontWeight: 700, color: ACCENT }}>
-                    <ImageIcon size={14} /> Cover image <ExternalLink size={12} />
-                  </a>
-                ) : (
-                  <span className="flex items-center gap-1.5" style={{ fontSize: 12.5, color: '#b0aebc', fontWeight: 600 }}>
-                    <ImageIcon size={14} /> no cover image yet
-                  </span>
-                )}
+                <CoverCell
+                  agentKey={agentKey}
+                  postId={post.id}
+                  imageUrl={p.imageUrl}
+                  onChanged={(imageUrl) => {
+                    const next = { ...p, imageUrl }
+                    setP(next)
+                    onPostChanged(next)
+                  }}
+                />
                 <input
                   value={p.linkedinUrl ?? ''}
                   onChange={(e) => setP((cur) => ({ ...cur, linkedinUrl: e.target.value }))}

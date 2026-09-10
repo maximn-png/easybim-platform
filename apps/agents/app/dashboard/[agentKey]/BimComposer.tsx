@@ -5,7 +5,7 @@
 // blend mask, perspective analysis for AI backgrounds, pan/zoom viewport).
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { X, Download, Sparkles } from 'lucide-react'
+import { X, Download, Sparkles, ImagePlus, Check } from 'lucide-react'
 
 const ACCENT = '#1e248c' // EPM platform navy — matches postMeta ACCENT
 
@@ -461,6 +461,7 @@ export default function BimComposer({ project, onClose }: { project: ComposerPro
   const [exportMsg, setExportMsg] = useState('Exporting…')
   const [canDownload, setCanDownload] = useState(false)
   const [dragOver, setDragOver] = useState<'arc' | 'mep' | 'bg' | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
   const [coords, setCoords] = useState('—')
 
   // ── refs ──
@@ -849,6 +850,40 @@ export default function BimComposer({ project, onClose }: { project: ComposerPro
     }, isPNG ? 'image/png' : 'image/jpeg', 0.97)
   }
 
+  /**
+   * Send the rendered canvas to a post as its cover.
+   *
+   * Posts the same bytes Download would have written, so what lands on the post
+   * is exactly the full-resolution export — not the draft preview. The project
+   * rides along so the post finally records which project it is about.
+   */
+  const attachToPost = async (postId: string) => {
+    const rc = resultCanvasRef.current
+    if (!rc) return { ok: false, error: 'Export the full-resolution image first.' }
+    const isPNG = bgMode === 'transparent'
+    const blob = await new Promise<Blob | null>((resolve) =>
+      rc.toBlob(resolve, isPNG ? 'image/png' : 'image/jpeg', 0.97)
+    )
+    if (!blob) return { ok: false, error: 'Could not read the rendered image.' }
+
+    const base = project
+      ? `${project.projectNumber}_${project.projectName}`.replace(/[\\/:*?"<>|]+/g, '').trim().replace(/\s+/g, '_')
+      : 'BIM'
+    const body = new FormData()
+    body.append('file', blob, `${base}_${rc.width}px.${isPNG ? 'png' : 'jpg'}`)
+    body.append('origin', 'composer')
+    if (project?.projectNumber) body.append('projectNumber', project.projectNumber)
+
+    try {
+      const res = await fetch(`/api/dashboard/peacock/posts/${postId}/image`, { method: 'POST', body })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) return { ok: false, error: d.error ?? `Upload failed (${res.status}).` }
+      return { ok: true as const }
+    } catch {
+      return { ok: false, error: 'Upload failed — check the connection.' }
+    }
+  }
+
   const hasSource = !!(arcInfo || mepInfo)
 
   // ── render ──
@@ -1037,7 +1072,30 @@ export default function BimComposer({ project, onClose }: { project: ComposerPro
             style={{ padding: 10, borderRadius: 7, fontSize: 13.5, background: '#f1f5f9', color: '#475569', border: '1.5px solid #e2e8f0', cursor: canDownload ? 'pointer' : 'not-allowed', opacity: canDownload ? 1 : 0.4 }}>
             <Download size={14} /> Download
           </button>
+          {/* The render only existed in this canvas until now: closing the
+              composer threw it away, and Download put it in the OS downloads
+              folder rather than anywhere the platform could see. */}
+          <button onClick={() => setPickerOpen(true)} disabled={!canDownload}
+            className="w-full font-bold inline-flex items-center justify-center gap-1.5"
+            style={{ padding: 10, borderRadius: 7, fontSize: 13.5, background: canDownload ? '#eef3fe' : '#f1f5f9',
+              color: ACCENT, border: `1.5px solid ${canDownload ? '#b9c6ea' : '#e2e8f0'}`,
+              cursor: canDownload ? 'pointer' : 'not-allowed', opacity: canDownload ? 1 : 0.4 }}>
+            <ImagePlus size={14} /> Use in a post…
+          </button>
+          {!canDownload && hasSource && (
+            <div style={{ fontSize: 10.5, color: '#94a3b8', textAlign: 'center', lineHeight: 1.4 }}>
+              Export first — both actions work on the full-resolution render.
+            </div>
+          )}
         </div>
+
+        {pickerOpen && (
+          <PostPicker
+            project={project}
+            onClose={() => setPickerOpen(false)}
+            onPick={attachToPost}
+          />
+        )}
 
         {/* ── preview ── */}
         <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', background: '#dde1e7' }}>
@@ -1113,6 +1171,159 @@ export default function BimComposer({ project, onClose }: { project: ComposerPro
 }
 
 // ── small presentational pieces ──
+
+interface PickerPost {
+  id: string
+  title: string
+  status: string
+  postType: string | null
+  publishDate: string | null
+  projectNumber: string | null
+  imageUrl: string | null
+}
+
+/**
+ * Choose the post this render belongs to.
+ *
+ * Posts already tied to this project sort to the top, but the full list stays
+ * available: `projectNumber` is empty on every existing post, so filtering down
+ * to the project would show an empty picker and the feature would look broken.
+ * Attaching a composer render is what starts filling that field in.
+ */
+function PostPicker({
+  project, onClose, onPick,
+}: {
+  project: ComposerProject | null
+  onClose: () => void
+  onPick: (postId: string) => Promise<{ ok: boolean; error?: string }>
+}) {
+  const [posts, setPosts] = useState<PickerPost[]>([])
+  const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [doneId, setDoneId] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/dashboard/peacock/posts?slim=1', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { posts: [] }))
+      .then((d) => setPosts(d.posts ?? []))
+      .catch(() => setError('Could not load the content plan.'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const needle = q.trim().toLowerCase()
+  const shown = posts
+    .filter((p) => !needle || p.title.toLowerCase().includes(needle))
+    .sort((a, b) => {
+      // This project's posts first, then Project-pillar posts, then the rest.
+      const rank = (p: PickerPost) =>
+        project && p.projectNumber === project.projectNumber ? 0 : p.postType === '4. Project' ? 1 : 2
+      const d = rank(a) - rank(b)
+      if (d !== 0) return d
+      return (b.publishDate ?? '').localeCompare(a.publishDate ?? '')
+    })
+    .slice(0, 60)
+
+  async function pick(p: PickerPost) {
+    if (busyId) return
+    if (p.imageUrl && !confirm(`"${p.title}" already has a cover. Replace it?`)) return
+    setBusyId(p.id)
+    setError(null)
+    const res = await onPick(p.id)
+    setBusyId(null)
+    if (res.ok) {
+      setDoneId(p.id)
+      setPosts((xs) => xs.map((x) => (x.id === p.id ? { ...x, imageUrl: 'set' } : x)))
+      setTimeout(onClose, 900)
+    } else {
+      setError(res.error ?? 'Could not attach the image.')
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(15,23,42,.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: '#fff', borderRadius: 14, width: 560, maxWidth: '100%', maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 60px rgba(15,23,42,.3)' }}
+      >
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0' }}>
+          <div className="flex items-center justify-between gap-3">
+            <div style={{ fontSize: 15, fontWeight: 700, color: ACCENT }}>Use this render in a post</div>
+            <button onClick={onClose} aria-label="Close"
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94a3b8', display: 'flex' }}>
+              <X size={17} />
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>
+            {project
+              ? `Project ${project.projectNumber} — ${project.projectName}. The post will record this project number.`
+              : 'No project context — the image attaches without a project link.'}
+          </div>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search the content plan…"
+            dir="auto"
+            style={{ marginTop: 10, width: '100%', fontSize: 13, fontFamily: 'inherit', padding: '7px 10px',
+              border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none' }}
+          />
+        </div>
+
+        <div style={{ overflowY: 'auto', padding: 8 }}>
+          {loading && <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>Loading posts…</p>}
+          {!loading && shown.length === 0 && (
+            <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>No posts match.</p>
+          )}
+          {shown.map((p) => {
+            const mine = project && p.projectNumber === project.projectNumber
+            return (
+              <button
+                key={p.id}
+                onClick={() => pick(p)}
+                disabled={!!busyId}
+                className="w-full text-left flex items-center gap-3"
+                style={{ border: 'none', background: doneId === p.id ? '#e8f9ee' : 'transparent', fontFamily: 'inherit',
+                  padding: '9px 10px', borderRadius: 8, cursor: busyId ? 'wait' : 'pointer' }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div dir="auto" style={{ fontSize: 13, fontWeight: 600, color: '#1e293b',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                    {p.postType ?? '—'} · {p.status.replace(/_/g, ' ')}
+                    {p.projectNumber ? ` · project ${p.projectNumber}` : ''}
+                    {p.imageUrl ? ' · has a cover' : ''}
+                  </div>
+                </div>
+                {mine && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: ACCENT, background: '#eef3fe',
+                    padding: '3px 7px', borderRadius: 999, flex: 'none' }}>
+                    this project
+                  </span>
+                )}
+                {doneId === p.id && <Check size={15} style={{ color: '#16a34a', flex: 'none' }} />}
+                {busyId === p.id && <span style={{ fontSize: 11, color: '#94a3b8', flex: 'none' }}>attaching…</span>}
+              </button>
+            )
+          })}
+        </div>
+
+        {error && (
+          <div style={{ padding: '10px 18px', borderTop: '1px solid #e2e8f0', fontSize: 12, color: '#e2445c' }}>
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function Card({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
   return (

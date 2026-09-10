@@ -8,6 +8,7 @@ import HowItWorks from './HowItWorks'
 import ChatShell from './ChatShell'
 import PeacockDashboard from './PeacockDashboard'
 import DogDashboard from './DogDashboard'
+import SquirrelDashboard from './SquirrelDashboard'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,7 +21,8 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
   // Dashboard-first agents: the dashboard is the landing; chat/about open as
   // overlays from it. Each such agent brings its own dashboard component.
   if (p.hasDashboard) {
-    const Dashboard = agentKey === 'dog' ? DogDashboard : PeacockDashboard
+    const Dashboard =
+      agentKey === 'dog' ? DogDashboard : agentKey === 'squirrel' ? SquirrelDashboard : PeacockDashboard
     return <Dashboard agentKey={agentKey} agentName={agent.name} description={agent.description} presentation={p} />
   }
 
