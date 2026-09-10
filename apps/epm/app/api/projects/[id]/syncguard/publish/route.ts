@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { resolveViewerHub } from '@/lib/services/apsHubs'
+import { resolveViewerHub, getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 import { getApsUserToken } from '@/lib/services/apsUserToken'
 import { publishModel, getPublishJob } from '@/lib/services/apsPublish'
 
@@ -28,8 +28,18 @@ async function context(id: string) {
   const hub = resolveViewerHub(ext.accHubId as string | undefined, ext.accExternalHub as boolean | undefined)
   if (!hub || !accProjectId) return { error: NextResponse.json({ unsupported: true }) }
 
-  const token = await getApsUserToken(hub)
-  if (!token) return { error: NextResponse.json({ needsApsAuth: true, hub: hub.key }) }
+  // Token lookups key on the APP the token was issued through, and the EasyBIM
+  // app is the EMPTY key — so they take the PARTNER hub (null for our own hub),
+  // not resolveViewerHub's output. Passing the EasyBIM hub object here sends the
+  // lookup after an 'easybim'-suffixed cookie that is never set, which reads as
+  // "not connected" no matter how many times the user connects. Same convention
+  // as app/api/projects/[id]/issues/route.ts.
+  const partnerHub = ext.accExternalHub
+    ? getPartnerHubByAccountId(ext.accHubId as string | undefined)
+    : null
+
+  const token = await getApsUserToken(partnerHub)
+  if (!token) return { error: NextResponse.json({ needsApsAuth: true, hub: partnerHub?.key }) }
 
   return { accProjectId, token }
 }

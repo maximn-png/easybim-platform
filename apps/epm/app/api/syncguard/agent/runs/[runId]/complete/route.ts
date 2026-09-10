@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateAgent } from '@/lib/server/syncguardAuth'
-import { resolveViewerHub } from '@/lib/services/apsHubs'
+import { resolveViewerHub, getPartnerHubByAccountId } from '@/lib/services/apsHubs'
 import { getApsAccessTokenForUser } from '@/lib/server/apsTokenStore'
 import { publishModel } from '@/lib/services/apsPublish'
 import type { ISyncguardRun, ISyncguardStep } from '@/app/models/SyncguardRun'
@@ -39,7 +39,16 @@ async function publishAfterSync(run: HydratedDocument<ISyncguardRun>, step: ISyn
   const hub = resolveViewerHub(ext.accHubId as string | undefined, ext.accExternalHub as boolean | undefined)
   if (!hub) return note('skipped', 'no publish credentials for this hub')
 
-  const token = await getApsAccessTokenForUser(run.triggeredBy, hub)
+  // Stored tokens key on the APP that issued them, and the EasyBIM app uses the
+  // EMPTY key — so this takes the PARTNER hub (null for our own), never
+  // resolveViewerHub's output. Passing the EasyBIM hub object queries
+  // hubKey:'easybim', which matches no row, and reports a connected user as
+  // disconnected.
+  const partnerHub = ext.accExternalHub
+    ? getPartnerHubByAccountId(ext.accHubId as string | undefined)
+    : null
+
+  const token = await getApsAccessTokenForUser(run.triggeredBy, partnerHub)
   if (!token) {
     note('failed', 'Autodesk not connected for the user who started this run')
     run.status = 'needs_attention'
