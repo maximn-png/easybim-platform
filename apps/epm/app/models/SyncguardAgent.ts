@@ -74,6 +74,11 @@ const SyncguardAgentSchema = new Schema<ISyncguardAgent>(
 
 // Sparse: only unredeemed rows carry a code, and two agents must never share one.
 SyncguardAgentSchema.index({ pairingCode: 1 }, { unique: true, sparse: true })
+// Reap unredeemed enrollments once their code expires. Redemption clears
+// pairingExpiresAt, and Mongo's TTL ignores documents where the field is absent,
+// so this deletes abandoned pairing rows and never touches a live agent. Without
+// it, every unused code left a dead credential row behind forever.
+SyncguardAgentSchema.index({ pairingExpiresAt: 1 }, { expireAfterSeconds: 0 })
 SyncguardAgentSchema.index({ tokenHash: 1 }, { sparse: true })
 SyncguardAgentSchema.index({ enrolled: 1, kind: 1 })
 
